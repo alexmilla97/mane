@@ -294,19 +294,115 @@
   /* Pantalla completa nativa */
   #ipad-screen:fullscreen, #ipad-screen:-webkit-full-screen { background:var(--bg); }
   #ipad-screen:fullscreen .ipad-body, #ipad-screen:-webkit-full-screen .ipad-body { padding:clamp(1rem,4vh,3rem) clamp(1rem,4vw,3rem); }
+
+  /* ── AUTH / VIEWER MODE ───────────────────────────── */
+  .viewer-mode .admin-only { display: none !important; }
+  .viewer-mode #setup-screen { display: none !important; }
+  .viewer-mode .group-match-item:not(.played) { cursor: default !important; pointer-events: none; }
+  .viewer-mode .group-match-item:not(.played):hover { background: transparent !important; }
+  .viewer-mode .team-slot { cursor: default !important; pointer-events: none; }
+  .viewer-mode .move-btn { display: none !important; }
+
+  /* Viewer banner */
+  #viewer-banner { display: none; background: rgba(212,160,23,0.08); border-bottom: 1px solid rgba(212,160,23,0.2); padding: 0.4rem 2rem; text-align: center; font-family: 'Barlow Condensed', sans-serif; font-size: 0.8rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--gold); }
+  .viewer-mode #viewer-banner { display: block; }
+
+  /* ── PUBLIC HOME ──────────────────────────────────── */
+  #public-home { min-height: calc(100vh - 100px); padding: 0 1.5rem 4rem; }
+  .ph-hero { text-align: center; padding: 3.5rem 1rem 2.5rem; }
+  .ph-hero-title { font-family: 'Barlow Condensed', sans-serif; font-size: clamp(2rem, 5vw, 3rem); font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text); margin-bottom: 0.5rem; }
+  .ph-hero-title::before { content: '🏆 '; }
+  .ph-hero-sub { color: var(--text-muted); font-size: 1rem; max-width: 500px; margin: 0 auto; line-height: 1.6; }
+  .ph-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1.2rem; max-width: 1100px; margin: 0 auto; }
+  .ph-card { background: var(--bg2); border: 1px solid var(--border-strong); border-radius: var(--radius-lg); overflow: hidden; transition: border-color 0.2s, box-shadow 0.2s; }
+  .ph-card:hover { border-color: var(--gold-dark); box-shadow: 0 8px 32px rgba(0,0,0,0.3); }
+  .ph-card-head { background: var(--bg3); padding: 1.1rem 1.3rem 0.9rem; border-bottom: 1px solid var(--border); }
+  .ph-card-name { font-family: 'Barlow Condensed', sans-serif; font-size: 1.4rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text); line-height: 1.1; margin-bottom: 0.4rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ph-badges { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+  .ph-badge { font-family: 'Barlow Condensed', sans-serif; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; padding: 0.18rem 0.55rem; border-radius: 4px; }
+  .ph-badge.grupos { background: rgba(212,160,23,0.12); color: var(--gold); border: 1px solid rgba(212,160,23,0.3); }
+  .ph-badge.bracket { background: rgba(46,204,113,0.1); color: var(--win); border: 1px solid rgba(46,204,113,0.3); }
+  .ph-badge.live { background: rgba(46,204,113,0.15); color: var(--win); border: 1px solid rgba(46,204,113,0.4); animation: dvPulse 2s ease-in-out infinite; }
+  .ph-card-body { padding: 1rem 1.3rem 1.3rem; display: flex; flex-direction: column; gap: 0.6rem; }
+  .ph-stats { font-size: 0.82rem; color: var(--text-muted); display: flex; gap: 1rem; flex-wrap: wrap; padding-bottom: 0.6rem; border-bottom: 1px solid var(--border); }
+  .ph-stats span { display: flex; align-items: center; gap: 0.3rem; }
+  .ph-actions { display: flex; gap: 0.6rem; }
+  .ph-btn { flex: 1; font-family: 'Barlow Condensed', sans-serif; font-size: 0.95rem; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; padding: 0.65rem 0.8rem; border-radius: var(--radius); border: 1px solid var(--border-strong); cursor: pointer; background: var(--bg3); color: var(--text-muted); transition: all 0.15s; display: flex; align-items: center; justify-content: center; gap: 0.4rem; }
+  .ph-btn:hover { background: var(--bg2); border-color: var(--gold); color: var(--gold); }
+  .ph-btn.primary { background: var(--gold); color: #111; border-color: var(--gold); }
+  .ph-btn.primary:hover { background: var(--gold-light); border-color: var(--gold-light); }
+  .ph-empty { text-align: center; padding: 5rem 2rem; max-width: 400px; margin: 0 auto; }
+  .ph-empty-icon { font-size: 3rem; margin-bottom: 1rem; }
+  .ph-empty-title { font-family: 'Barlow Condensed', sans-serif; font-size: 1.6rem; font-weight: 800; text-transform: uppercase; color: var(--gold); margin-bottom: 0.5rem; }
+  .ph-empty-sub { color: var(--text-muted); font-size: 0.92rem; line-height: 1.7; }
+
+  /* Back button in display screen */
+  #dv-back-btn { display: none; font-family: 'Barlow Condensed', sans-serif; font-size: 0.85rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; padding: 0.35rem 0.9rem; border-radius: var(--radius); border: 1px solid var(--border-strong); background: var(--bg3); color: var(--text-muted); cursor: pointer; transition: all 0.15s; white-space: nowrap; flex-shrink: 0; }
+  #dv-back-btn:hover { border-color: var(--gold); color: var(--gold); background: rgba(212,160,23,0.08); }
+  .viewer-from-home #dv-back-btn { display: inline-flex; align-items: center; gap: 0.3rem; }
+
+  /* Auth button in header */
+  #auth-btn { font-family: 'Barlow Condensed', sans-serif; font-size: 0.9rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; padding: 0.4rem 1rem; border-radius: var(--radius); border: 1px solid var(--border-strong); cursor: pointer; background: transparent; color: var(--text-muted); transition: all 0.15s; }
+  #auth-btn:hover { background: var(--bg3); border-color: var(--gold); color: var(--gold); }
+  #auth-btn.is-admin { border-color: var(--gold-dark); color: var(--gold); }
+
+  /* Login overlay */
+  #login-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85); z-index: 600; align-items: center; justify-content: center; backdrop-filter: blur(4px); }
+  #login-overlay.open { display: flex; }
+  .login-modal { background: var(--bg2); border: 1px solid var(--border-strong); border-radius: var(--radius-lg); padding: 2.5rem; width: 100%; max-width: 380px; animation: fadeIn 0.2s ease; }
+  .login-modal h2 { font-family: 'Barlow Condensed', sans-serif; font-size: 1.6rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; color: var(--gold); margin-bottom: 0.3rem; }
+  .login-modal p { color: var(--text-muted); font-size: 0.88rem; margin-bottom: 1.8rem; }
+  .login-input-wrap { position: relative; margin-bottom: 0.6rem; }
+  .login-input-wrap input { width: 100%; background: var(--bg3); border: 1px solid var(--border-strong); border-radius: var(--radius); color: var(--text); font-family: 'Barlow', sans-serif; font-size: 1rem; padding: 0.65rem 2.5rem 0.65rem 0.9rem; outline: none; transition: border-color 0.15s; letter-spacing: 0.05em; }
+  .login-input-wrap input:focus { border-color: var(--gold); }
+  .login-toggle-pwd { position: absolute; right: 0.75rem; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; color: var(--text-muted); font-size: 0.9rem; padding: 0; line-height: 1; }
+  .login-toggle-pwd:hover { color: var(--gold); }
+  #login-error { display: none; background: rgba(226,75,74,0.12); border: 1px solid rgba(226,75,74,0.3); border-radius: var(--radius); color: #E24B4A; font-size: 0.82rem; font-weight: 600; padding: 0.4rem 0.75rem; margin-bottom: 0.8rem; text-align: center; }
+  .login-actions { display: flex; gap: 0.5rem; margin-top: 0.2rem; }
+  .login-actions .btn-login { flex: 1; font-family: 'Barlow Condensed', sans-serif; font-size: 1rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; padding: 0.6rem 1rem; border-radius: var(--radius); background: var(--gold); color: #111; border: none; cursor: pointer; transition: all 0.15s; }
+  .login-actions .btn-login:hover { background: var(--gold-light); }
+  .login-actions .btn-cancel { font-family: 'Barlow Condensed', sans-serif; font-size: 0.9rem; font-weight: 700; text-transform: uppercase; padding: 0.6rem 1rem; border-radius: var(--radius); background: transparent; color: var(--text-muted); border: 1px solid var(--border-strong); cursor: pointer; transition: all 0.15s; }
+  .login-actions .btn-cancel:hover { background: var(--bg3); color: var(--text); }
+  .login-divider { border: none; border-top: 1px solid var(--border); margin: 1.5rem 0 1rem; }
+  .change-pwd-section { display: none; }
+  .change-pwd-section.open { display: block; animation: fadeIn 0.15s ease; }
+  .change-pwd-toggle { width: 100%; background: none; border: none; cursor: pointer; font-family: 'Barlow Condensed', sans-serif; font-size: 0.75rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); padding: 0; text-align: left; transition: color 0.15s; margin-top: 0.8rem; }
+  .change-pwd-toggle:hover { color: var(--gold); }
+  #logout-btn { display: none; font-family: 'Barlow Condensed', sans-serif; font-size: 0.78rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; padding: 0.35rem 0.85rem; border-radius: var(--radius); background: transparent; color: #E24B4A; border: 1px solid rgba(226,75,74,0.4); cursor: pointer; transition: all 0.15s; }
+  #logout-btn:hover { background: rgba(226,75,74,0.1); border-color: #E24B4A; }
+  .admin-mode #logout-btn { display: inline-flex; align-items: center; gap: 0.3rem; }
 </style>
 </head>
 <body>
 
 <header>
   <div class="logo">Torneo<span>Pro</span></div>
-  <div style="display:flex; gap: 0.5rem;">
-    <button class="btn btn-fs" id="btn-manage-tourneys" title="Gestionar torneos guardados">📂 Mis Torneos</button>
+  <div style="display:flex; gap: 0.5rem; align-items:center;">
+    <button class="btn btn-fs admin-only" id="btn-manage-tourneys" title="Gestionar torneos guardados">📂 Mis Torneos</button>
+    <button id="auth-btn" title="Acceso administrador">🔐 Admin</button>
+    <button id="logout-btn" title="Cerrar sesión">✕ Cerrar sesión</button>
   </div>
 </header>
 
+<!-- VIEWER BANNER -->
+<div id="viewer-banner">👁 Modo visualización — Solo lectura</div>
+
+<!-- PUBLIC HOME -->
+<div id="public-home" style="display:none;">
+  <div class="ph-hero">
+    <div class="ph-hero-title">Torneos</div>
+    <div class="ph-hero-sub">Selecciona un torneo para ver la clasificacion o el cuadro eliminatorio en directo.</div>
+  </div>
+  <div class="ph-grid" id="ph-grid"></div>
+  <div class="ph-empty" id="ph-empty" style="display:none;">
+    <div class="ph-empty-icon">clipboard</div>
+    <div class="ph-empty-title">Sin torneos activos</div>
+    <div class="ph-empty-sub">No hay ningun torneo en curso. Vuelve mas tarde o inicia sesion como administrador.</div>
+  </div>
+</div>
+
 <!-- SETUP -->
-<div id="setup-screen">
+<div id="setup-screen" class="admin-only">
   <div style="max-width:680px;margin:3rem auto;padding:0 1.5rem;">
     <div class="setup-card">
       <h2>Nuevo Torneo</h2>
@@ -363,11 +459,11 @@
     </div>
     <div style="display:flex;gap:0.6rem;align-items:center;flex-wrap:wrap;">
       <div style="font-size:0.84rem;color:var(--text-muted)" id="gs-progress-text"></div>
-      <button class="btn btn-fs" id="btn-simulate-gs" style="border-color:var(--gold); color:var(--gold);">🎲 Simular Resultados</button>
-      <button class="btn btn-danger" id="gs-reset-btn">← Nuevo torneo</button>
-      <button class="btn btn-fs" id="btn-display-mode" title="Abre la clasificación en grande en una nueva pestaña">📺 Pantalla grande</button>
-      <button class="btn btn-fs" id="btn-connect-device" title="Conectar iPad u otro dispositivo">📱 Conectar</button>
-      <div class="ntfy-mini" id="ntfy-mini" onclick="openConnectModal()">
+      <button class="btn btn-fs admin-only" id="btn-simulate-gs" style="border-color:var(--gold); color:var(--gold);">🎲 Simular Resultados</button>
+      <button class="btn btn-danger admin-only" id="gs-reset-btn">← Nuevo torneo</button>
+      <button class="btn btn-fs admin-only" id="btn-display-mode" title="Abre la clasificación en grande en una nueva pestaña">📺 Pantalla grande</button>
+      <button class="btn btn-fs admin-only" id="btn-connect-device" title="Conectar iPad u otro dispositivo">📱 Conectar</button>
+      <div class="ntfy-mini admin-only" id="ntfy-mini" onclick="openConnectModal()">
         <span class="ntfy-dot" id="ntfy-dot2"></span>
         <span id="ntfy-mini-text">0 disp.</span>
       </div>
@@ -377,7 +473,7 @@
   <div class="groups-scroll" id="groups-container"></div>
   <div class="group-footer">
     <div class="footer-info" id="footer-info">Completa todos los partidos para continuar.</div>
-    <button id="btn-advance">Avanzar al Cuadro →</button>
+    <button id="btn-advance" class="admin-only">Avanzar al Cuadro →</button>
   </div>
 </div>
 
@@ -413,7 +509,7 @@
     <div style="display:flex;gap:0.6rem;align-items:center;flex-wrap:wrap;">
       <div style="font-size:0.85rem;color:var(--text-muted)" id="progress-text"></div>
       <button class="btn btn-fs" id="btn-fullscreen">⛶ Pantalla completa</button>
-      <button class="btn btn-danger" id="reset-btn">← Nuevo torneo</button>
+      <button class="btn btn-danger admin-only" id="reset-btn">← Nuevo torneo</button>
     </div>
   </div>
   <div style="width:100%"><div class="progress-bar"><div class="progress-fill" id="progress-fill" style="width:0%"></div></div></div>
@@ -429,15 +525,18 @@
 <!-- MODO VISUALIZACIÓN -->
 <div id="display-screen">
   <div class="dv-header">
-    <div class="dv-title" id="dv-title">—</div>
+    <div style="display:flex;align-items:center;gap:1rem;">
+      <button id="dv-back-btn" onclick="backToPublicHome()" title="Volver a la lista">&#8592; Torneos</button>
+      <div class="dv-title" id="dv-title">&#8212;</div>
+    </div>
     <div style="display:flex;align-items:center;gap:0.8rem;">
       <div class="dv-live-dot"></div>
-      <div class="dv-badge" id="dv-badge-text">EN VIVO · Clasificación</div>
+      <div class="dv-badge" id="dv-badge-text">EN VIVO &middot; Clasificacion</div>
     </div>
   </div>
   <div class="dv-groups" id="dv-groups"></div>
   <div class="dv-footer">
-    <span class="dv-progress-text" id="dv-progress-text">—</span>
+    <span class="dv-progress-text" id="dv-progress-text">&#8212;</span>
     <div class="dv-progress-bar"><div class="dv-progress-fill" id="dv-progress-fill" style="width:0%"></div></div>
   </div>
 </div>
@@ -509,6 +608,36 @@
   </div>
 </div>
 
+<!-- LOGIN OVERLAY -->
+<div id="login-overlay">
+  <div class="login-modal">
+    <h2>🔐 Acceso Admin</h2>
+    <p>Introduce la contraseña de administrador para gestionar el torneo.</p>
+    <div class="login-input-wrap">
+      <input type="password" id="login-pwd" placeholder="Contraseña" autocomplete="current-password">
+      <button class="login-toggle-pwd" onclick="toggleLoginPwd()" id="toggle-pwd-btn" title="Mostrar/ocultar">👁</button>
+    </div>
+    <div id="login-error">Contraseña incorrecta</div>
+    <div class="login-actions">
+      <button class="btn-login" onclick="submitLogin()">Entrar</button>
+      <button class="btn-cancel" onclick="$('login-overlay').classList.remove('open')">Cancelar</button>
+    </div>
+    <button class="change-pwd-toggle" onclick="toggleChangePwd()">⚙ Cambiar contraseña…</button>
+    <div class="change-pwd-section" id="change-pwd-section">
+      <hr class="login-divider">
+      <div style="font-family:'Barlow Condensed',sans-serif;font-size:0.8rem;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-muted);margin-bottom:0.5rem;">Nueva contraseña</div>
+      <div class="login-input-wrap" style="margin-bottom:0.4rem;">
+        <input type="password" id="new-pwd" placeholder="Nueva contraseña">
+      </div>
+      <div class="login-input-wrap">
+        <input type="password" id="new-pwd2" placeholder="Repetir contraseña">
+      </div>
+      <div id="change-pwd-error" style="display:none;color:#E24B4A;font-size:0.8rem;font-weight:600;margin:0.4rem 0;"></div>
+      <button class="btn-login" style="width:100%;margin-top:0.5rem;" onclick="changePassword()">Guardar nueva contraseña</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 <div id="fs-hint">F11 — Pantalla completa</div>
 
@@ -517,6 +646,246 @@ const $  = id => document.getElementById(id);
 let bracketSize = 4, numGroups = 2;
 let groupData   = {}, state = {};
 let isFsMode    = false, activePanel = null;
+
+/* ── AUTH ──────────────────────────────────────────── */
+const AUTH_SESSION_KEY = 'torneoPro_adminAuth';
+const AUTH_PWD_KEY     = 'torneoPro_adminPwd';
+const DEFAULT_PASSWORD = 'admin1234';
+
+function getAdminPassword(){
+  return localStorage.getItem(AUTH_PWD_KEY) || DEFAULT_PASSWORD;
+}
+
+function isAdmin(){
+  return sessionStorage.getItem(AUTH_SESSION_KEY) === '1';
+}
+
+function applyAuthState(){
+  const admin = isAdmin();
+  document.body.classList.toggle('admin-mode', admin);
+  document.body.classList.toggle('viewer-mode', !admin);
+  const btn = $('auth-btn');
+  if(admin){
+    btn.textContent = '🔓 Admin';
+    btn.style.color = 'var(--gold)';
+    btn.style.borderColor = 'var(--gold-dark)';
+    // Hide public home, restore admin screens
+    $('public-home').style.display = 'none';
+    $('display-screen').classList.remove('active');
+    $('display-screen').classList.remove('viewer-from-home');
+  } else {
+    btn.textContent = '🔐 Admin';
+    btn.style.color = '';
+    btn.style.borderColor = '';
+    // Hide all admin edit screens
+    ['group-screen','tournament-screen','pairing-screen','setup-screen'].forEach(id => $(id).style.display = 'none');
+  }
+  updateViewerWaiting();
+}
+
+function updateViewerWaiting(){
+  if(isAdmin()) { $('public-home').style.display = 'none'; return; }
+  // Only show public home if no display screen is active
+  if($('display-screen').classList.contains('active')) return;
+  renderPublicHome();
+}
+
+function renderPublicHome(){
+  const admin = isAdmin();
+  if(admin) { $('public-home').style.display = 'none'; return; }
+
+  const all = getAllTournaments();
+  const titles = Object.keys(all);
+
+  $('public-home').style.display = 'block';
+  const grid = $('ph-grid');
+  const empty = $('ph-empty');
+  grid.innerHTML = '';
+
+  if(titles.length === 0){
+    empty.style.display = 'block';
+    empty.innerHTML = '<div class="ph-empty-icon">📋</div><div class="ph-empty-title">Sin torneos activos</div><div class="ph-empty-sub">No hay ningún torneo en curso en este momento.<br>Vuelve más tarde o inicia sesión como administrador.</div>';
+    return;
+  }
+  empty.style.display = 'none';
+
+  titles.forEach(title => {
+    const entry = all[title];
+    const hasBracket  = !!(entry.state?.rounds);
+    const hasGroups   = !!(entry.groupData?.groups);
+    const isLive      = hasBracket ? entry.state.rounds.flat().some(m => !m.winner && m.t1 && m.t2)
+                                   : entry.groupData?.groups?.flatMap(g=>g.matches).some(m => !m.played) ?? false;
+
+    // Stats
+    let statsHtml = '';
+    if(hasGroups){
+      const allM   = entry.groupData.groups.flatMap(g => g.matches);
+      const played = allM.filter(m => m.played).length;
+      const total  = allM.length;
+      const nG     = entry.groupData.groups.length;
+      statsHtml += `<span>🏟️ ${nG} grupos</span><span>⚽ ${played}/${total} partidos</span>`;
+    }
+    if(hasBracket){
+      const played = entry.state.rounds.flat().filter(m => m.winner).length;
+      const total  = entry.state.totalMatches || entry.state.rounds.flat().length;
+      statsHtml += `<span>🏆 Cuadro: ${played}/${total}</span>`;
+    }
+
+    // Buttons
+    let btnsHtml = '';
+    if(hasGroups){
+      const isPrimary = !hasBracket ? ' primary' : '';
+      btnsHtml += `<button class="ph-btn${isPrimary}" onclick="viewTournamentPublic('${title.replace(/'/g,"\\'")}','groups')">📊 Clasificación</button>`;
+    }
+    if(hasBracket){
+      btnsHtml += `<button class="ph-btn primary" onclick="viewTournamentPublic('${title.replace(/'/g,"\\'")}','bracket')">🏆 Cuadro</button>`;
+    }
+    if(!hasGroups && !hasBracket) return;
+
+    const card = document.createElement('div');
+    card.className = 'ph-card';
+    card.innerHTML = `
+      <div class="ph-card-head">
+        <div class="ph-card-name" title="${title}">${title}</div>
+        <div class="ph-badges">
+          ${isLive ? '<span class="ph-badge live">● En directo</span>' : ''}
+          ${hasGroups  ? '<span class="ph-badge grupos">Fase de Grupos</span>' : ''}
+          ${hasBracket ? '<span class="ph-badge bracket">Eliminatoria</span>' : ''}
+        </div>
+      </div>
+      <div class="ph-card-body">
+        ${statsHtml ? `<div class="ph-stats">${statsHtml}</div>` : ''}
+        <div class="ph-actions">${btnsHtml}</div>
+      </div>`;
+    grid.appendChild(card);
+  });
+}
+
+let _publicViewInterval = null;
+
+function viewTournamentPublic(title, mode){
+  const entry = getAllTournaments()[title];
+  if(!entry) return;
+
+  // Clear auto-refresh if any
+  if(_publicViewInterval){ clearInterval(_publicViewInterval); _publicViewInterval = null; }
+
+  $('public-home').style.display = 'none';
+  $('display-screen').classList.add('active');
+  $('display-screen').classList.add('viewer-from-home');
+  document.querySelector('header').style.display = 'none';
+  $('viewer-banner').style.display = 'none';
+
+  if(mode === 'groups'){
+    $('dv-badge-text').textContent = 'EN VIVO · Clasificación';
+    renderDisplayScreen(entry.groupData);
+  } else {
+    $('dv-badge-text').textContent = 'EN VIVO · Cuadro Eliminatorio';
+    // Need to set state for renderBracketDisplay
+    const savedState = state;
+    state = entry.state;
+    renderBracketDisplay(entry.state);
+    state = savedState;
+  }
+
+  // Auto-refresh
+  _publicViewInterval = setInterval(() => {
+    const fresh = getAllTournaments()[title];
+    if(!fresh) return;
+    if(mode === 'groups') renderDisplayScreen(fresh.groupData);
+    else {
+      const savedState = state;
+      state = fresh.state;
+      renderBracketDisplay(fresh.state);
+      state = savedState;
+    }
+  }, 2000);
+}
+
+function backToPublicHome(){
+  if(_publicViewInterval){ clearInterval(_publicViewInterval); _publicViewInterval = null; }
+  $('display-screen').classList.remove('active');
+  $('display-screen').classList.remove('viewer-from-home');
+  document.querySelector('header').style.display = '';
+  renderPublicHome();
+  $('public-home').style.display = 'block';
+  if(!IS_DISPLAY && !IS_BRACKET_DISPLAY) $('viewer-banner').style.display = 'block';
+}
+
+function submitLogin(){
+  const pwd = $('login-pwd').value;
+  $('login-error').style.display = 'none';
+  if(pwd === getAdminPassword()){
+    sessionStorage.setItem(AUTH_SESSION_KEY, '1');
+    $('login-overlay').classList.remove('open');
+    $('login-pwd').value = '';
+    applyAuthState();
+    toast('Sesion de administrador iniciada');
+    // Intentar restaurar torneo activo
+    try {
+      const raw = localStorage.getItem(DV_KEY);
+      if(raw){
+        const saved = JSON.parse(raw);
+        if(saved?.title){
+          const entry = getAllTournaments()[saved.title];
+          if(entry){ restoreTournament(entry, false); return; }
+        }
+      }
+    } catch(e){}
+    // Si no hay torneo guardado, mostrar setup
+    $('setup-screen').style.display = 'block';
+  } else {
+    $('login-error').style.display = 'block';
+    $('login-pwd').select();
+  }
+}
+
+function toggleLoginPwd(){
+  const inp = $('login-pwd');
+  inp.type = inp.type === 'password' ? 'text' : 'password';
+}
+
+function toggleChangePwd(){
+  const s = $('change-pwd-section');
+  s.classList.toggle('open');
+}
+
+function changePassword(){
+  const p1 = $('new-pwd').value.trim();
+  const p2 = $('new-pwd2').value.trim();
+  const err = $('change-pwd-error');
+  err.style.display = 'none';
+  if(p1.length < 4){ err.textContent = 'La contraseña debe tener al menos 4 caracteres.'; err.style.display='block'; return; }
+  if(p1 !== p2){ err.textContent = 'Las contraseñas no coinciden.'; err.style.display='block'; return; }
+  localStorage.setItem(AUTH_PWD_KEY, p1);
+  $('new-pwd').value = ''; $('new-pwd2').value = '';
+  $('change-pwd-section').classList.remove('open');
+  toast('✓ Contraseña actualizada');
+}
+
+$('auth-btn').addEventListener('click', () => {
+  if(isAdmin()){
+    // Show logout confirmation or admin panel — click again to logout
+    $('login-overlay').classList.add('open');
+    $('login-pwd').focus();
+  } else {
+    $('login-overlay').classList.add('open');
+    $('login-pwd').focus();
+  }
+});
+
+$('logout-btn').addEventListener('click', () => {
+  if(!confirm('¿Cerrar sesión de administrador?')) return;
+  sessionStorage.removeItem(AUTH_SESSION_KEY);
+  applyAuthState();
+  toast('👋 Sesión cerrada');
+});
+
+// Enter key on login input
+document.addEventListener('keydown', e => {
+  if($('login-overlay').classList.contains('open') && e.key === 'Enter') submitLogin();
+});
+
 
 /* ── PERSISTENCIA ──────────────────────────────────── */
 const STORAGE_KEY = 'torneoPro_allTournaments';
@@ -565,6 +934,7 @@ function restoreTournament(entry, showToast){
   subscribeNtfy();
   updateDeviceUI();
   if(showToast) toast(`📂 Torneo "${groupData.title}" cargado`);
+  updateViewerWaiting();
 }
 
 function loadTournament(title){
@@ -922,7 +1292,13 @@ $('start-btn').addEventListener('click',()=>{
   launchGroupStageManual(title, teamsData);
 });
 
-function resetAll(){ if(isFsMode)exitFs(); ['group-screen','pairing-screen','tournament-screen'].forEach(id=>$(id).style.display='none'); $('setup-screen').style.display='block'; $('champion-banner').classList.remove('visible'); }
+function resetAll(){
+  if(isFsMode)exitFs();
+  ['group-screen','pairing-screen','tournament-screen'].forEach(id=>$(id).style.display='none');
+  $('champion-banner').classList.remove('visible');
+  if(isAdmin()) $('setup-screen').style.display='block';
+  updateViewerWaiting();
+}
 $('reset-btn').addEventListener('click',resetAll);
 $('gs-reset-btn').addEventListener('click',resetAll);
 
@@ -1034,7 +1410,7 @@ function buildGroupCard(group,gi){
         : '';
     item.innerHTML=`${dot}<div class="gm-team">${m.t1.name}</div><div class="gm-score${m.played?'':' pending'}">${s1}–${s2}</div><div class="gm-team r">${m.t2.name}</div>${devTag}${editIcon}`;
     item.style.cursor='pointer';
-    item.onclick=()=>openScorePanel(gi,mi);
+    item.onclick=()=>{ if(isAdmin()) openScorePanel(gi,mi); };
     card.appendChild(item);
   });
   const panel=document.createElement('div'); panel.className='score-panel'; panel.id=`sp-${gi}`;
@@ -1743,6 +2119,7 @@ function buildCard(match,ri,mi,isFinal=false){
     
     if(!isBye && team && !IS_DISPLAY && !IS_BRACKET_DISPLAY){
       slot.onclick = (e) => {
+        if(!isAdmin()) return;
         e.stopPropagation();
         if(!match.winner) selectWinner(ri,mi,si);
         else if(isWin) resetWinner(ri,mi);
@@ -2059,16 +2436,33 @@ if(IS_IPAD && IPAD_TOPIC) {
   document.addEventListener('DOMContentLoaded', ipadInit);
 } else if(!IS_DISPLAY && !IS_BRACKET_DISPLAY) {
   document.addEventListener('DOMContentLoaded', () => {
-    try {
-      const raw = localStorage.getItem(DV_KEY);
-      if(!raw) return;
-      const saved = JSON.parse(raw);
-      if(!saved?.title) return;
-      const entry = getAllTournaments()[saved.title];
-      if(entry) restoreTournament(entry, false);
-    } catch(e){}
+    // Aplica el estado de auth (admin/viewer)
+    applyAuthState();
+
+    if(isAdmin()){
+      // Admin: intenta restaurar el último torneo
+      try {
+        const raw = localStorage.getItem(DV_KEY);
+        if(raw){
+          const saved = JSON.parse(raw);
+          if(saved?.title){
+            const entry = getAllTournaments()[saved.title];
+            if(entry) restoreTournament(entry, false);
+          }
+        }
+      } catch(e){}
+    } else {
+      // Viewer: muestra el public home con lista de torneos
+      renderPublicHome();
+    }
   });
 }
+
+// Observar cambios de pantalla (para updateViewerWaiting)
+function _patchScreenShow(){
+  const origDisplay = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'style');
+}
+
 
 </script>
 </body>
