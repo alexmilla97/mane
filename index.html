@@ -756,21 +756,29 @@ document.addEventListener('DOMContentLoaded', () => {
 // ── Vista pública: suscripción al torneo activo ────────
 let pubUnsub = null;
 function subscribePublicView(){
-  const last = localStorage.getItem('torneoPro_lastSession');
-  if(!last) return;
-  // Cola
+  // Leer el torneo activo desde Firestore — lo escribe el admin al guardar
   if(pubUnsub) pubUnsub();
-  pubUnsub = onSnapshot(queueRef(last), snap => {
+  pubUnsub = onSnapshot(doc(db, 'config', 'activeTorneo'), snap => {
     const data = snap.data();
-    if(!data) return;
-    $('pub-torney-name').textContent = data.title || '';
-    renderPublicQueue(data.items || []);
-  });
-  // Clasificación
-  onSnapshot(tourneyRef(last), snap => {
-    const data = snap.data();
-    if(!data) return;
-    if(data.groupData?.groups) renderPublicStandings(data.groupData);
+    if(!data?.sessionId) {
+      $('pub-torney-name').textContent = '—';
+      $('pub-queue-body').innerHTML = '<div class="qv-empty">Sin torneo activo</div>';
+      $('pub-standings-body').innerHTML = '';
+      return;
+    }
+    const sid = data.sessionId;
+    // Suscribirse a cola y clasificación de ese torneo
+    onSnapshot(queueRef(sid), qSnap => {
+      const qData = qSnap.data();
+      if(!qData) return;
+      $('pub-torney-name').textContent = qData.title || '';
+      renderPublicQueue(qData.items || []);
+    });
+    onSnapshot(tourneyRef(sid), tSnap => {
+      const tData = tSnap.data();
+      if(!tData) return;
+      if(tData.groupData?.groups) renderPublicStandings(tData.groupData);
+    });
   });
 }
 
@@ -1786,7 +1794,13 @@ function drawLines(){
 // ── Guardar última sesión usada ───────────────────────
 const _origSave = saveCurrentTournament;
 window.saveCurrentTournament = async function(){
-  if(sessionId) localStorage.setItem('torneoPro_lastSession', sessionId);
+  if(sessionId){
+    localStorage.setItem('torneoPro_lastSession', sessionId);
+    // Publicar torneo activo en Firestore para que usuarios anónimos lo vean
+    try {
+      await setDoc(doc(db, 'config', 'activeTorneo'), { sessionId, updatedAt: serverTimestamp() });
+    } catch(e){ console.error('Error publicando torneo activo:', e); }
+  }
   return _origSave();
 };
 
