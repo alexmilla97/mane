@@ -435,7 +435,7 @@
     <button class="btn btn-primary" id="btn-start-bracket" style="width:100%; margin-top:2rem; padding:0.8rem;">
       Generar Cuadro Eliminatorio →
     </button>
-    <button class="btn" onclick="$('pairing-screen').style.display='none'; $('group-screen').style.display='block';" style="width:100%; margin-top:0.6rem; border:none; color:var(--text-muted);">
+    <button class="btn" onclick="goBackToGroups()" style="width:100%; margin-top:0.6rem; border:none; color:var(--text-muted);">
       ← Volver a Grupos
     </button>
   </div>
@@ -490,7 +490,7 @@
   <div style="max-width:600px; margin:0 auto; width:100%; background:var(--bg2); border:1px solid var(--border-strong); border-radius:var(--radius-lg); padding:2rem; display:flex; flex-direction:column; gap:1.5rem;">
     <div style="display:flex; justify-content:space-between; align-items:center;">
       <h2 style="font-family:'Barlow Condensed', sans-serif; color:var(--gold); text-transform:uppercase;">Mis Torneos Guardados</h2>
-      <button class="btn btn-danger" onclick="$('tourneys-overlay').style.display='none'">✕</button>
+      <button class="btn btn-danger" onclick="closeTourneysOverlay()">✕</button>
     </div>
     <div id="tourneys-list" style="display:flex; flex-direction:column; gap:0.8rem; max-height:60vh; overflow-y:auto; padding-right:0.5rem;">
       <!-- Lista de torneos -->
@@ -506,7 +506,7 @@
   <div class="connect-modal">
     <div style="display:flex;justify-content:space-between;align-items:center;">
       <div class="connect-modal-title">Conectar dispositivo</div>
-      <button class="btn btn-danger" onclick="$('connect-overlay').classList.remove('open')">✕</button>
+      <button class="btn btn-danger" onclick="closeConnectOverlay()">✕</button>
     </div>
     <div>
       <div class="field-label" style="margin-bottom:0.5rem;">Nombre del dispositivo</div>
@@ -573,6 +573,16 @@
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <!-- Firebase -->
+<!-- Proxy global para onclick inline — las funciones reales se definen en el módulo -->
+<script>
+const _wp = new Proxy({}, { get(_, k){ return (...a) => window[k]?.(...a); } });
+['loadTournament','deleteTournament','moveTeam','openScorePanel','modSc','closeScorePanel',
+ 'applyScore','clearScore','removeDevice','generateDeviceQR','copyConnectURL','openConnectModal',
+ 'sendMatchToDevice','ipadToggleFS','ipadMod','ipadSave','ipadStart','renderPairingScreen',
+ 'closeTourneysOverlay','closeConnectOverlay','goBackToGroups'
+].forEach(fn => window[fn] = (...a) => window['_fn_'+fn]?.(...a));
+window.$ = id => document.getElementById(id);
+</script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
 import { getFirestore, doc, setDoc, getDoc, onSnapshot, collection, getDocs, deleteDoc, serverTimestamp }
@@ -606,7 +616,7 @@ const DEVICE_ID    = IS_DEVICE ? params.get('id') : null;
 const SESSION_ID   = params.get('session');  // torneo activo
 
 // ── Helpers ───────────────────────────────────────────
-const $ = id => document.getElementById(id);
+const $ = window.$ = id => document.getElementById(id);
 function toast(msg){ const t=$('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2400); }
 
 // ── Firestore helpers ─────────────────────────────────
@@ -906,8 +916,16 @@ async function restoreTournament(sid, data, showToast){
   sessionId = sid;
   groupData = data.groupData || {};
   state     = data.state || {};
-  connectedDevices = data.devices || [];
-  blockedDevices   = data.blocked || [];
+  // Restaurar estado completo de dispositivos (busy, queue, currentMatch)
+  connectedDevices = (data.devices || []).map(d => ({
+    clientId: d.clientId,
+    name: d.name,
+    lastSeen: Date.now(), // considerar activos al restaurar
+    busy: d.busy || false,
+    queue: d.queue || [],
+    currentMatch: d.currentMatch || null,
+  }));
+  blockedDevices = data.blocked || [];
 
   if(state.rounds){
     $('display-title').textContent=groupData.title;
@@ -923,6 +941,11 @@ async function restoreTournament(sid, data, showToast){
   }
   subscribeToSession();
   updateDeviceUI();
+  // Avisar si había dispositivos ocupados al restaurar
+  const busyDevs = connectedDevices.filter(d => d.busy);
+  if(busyDevs.length){
+    setTimeout(()=> toast(`⚠️ ${busyDevs.map(d=>d.name).join(', ')} tenía${busyDevs.length>1?'n':''} partido en curso — verifica el resultado`), 1000);
+  }
   if(showToast) toast(`📂 Torneo "${groupData.title}" cargado`);
 }
 
@@ -957,16 +980,23 @@ function subscribeToSession(){
     });
   });
 
-  // Presencia de dispositivos
+  // Presencia de dispositivos — solo actualiza lastSeen, nunca sobreescribe estado
   unsubscribeDevices = onSnapshot(collection(db,'torneos',sessionId,'devices'), snap=>{
     snap.docChanges().forEach(change=>{
       const d=change.doc.data();
       if(!d || blockedDevices.includes(d.clientId)) return;
       if(change.type==='removed') return;
       const existing=connectedDevices.find(x=>x.clientId===d.clientId);
-      if(existing){ existing.lastSeen=Date.now(); }
-      else if(d.clientId){
-        connectedDevices.push({clientId:d.clientId,name:d.name,lastSeen:Date.now(),busy:false,queue:[]});
+      if(existing){
+        // Solo actualizar lastSeen — preservar busy, queue, currentMatch
+        existing.lastSeen=Date.now();
+      } else if(d.clientId){
+        // Dispositivo nuevo — buscar si tiene estado guardado en meta/devices
+        const saved=connectedDevices.find(x=>x.clientId===d.clientId);
+        connectedDevices.push({
+          clientId:d.clientId, name:d.name, lastSeen:Date.now(),
+          busy:false, queue:[], currentMatch:null
+        });
         toast(`📱 ${d.name} conectado`);
       }
       updateDeviceUI();
@@ -1553,7 +1583,20 @@ window.saveCurrentTournament=async function(){
 };
 
 // Exponer funciones al HTML (onclick inline)
-Object.assign(window,{loadTournament,deleteTournament,moveTeam,openScorePanel,modSc:window.modSc,closeScorePanel:window.closeScorePanel,applyScore,clearScore,removeDevice,generateDeviceQR,copyConnectURL,openConnectModal,ipadToggleFS:()=>{},sendMatchToDevice,rebuildDeviceButtons,ipadMod:()=>{},ipadSave:()=>{},ipadStart:()=>{}});
+// Registrar funciones para que los onclick inline del HTML funcionen
+const _fns = {
+  loadTournament, deleteTournament, moveTeam,
+  openScorePanel, modSc: window.modSc, closeScorePanel: window.closeScorePanel,
+  applyScore, clearScore,
+  removeDevice, generateDeviceQR, copyConnectURL, openConnectModal,
+  sendMatchToDevice, rebuildDeviceButtons,
+  ipadToggleFS, ipadMod: window.ipadMod, ipadSave: window.ipadSave, ipadStart: window.ipadStart,
+  renderPairingScreen,
+  closeTourneysOverlay: () => $('tourneys-overlay').style.display='none',
+  closeConnectOverlay:  () => $('connect-overlay').classList.remove('open'),
+  goBackToGroups: () => { $('pairing-screen').style.display='none'; $('group-screen').style.display='block'; },
+};
+Object.entries(_fns).forEach(([k,v]) => { window[k]=v; window['_fn_'+k]=v; });
 
 </script>
 
