@@ -1,0 +1,2075 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gestor de Torneos</title>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --gold: #D4A017; --gold-light: #F5D87A; --gold-dark: #8B6A0A;
+    --bg: #0E0E12; --bg2: #161620; --bg3: #1E1E2A;
+    --border: rgba(255,255,255,0.08); --border-strong: rgba(255,255,255,0.18);
+    --text: #F0EEE8; --text-muted: #8A8A9A;
+    --win: #2ECC71;
+    --radius: 8px; --radius-lg: 12px;
+  }
+  body { background: var(--bg); color: var(--text); font-family: 'Barlow', sans-serif; min-height: 100vh; }
+
+  header { background: var(--bg2); border-bottom: 1px solid var(--border-strong); padding: 1.2rem 2rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; position: sticky; top: 0; z-index: 100; }
+  .logo { font-family: 'Barlow Condensed', sans-serif; font-size: 1.6rem; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; color: var(--gold); }
+  .logo span { color: var(--text); font-weight: 400; }
+
+  .btn { font-family: 'Barlow Condensed', sans-serif; font-size: 0.95rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; padding: 0.5rem 1.2rem; border-radius: var(--radius); border: 1px solid var(--border-strong); cursor: pointer; transition: all 0.15s; background: transparent; color: var(--text); }
+  .btn:hover { background: var(--bg3); border-color: var(--text-muted); }
+  .btn:active { transform: scale(0.97); }
+  .btn-primary { background: var(--gold); color: #111; border-color: var(--gold); }
+  .btn-primary:hover { background: var(--gold-light); border-color: var(--gold-light); }
+  .btn-danger { border-color: #E24B4A; color: #E24B4A; }
+  .btn-danger:hover { background: rgba(226,75,74,0.1); }
+  .btn-fs { border-color: var(--gold-dark); color: var(--gold); }
+  .btn-fs:hover { background: rgba(212,160,23,0.1); border-color: var(--gold); }
+
+  /* ── SETUP ─────────────────────────────────────────── */
+  #setup-screen { max-width: 680px; margin: 3rem auto; padding: 0 1.5rem; }
+  .setup-card { background: var(--bg2); border: 1px solid var(--border-strong); border-radius: var(--radius-lg); padding: 2.5rem; }
+  .setup-card h2 { font-family: 'Barlow Condensed', sans-serif; font-size: 1.8rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; color: var(--gold); margin-bottom: 0.4rem; }
+  .setup-card p.subtitle { color: var(--text-muted); font-size: 0.95rem; margin-bottom: 2rem; }
+  .field-label { font-family: 'Barlow Condensed', sans-serif; font-size: 0.85rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 0.5rem; }
+  input[type="text"], select { background: var(--bg3); border: 1px solid var(--border-strong); border-radius: var(--radius); color: var(--text); font-family: 'Barlow', sans-serif; font-size: 0.95rem; padding: 0.6rem 0.9rem; width: 100%; outline: none; transition: border-color 0.15s; }
+  input[type="text"]:focus, select:focus { border-color: var(--gold); }
+  input[type="text"]::placeholder { color: var(--text-muted); }
+  .size-options { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.5rem; }
+  .size-btn { font-family: 'Barlow Condensed', sans-serif; font-size: 1rem; font-weight: 700; padding: 0.45rem 1.1rem; border-radius: var(--radius); border: 1px solid var(--border-strong); cursor: pointer; background: var(--bg3); color: var(--text-muted); transition: all 0.15s; }
+  .size-btn.active, .size-btn:hover { background: var(--gold); color: #111; border-color: var(--gold); }
+  .section-divider { border: none; border-top: 1px solid var(--border); margin: 1.5rem 0; }
+  .step-badge { display: inline-flex; align-items: center; font-family: 'Barlow Condensed', sans-serif; font-size: 0.78rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; background: rgba(212,160,23,0.12); color: var(--gold); border: 1px solid rgba(212,160,23,0.3); border-radius: 4px; padding: 0.2rem 0.6rem; margin-bottom: 0.75rem; }
+  .info-box { background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius); padding: 0.6rem 1rem; font-size: 0.84rem; color: var(--text-muted); margin-top: 0.4rem; margin-bottom: 1rem; line-height: 1.5; }
+  .info-box strong { color: var(--gold); }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }
+  #step2 { animation: fadeIn 0.2s ease; }
+  .teams-grid { display: grid; grid-template-columns: 1fr; gap: 0.8rem; margin-bottom: 1.5rem; }
+  .team-input-row { display: flex; gap: 0.6rem; align-items: center; }
+  .team-input-wrap { position: relative; flex: 1; }
+  .team-num { position: absolute; left: 0.75rem; top: 50%; transform: translateY(-50%); font-family: 'Barlow Condensed', sans-serif; font-size: 0.8rem; font-weight: 700; color: var(--text-muted); pointer-events: none; z-index: 1; }
+  .team-input-wrap input { padding-left: 2rem; }
+  .group-select { width: 120px; font-family: 'Barlow Condensed', sans-serif; font-weight: 700; text-transform: uppercase; font-size: 0.85rem; }
+
+  /* ── GROUP SCREEN ─────────────────────────────────── */
+  #group-screen { display: none; }
+  .phase-bar { background: var(--bg2); border-bottom: 1px solid var(--border); padding: 1rem 2rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+  .phase-label-badge { font-family: 'Barlow Condensed', sans-serif; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; background: rgba(212,160,23,0.15); color: var(--gold); border: 1px solid rgba(212,160,23,0.35); border-radius: 4px; padding: 0.18rem 0.5rem; }
+  .phase-title { font-family: 'Barlow Condensed', sans-serif; font-size: 1.4rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 0.2rem; }
+  .progress-bar { height: 3px; background: var(--bg3); width: 100%; }
+  .progress-fill { height: 100%; background: var(--gold); transition: width 0.4s ease; }
+  .groups-scroll { overflow-x: auto; padding: 2rem; display: flex; gap: 1.5rem; align-items: flex-start; min-height: calc(100vh - 210px); }
+  .group-card { background: var(--bg2); border: 1px solid var(--border-strong); border-radius: var(--radius-lg); min-width: 265px; max-width: 295px; flex-shrink: 0; overflow: hidden; }
+  .group-card-title { font-family: 'Barlow Condensed', sans-serif; font-size: 0.95rem; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; background: var(--bg3); color: var(--gold); padding: 0.5rem 0.9rem; border-bottom: 1px solid var(--border-strong); display: flex; align-items: center; justify-content: space-between; }
+  .gcard-counter { font-size: 0.7rem; color: var(--text-muted); font-weight: 600; letter-spacing: 0; }
+  .standings-wrap { padding: 0.7rem 0.7rem 0; }
+  .standings-table { width: 100%; border-collapse: collapse; font-size: 0.77rem; }
+  .standings-table th { font-family: 'Barlow Condensed', sans-serif; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); padding: 0 0.35rem 0.4rem; text-align: center; }
+  .standings-table th:first-child { text-align: left; }
+  .standings-table td { padding: 0.28rem 0.35rem; text-align: center; border-top: 1px solid var(--border); }
+  .standings-table td:first-child { text-align: left; font-weight: 600; max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .standings-table .rank { font-family: 'Barlow Condensed', sans-serif; font-size: 0.72rem; color: var(--text-muted); font-weight: 700; min-width: 1.2rem; display: inline-block; }
+  .standings-table .pts-col { font-family: 'Barlow Condensed', sans-serif; font-weight: 800; color: var(--text); }
+  .move-btn { background: transparent; border: none; color: var(--text-muted); cursor: pointer; font-size: 0.7rem; padding: 0 2px; transition: color 0.15s; }
+  .move-btn:hover { color: var(--gold); }
+  .group-matches-lbl { font-family: 'Barlow Condensed', sans-serif; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-muted); padding: 0.7rem 0.7rem 0.3rem; }
+  .group-match-item { display: flex; align-items: center; padding: 0.32rem 0.7rem; gap: 0.35rem; border-top: 1px solid var(--border); transition: background 0.12s; }
+  .group-match-item:not(.played) { cursor: pointer; }
+  .group-match-item:not(.played):hover { background: rgba(212,160,23,0.06); }
+  .group-match-item.live { background: rgba(46,204,113,0.07); border-left: 2px solid var(--win); }
+  .group-match-item.live .gm-score { color: var(--win); }
+  .group-match-item.queued-match { background: rgba(212,160,23,0.06); border-left: 2px solid var(--gold-dark); }
+  .group-match-item.queued-match .gm-score { color: var(--gold); }
+  .live-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--win); flex-shrink: 0; animation: dvPulse 1.5s ease-in-out infinite; }
+  .queue-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--gold); flex-shrink: 0; }
+  .send-to-btn.busy { border-color: var(--gold); color: var(--gold); background: rgba(212,160,23,0.06); }
+  .send-to-btn.queued { border-color: var(--text-muted); color: var(--text-muted); opacity: 0.6; }
+  .gm-team { flex: 1; font-size: 0.77rem; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .gm-team.r { text-align: right; }
+  .gm-score { font-family: 'Barlow Condensed', sans-serif; font-size: 0.98rem; font-weight: 800; min-width: 30px; text-align: center; color: var(--gold); }
+  .gm-score.pending { font-size: 0.68rem; font-weight: 600; color: var(--text-muted); }
+  .score-panel { display: none; background: var(--bg3); border-top: 1px solid var(--border); padding: 0.65rem 0.85rem; }
+  .score-panel.open { display: block; animation: fadeIn 0.15s ease; }
+  .score-row { display: flex; align-items: center; justify-content: center; gap: 0.55rem; }
+  .sc-lbl { flex: 1; font-size: 0.7rem; font-weight: 600; color: var(--text-muted); text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sc-grp { display: flex; align-items: center; gap: 0.35rem; }
+  .sc-btn { width: 24px; height: 24px; border-radius: 50%; border: 1px solid var(--border-strong); background: var(--bg2); color: var(--text); cursor: pointer; font-size: 0.95rem; display: flex; align-items: center; justify-content: center; transition: all 0.12s; font-family: 'Barlow Condensed', sans-serif; font-weight: 700; }
+  .sc-btn:hover { background: var(--gold); color: #111; border-color: var(--gold); }
+  .sc-num { font-family: 'Barlow Condensed', sans-serif; font-size: 1.4rem; font-weight: 800; min-width: 1.4rem; text-align: center; }
+  .sc-sep { font-size: 0.8rem; color: var(--text-muted); }
+  .score-actions { display: flex; justify-content: flex-end; gap: 0.4rem; margin-top: 0.5rem; }
+
+  /* ── ENVIAR A ─────────────────────────────────────── */
+  .send-to-section { border-top: 1px solid var(--border); margin-top: 0.55rem; padding-top: 0.5rem; }
+  .send-to-lbl { font-family: 'Barlow Condensed', sans-serif; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 0.4rem; display: flex; align-items: center; gap: 0.4rem; }
+  .send-to-lbl::before { content: ''; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--text-muted); }
+  .send-to-devices { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+  .send-to-btn { font-family: 'Barlow Condensed', sans-serif; font-size: 0.75rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; padding: 0.25rem 0.7rem; border-radius: 20px; border: 1px solid var(--border-strong); background: var(--bg2); color: var(--text-muted); cursor: pointer; transition: all 0.15s; display: flex; align-items: center; gap: 0.3rem; }
+  .send-to-btn:hover { border-color: var(--gold); color: var(--gold); background: rgba(212,160,23,0.08); }
+  .send-to-btn.sent { border-color: var(--win); color: var(--win); background: rgba(46,204,113,0.08); }
+  .send-to-empty { font-size: 0.72rem; color: var(--text-muted); font-style: italic; opacity: 0.7; padding: 0.1rem 0; }
+  .sc-save { font-family: 'Barlow Condensed', sans-serif; font-size: 0.78rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; padding: 0.28rem 0.85rem; border-radius: var(--radius); background: var(--gold); color: #111; border: none; cursor: pointer; }
+  .sc-save:hover { background: var(--gold-light); }
+  .sc-cancel { font-family: 'Barlow Condensed', sans-serif; font-size: 0.78rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; padding: 0.28rem 0.85rem; border-radius: var(--radius); background: transparent; color: var(--text-muted); border: 1px solid var(--border-strong); cursor: pointer; }
+  .sc-cancel:hover { background: var(--bg2); color: var(--text); }
+  .group-footer { background: var(--bg2); border-top: 1px solid var(--border); padding: 1rem 2rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+  .footer-info { font-size: 0.84rem; color: var(--text-muted); }
+  .footer-info strong { color: var(--text); }
+  #btn-advance { font-family: 'Barlow Condensed', sans-serif; font-size: 1rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; padding: 0.6rem 1.6rem; border-radius: var(--radius); background: var(--gold); color: #111; border: none; cursor: pointer; transition: all 0.15s; opacity: 0.3; pointer-events: none; }
+  #btn-advance.ready { opacity: 1; pointer-events: all; }
+  #btn-advance.ready:hover { background: var(--gold-light); }
+
+  /* ── PAIRING SCREEN ───────────────────────────────── */
+  #pairing-screen { display: none; max-width: 800px; margin: 3rem auto; padding: 0 1.5rem; }
+  .pairing-card { background: var(--bg2); border: 1px solid var(--border-strong); border-radius: var(--radius-lg); padding: 2.5rem; }
+  .pairing-grid { display: grid; grid-template-columns: 1fr; gap: 1.5rem; margin-top: 1.5rem; }
+  .pairing-match { background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.2rem; }
+  .pairing-match-title { font-family: 'Barlow Condensed', sans-serif; font-size: 0.9rem; font-weight: 800; color: var(--gold); text-transform: uppercase; margin-bottom: 1rem; border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; }
+  .pairing-row { display: flex; align-items: center; gap: 1rem; }
+  .pairing-group-box { flex: 1; background: var(--bg2); border: 1px solid var(--border-strong); border-radius: var(--radius); padding: 0.8rem; text-align: center; }
+  .pairing-vs-text { font-family: 'Barlow Condensed', sans-serif; font-weight: 800; color: var(--text-muted); }
+
+  /* ── BRACKET SCREEN ───────────────────────────────── */
+  #tournament-screen { display: none; }
+  .tournament-header { background: var(--bg2); border-bottom: 1px solid var(--border); padding: 1rem 2rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+  .round-lbl-sm { font-family: 'Barlow Condensed', sans-serif; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--gold); margin-bottom: 0.1rem; }
+  .tournament-title { font-family: 'Barlow Condensed', sans-serif; font-size: 1.4rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; }
+  .bracket-outer { flex: 1; overflow: auto; padding: 2rem; display: flex; align-items: center; justify-content: center; min-height: calc(100vh - 180px); position: relative; }
+  #bracket-scaler { transition: transform 0.2s ease-out; transform-origin: center center; }
+  #bracket-container { display: flex; gap: 2rem; align-items: center; position: relative; }
+  .round-col { display: flex; flex-direction: column; gap: 0; min-width: 200px; position: relative; height: 100%; }
+  .round-header { font-family: 'Barlow Condensed', sans-serif; font-size: 0.85rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.12em; color: var(--text-muted); text-align: center; margin-bottom: 1rem; flex-shrink: 0; }
+  .match-col { display: flex; flex-direction: column; flex: 1; position: relative; }
+  .match-wrapper { position: absolute; left: 0; right: 0; display: flex; align-items: center; transform: translateY(-50%); }
+  .match { background: var(--bg2); border: 1px solid var(--border-strong); border-radius: var(--radius); width: 100%; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.2); position: relative; z-index: 10; }
+  .team-slot { display: flex; align-items: center; padding: 0.5rem 0.75rem; gap: 0.6rem; cursor: pointer; transition: background 0.15s; position: relative; border-bottom: 1px solid var(--border); }
+  .team-slot:last-child { border-bottom: none; }
+  .team-slot:hover:not(.empty) { background: rgba(255,255,255,0.03); }
+  .team-slot.winner { background: rgba(46,204,113,0.1); }
+  .team-slot.winner .slot-name { color: var(--win); font-weight: 700; }
+  .team-slot.loser { opacity: 0.5; }
+  .slot-seed { font-family: 'Barlow Condensed', sans-serif; font-size: 0.7rem; font-weight: 700; color: var(--text-muted); min-width: 1.2rem; }
+  .slot-name { flex: 1; font-size: 0.85rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .slot-win-icon { font-size: 0.6rem; color: var(--win); opacity: 0; transition: opacity 0.15s; }
+  .team-slot.winner .slot-win-icon { opacity: 1; }
+  .team-slot.empty { cursor: default; color: var(--text-muted); font-style: italic; }
+  .team-slot.bye { background: rgba(255,255,255,0.02); }
+  .final-match { border: 2px solid var(--gold); transform: scale(1.1); }
+  .champion-banner { display: none; background: linear-gradient(to right, transparent, rgba(212,160,23,0.15), transparent); padding: 2rem; text-align: center; margin-bottom: 1rem; border-top: 1px solid var(--gold-dark); border-bottom: 1px solid var(--gold-dark); }
+  .champion-banner.visible { display: block; animation: fadeIn 0.6s ease; }
+  .champion-banner h3 { font-family: 'Barlow Condensed', sans-serif; font-size: 1.2rem; text-transform: uppercase; letter-spacing: 0.2em; color: var(--gold); margin-bottom: 0.5rem; }
+  .champion-name { font-family: 'Barlow Condensed', sans-serif; font-size: 3rem; font-weight: 800; text-transform: uppercase; color: var(--text); text-shadow: 0 0 20px rgba(212,160,23,0.4); }
+  .trophy { font-size: 2.5rem; margin-bottom: 0.5rem; }
+
+  /* ── DUAL BRACKET ─────────────────────────────────── */
+  .bracket-dual { display: flex; align-items: stretch; gap: 3rem; height: 100%; min-height: 600px; }
+  .bracket-half-left, .bracket-half-right { display: flex; gap: 3rem; align-items: stretch; }
+  .bracket-half-right { flex-direction: row-reverse; }
+  .bracket-center { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1.5rem; min-width: 240px; position: relative; }
+  .center-match-area { padding: 1.5rem; border: 2px solid var(--gold); border-radius: var(--radius-lg); background: rgba(212,160,23,0.05); box-shadow: 0 0 30px rgba(212,160,23,0.2); }
+
+  /* ── LINES ────────────────────────────────────────── */
+  .bracket-svg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; }
+  .bracket-line { fill: none; stroke: var(--border-strong); stroke-width: 2; }
+  .bracket-line.active { stroke: var(--gold); stroke-width: 3; }
+
+  /* ── FULLSCREEN MODE ──────────────────────────────── */
+  body.fs-mode { overflow: hidden; }
+  #fs-bar { display: none; position: fixed; top: 0; left: 0; right: 0; background: var(--bg2); border-bottom: 1px solid var(--gold-dark); padding: 0.6rem 1.5rem; z-index: 200; align-items: center; justify-content: space-between; }
+  body.fs-mode #fs-bar { display: flex; }
+  body.fs-mode .tournament-header, body.fs-mode header { display: none; }
+  body.fs-mode #tournament-screen { height: 100vh; display: flex; flex-direction: column; padding-top: 40px; }
+  #tournament-screen:fullscreen { height: 100vh; width: 100vw; padding: 0; margin: 0; }
+  #tournament-screen:fullscreen #fs-bar { display: flex; position: fixed; top: 0; }
+  #tournament-screen:fullscreen .tournament-header, #tournament-screen:fullscreen header { display: none; }
+  #tournament-screen:fullscreen .bracket-outer { min-height: calc(100vh - 40px); }
+  #display-screen:fullscreen { height: 100vh; width: 100vw; padding: 0; margin: 0; overflow: hidden; }
+  #display-screen:fullscreen .dv-header { position: fixed; top: 0; left: 0; right: 0; z-index: 100; }
+  #display-screen:fullscreen .dv-groups { margin-top: 60px; }
+  .fs-title { font-family: 'Barlow Condensed', sans-serif; font-size: 1.1rem; font-weight: 800; color: var(--gold); text-transform: uppercase; }
+  .fs-info { font-size: 0.8rem; color: var(--text-muted); }
+  #fs-hint { position: fixed; bottom: 1.5rem; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.8); color: var(--text); padding: 0.5rem 1rem; border-radius: 20px; font-size: 0.75rem; border: 1px solid var(--border-strong); opacity: 0; pointer-events: none; transition: opacity 0.4s; z-index: 250; }
+  #fs-hint.show { opacity: 1; }
+
+  /* ── TOAST ────────────────────────────────────────── */
+  .toast { position: fixed; bottom: 2rem; right: 2rem; background: var(--bg3); border: 1px solid var(--gold); color: var(--text); padding: 0.8rem 1.5rem; border-radius: var(--radius); font-family: 'Barlow Condensed', sans-serif; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; transform: translateY(100px); opacity: 0; transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); z-index: 1000; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+  .toast.show { transform: translateY(0); opacity: 1; }
+
+  /* ── MODO VISUALIZACIÓN ─────────────────────────────── */
+  #display-screen { display: none; position: fixed; inset: 0; background: var(--bg); z-index: 500; flex-direction: column; }
+  #display-screen.active { display: flex; }
+  .dv-header { background: var(--bg2); border-bottom: 2px solid var(--gold); padding: 1.2rem 2.5rem; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+  .dv-title { font-family: 'Barlow Condensed', sans-serif; font-size: 2.2rem; font-weight: 800; text-transform: uppercase; color: var(--text); letter-spacing: 0.02em; }
+  .dv-badge { font-family: 'Barlow Condensed', sans-serif; font-size: 0.9rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--gold); background: rgba(212,160,23,0.12); padding: 0.3rem 0.8rem; border-radius: 4px; border: 1px solid rgba(212,160,23,0.3); }
+  .dv-groups { flex: 1; padding: 1.5rem; display: flex; flex-direction: column; gap: 1.5rem; overflow: hidden; justify-content: center; }
+  .dv-row { display: flex; gap: 1.2rem; justify-content: center; width: 100%; }
+  .dv-group-card { background: var(--bg2); border: 1px solid var(--border-strong); border-radius: 12px; overflow: hidden; display: flex; flex-direction: column; box-shadow: 0 10px 40px rgba(0,0,0,0.4); }
+  .dv-group-name { background: var(--bg3); color: var(--gold); font-family: 'Barlow Condensed', sans-serif; font-size: 1.2rem; font-weight: 800; text-transform: uppercase; padding: 0.6rem 1rem; border-bottom: 1px solid var(--border-strong); text-align: center; letter-spacing: 0.1em; }
+  .dv-table-wrap { padding: 0.8rem; flex: 1; }
+  .dv-table { width: 100%; border-collapse: collapse; color: var(--text); font-size: 1rem; }
+  .dv-table th { font-family: 'Barlow Condensed', sans-serif; font-size: 0.8rem; font-weight: 700; text-transform: uppercase; color: var(--text-muted); padding: 0.5rem; text-align: center; border-bottom: 1px solid var(--border); }
+  .dv-table th.th-name { text-align: left; }
+  .dv-table td { padding: 0.6rem 0.5rem; text-align: center; border-bottom: 1px solid var(--border); font-weight: 500; }
+  .dv-table td.td-name { text-align: left; font-weight: 700; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dv-rank { font-family: 'Barlow Condensed', sans-serif; font-weight: 800; color: var(--text-muted); font-size: 0.9rem; }
+  .dv-rank.top { color: var(--gold); font-size: 1.1rem; }
+  .dv-pts { font-family: 'Barlow Condensed', sans-serif; font-weight: 800; color: var(--gold); font-size: 1.2rem; }
+  .dv-dg-pos { color: var(--win); }
+  .dv-dg-neg { color: #E24B4A; }
+  .dv-row-first { background: rgba(212,160,23,0.05); }
+  .dv-sep-row td { padding: 0 !important; height: 2px; background: rgba(212,160,23,0.28); border: none !important; }
+  .dv-footer { background: var(--bg2); border-top: 1px solid var(--border); padding: 0.3rem 2rem; display: flex; align-items: center; justify-content: center; flex-shrink: 0; gap: 1rem; }
+  .dv-progress-bar { height: 3px; background: var(--bg3); flex: 1; max-width: 280px; border-radius: 2px; }
+  .dv-progress-fill { height: 100%; background: var(--gold); border-radius: 2px; transition: width 0.5s ease; }
+  .dv-progress-text { font-family: 'Barlow Condensed', sans-serif; font-size: 0.78rem; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; color: var(--text-muted); white-space: nowrap; }
+  .dv-live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--win); flex-shrink: 0; animation: dvPulse 1.8s ease-in-out infinite; }
+  @keyframes dvPulse { 0%,100%{opacity:1;transform:scale(1);} 50%{opacity:0.35;transform:scale(0.65);} }
+
+  .ntfy-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-muted); display: inline-block; flex-shrink: 0; transition: background 0.3s; }
+  .ntfy-dot.on { background: var(--win); animation: dvPulse 2s ease-in-out infinite; }
+
+  /* ── 32 TEAMS OPTIMIZATION ────────────────────────── */
+  .size-32 .match { transform: scale(0.85); transform-origin: center; }
+  .size-32 .round-col { min-width: 160px; gap: 0.5rem; }
+  .size-32 .team-slot { padding: 0.35rem 0.6rem; }
+  .size-32 .slot-name { font-size: 0.75rem; }
+  .size-32 .bracket-dual { gap: 1.5rem; }
+  .size-32 .bracket-half-left, .size-32 .bracket-half-right { gap: 1.5rem; }
+
+  .tourney-item { background:var(--bg3); border:1px solid var(--border); border-radius:var(--radius); padding:1rem; display:flex; justify-content:space-between; align-items:center; cursor:pointer; transition:border-color 0.2s; }
+  .tourney-item:hover { border-color:var(--gold); }
+
+  /* ── CONECTAR DISPOSITIVO MODAL ──────────────────── */
+  #connect-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.88); z-index:350; align-items:center; justify-content:center; padding:1rem; }
+  #connect-overlay.open { display:flex; }
+  .connect-modal { background:var(--bg2); border:1px solid var(--border-strong); border-radius:var(--radius-lg); padding:1.8rem; width:100%; max-width:420px; display:flex; flex-direction:column; gap:1.2rem; max-height:90vh; overflow-y:auto; }
+  .connect-modal-title { font-family:'Barlow Condensed',sans-serif; font-size:1.35rem; font-weight:800; text-transform:uppercase; color:var(--gold); }
+  .connect-qr-wrap { background:#fff; border-radius:var(--radius); padding:1rem; display:flex; align-items:center; justify-content:center; min-height:180px; }
+  .connect-url-box { background:var(--bg3); border:1px solid var(--border); border-radius:var(--radius); padding:0.6rem 0.9rem; font-size:0.7rem; color:var(--text-muted); word-break:break-all; line-height:1.6; font-family:monospace; }
+  .connect-devices-list { display:flex; flex-direction:column; gap:0.45rem; }
+  .connect-device-item { background:var(--bg3); border:1px solid var(--border); border-radius:var(--radius); padding:0.5rem 0.9rem; display:flex; align-items:center; gap:0.6rem; font-size:0.84rem; animation:fadeIn 0.2s ease; }
+  .connect-device-dot { width:8px; height:8px; border-radius:50%; background:var(--win); flex-shrink:0; animation:dvPulse 2s ease-in-out infinite; }
+  .connect-device-name { flex:1; font-weight:600; }
+  .connect-device-ago { font-size:0.7rem; color:var(--text-muted); }
+  .connect-empty { color:var(--text-muted); font-size:0.83rem; text-align:center; padding:0.8rem; }
+
+  /* ── MINI ESTADO NTFY ─────────────────────────────── */
+  .ntfy-mini { display:flex; align-items:center; gap:0.35rem; font-size:0.73rem; color:var(--text-muted); padding:0.28rem 0.65rem; border:1px solid var(--border); border-radius:20px; cursor:pointer; transition:all 0.15s; white-space:nowrap; }
+  .ntfy-mini:hover { border-color:var(--gold); color:var(--gold); }
+
+  /* ── MODO IPAD ────────────────────────────────────── */
+  #ipad-screen { display:none; position:fixed; inset:0; background:var(--bg); z-index:600; flex-direction:column; }
+  #ipad-screen.active { display:flex; }
+  .ipad-hdr { background:var(--bg2); border-bottom:1px solid var(--border-strong); padding:0.75rem 1.2rem; display:flex; align-items:center; justify-content:space-between; flex-shrink:0; gap:0.8rem; }
+  .ipad-hdr-name { font-family:'Barlow Condensed',sans-serif; font-size:1.4rem; font-weight:800; text-transform:uppercase; color:var(--gold); }
+  .ipad-hdr-status { display:flex; align-items:center; gap:0.4rem; font-size:0.8rem; color:var(--text-muted); }
+  .ipad-fs-btn { background:transparent; border:1px solid var(--border-strong); color:var(--text-muted); border-radius:6px; padding:0.3rem 0.7rem; font-size:1rem; cursor:pointer; transition:all 0.15s; line-height:1; flex-shrink:0; }
+  .ipad-fs-btn:hover { border-color:var(--gold); color:var(--gold); background:rgba(212,160,23,0.08); }
+  .ipad-body { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:1.5rem; overflow:hidden; }
+  .ipad-waiting { text-align:center; display:flex; flex-direction:column; align-items:center; gap:0.9rem; }
+  .ipad-waiting-icon { font-size:3.5rem; opacity:0.25; }
+  .ipad-waiting-text { font-family:'Barlow Condensed',sans-serif; font-size:1.5rem; font-weight:700; text-transform:uppercase; letter-spacing:0.1em; color:var(--text-muted); }
+  .ipad-waiting-sub { font-size:0.82rem; color:var(--text-muted); opacity:0.55; }
+  .ipad-match-card { background:var(--bg2); border:1px solid var(--border-strong); border-radius:var(--radius-lg); padding:clamp(1rem,4vw,2.2rem); width:100%; max-width:min(480px,96vw); display:flex; flex-direction:column; gap:clamp(0.8rem,3vh,1.8rem); box-shadow:0 20px 60px rgba(0,0,0,0.5); animation:fadeIn 0.25s ease; }
+  .ipad-match-group { font-family:'Barlow Condensed',sans-serif; font-size:clamp(0.7rem,2vw,0.9rem); font-weight:700; letter-spacing:0.12em; text-transform:uppercase; color:var(--gold); text-align:center; }
+  .ipad-team-row { display:flex; align-items:center; gap:clamp(0.5rem,2vw,1rem); }
+  .ipad-team-name { flex:1; font-size:clamp(0.95rem,3.5vw,1.3rem); font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .ipad-score-ctrl { display:flex; align-items:center; gap:clamp(0.3rem,1.5vw,0.6rem); flex-shrink:0; }
+  .ipad-sc-btn { width:clamp(38px,10vw,56px); height:clamp(38px,10vw,56px); border-radius:50%; border:2px solid var(--border-strong); background:var(--bg3); color:var(--text); cursor:pointer; font-size:clamp(1.2rem,4vw,1.6rem); display:flex; align-items:center; justify-content:center; transition:all 0.12s; font-family:'Barlow Condensed',sans-serif; font-weight:700; }
+  .ipad-sc-btn:hover { background:var(--gold); color:#111; border-color:var(--gold); }
+  .ipad-sc-btn:active { transform:scale(0.9); }
+  .ipad-sc-num { font-family:'Barlow Condensed',sans-serif; font-size:clamp(2rem,9vw,3.6rem); font-weight:800; min-width:clamp(2rem,8vw,3rem); text-align:center; color:var(--gold); }
+  .ipad-sep { text-align:center; color:var(--text-muted); font-size:0.8rem; padding:0.1rem 0; border-top:1px solid var(--border); border-bottom:1px solid var(--border); margin:0.2rem 0; }
+  .ipad-save-btn { width:100%; padding:clamp(0.7rem,3vh,1.1rem); background:var(--gold); color:#111; border:none; border-radius:var(--radius); font-family:'Barlow Condensed',sans-serif; font-size:clamp(1rem,3.5vw,1.2rem); font-weight:800; text-transform:uppercase; letter-spacing:0.08em; cursor:pointer; transition:all 0.15s; }
+  .ipad-save-btn:hover { background:var(--gold-light); }
+  .ipad-save-btn:active { transform:scale(0.98); }
+  .ipad-save-btn:disabled { opacity:0.45; cursor:not-allowed; transform:none; }
+  .ipad-sent-msg { text-align:center; color:var(--win); font-family:'Barlow Condensed',sans-serif; font-size:1rem; font-weight:700; letter-spacing:0.07em; text-transform:uppercase; animation:fadeIn 0.3s ease; padding:0.5rem; }
+  /* Pantalla completa nativa */
+  #ipad-screen:fullscreen, #ipad-screen:-webkit-full-screen { background:var(--bg); }
+  #ipad-screen:fullscreen .ipad-body, #ipad-screen:-webkit-full-screen .ipad-body { padding:clamp(1rem,4vh,3rem) clamp(1rem,4vw,3rem); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">Torneo<span>Pro</span></div>
+  <div style="display:flex; gap: 0.5rem;">
+    <button class="btn btn-fs" id="btn-manage-tourneys" title="Gestionar torneos guardados">📂 Mis Torneos</button>
+  </div>
+</header>
+
+<!-- SETUP -->
+<div id="setup-screen">
+  <div style="max-width:680px;margin:3rem auto;padding:0 1.5rem;">
+    <div class="setup-card">
+      <h2>Nuevo Torneo</h2>
+      <p class="subtitle">Configura el torneo y añade los participantes.</p>
+
+      <div class="field-label">Nombre del torneo</div>
+      <input type="text" id="tourney-name" placeholder="Ej: Copa de Verano 2025" style="margin-bottom:1.5rem">
+
+      <hr class="section-divider" style="margin-top:0">
+
+      <!-- Paso 1 -->
+      <div class="step-badge">Paso 1 · Tipo de cuadro</div>
+      <div class="field-label">Número de participantes</div>
+      <div class="size-options" id="size-options">
+        <button class="size-btn active" data-size="4">4</button>
+        <button class="size-btn" data-size="8">8</button>
+        <button class="size-btn" data-size="16">16</button>
+        <button class="size-btn" data-size="32">32</button>
+      </div>
+
+      <hr class="section-divider">
+
+      <!-- Paso 2 -->
+      <div id="step2">
+        <div class="step-badge">Paso 2 · Fase de grupos</div>
+        <div class="field-label">Número de grupos</div>
+        <div class="size-options" id="group-options"></div>
+        <div class="info-box" id="groups-info"></div>
+
+        <hr class="section-divider">
+
+        <!-- Paso 3 -->
+        <div class="step-badge">Paso 3 · Participantes y Grupos</div>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
+          <div class="field-label" style="margin-bottom:0;">Asigna cada equipo a su grupo</div>
+          <button class="btn btn-fs" id="btn-fill-test" style="font-size:0.7rem; padding:0.2rem 0.6rem;">🎲 Rellenar Prueba</button>
+        </div>
+        <div class="teams-grid" id="teams-grid"></div>
+        <button class="btn btn-primary" id="start-btn" style="width:100%;margin-top:0.5rem;padding:0.75rem;">
+          Generar Fase de Grupos →
+        </button>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- GROUP STAGE -->
+<div id="group-screen">
+  <div class="phase-bar">
+    <div>
+      <span class="phase-label-badge">Fase de grupos</span>
+      <div class="phase-title" id="gs-title">—</div>
+    </div>
+    <div style="display:flex;gap:0.6rem;align-items:center;flex-wrap:wrap;">
+      <div style="font-size:0.84rem;color:var(--text-muted)" id="gs-progress-text"></div>
+      <button class="btn btn-fs" id="btn-simulate-gs" style="border-color:var(--gold); color:var(--gold);">🎲 Simular Resultados</button>
+      <button class="btn btn-danger" id="gs-reset-btn">← Nuevo torneo</button>
+      <button class="btn btn-fs" id="btn-display-mode" title="Abre la clasificación en grande en una nueva pestaña">📺 Pantalla grande</button>
+      <button class="btn btn-fs" id="btn-connect-device" title="Conectar iPad u otro dispositivo">📱 Conectar</button>
+      <div class="ntfy-mini" id="ntfy-mini" onclick="openConnectModal()">
+        <span class="ntfy-dot" id="ntfy-dot2"></span>
+        <span id="ntfy-mini-text">0 disp.</span>
+      </div>
+    </div>
+  </div>
+  <div style="width:100%"><div class="progress-bar"><div class="progress-fill" id="gs-fill" style="width:0%"></div></div></div>
+  <div class="groups-scroll" id="groups-container"></div>
+  <div class="group-footer">
+    <div class="footer-info" id="footer-info">Completa todos los partidos para continuar.</div>
+    <button id="btn-advance">Avanzar al Cuadro →</button>
+  </div>
+</div>
+
+<!-- PAIRING SCREEN -->
+<div id="pairing-screen">
+  <div class="pairing-card">
+    <h2 style="font-family:'Barlow Condensed', sans-serif; color:var(--gold); text-transform:uppercase; margin-bottom:0.5rem;">Configuración de Cruces</h2>
+    <p style="color:var(--text-muted); font-size:0.9rem; margin-bottom:1.5rem;">Selecciona cómo se cruzarán los grupos. El sistema asegura que el 1º y 2º de cada grupo solo se vean en la final.</p>
+    
+    <div class="pairing-grid" id="pairing-grid"></div>
+    
+    <button class="btn btn-primary" id="btn-start-bracket" style="width:100%; margin-top:2rem; padding:0.8rem;">
+      Generar Cuadro Eliminatorio →
+    </button>
+    <button class="btn" onclick="$('pairing-screen').style.display='none'; $('group-screen').style.display='block';" style="width:100%; margin-top:0.6rem; border:none; color:var(--text-muted);">
+      ← Volver a Grupos
+    </button>
+  </div>
+</div>
+
+<!-- BRACKET -->
+<div id="tournament-screen">
+  <div id="fs-bar">
+    <span class="fs-title" id="fs-bar-title">—</span>
+    <span class="fs-info" id="fs-bar-progress"></span>
+    <span class="fs-info">ESC o F11 · Salir</span>
+  </div>
+  <div class="tournament-header">
+    <div>
+      <div class="round-lbl-sm">Cuadro eliminatorio</div>
+      <div class="tournament-title" id="display-title">—</div>
+    </div>
+    <div style="display:flex;gap:0.6rem;align-items:center;flex-wrap:wrap;">
+      <div style="font-size:0.85rem;color:var(--text-muted)" id="progress-text"></div>
+      <button class="btn btn-fs" id="btn-fullscreen">⛶ Pantalla completa</button>
+      <button class="btn btn-danger" id="reset-btn">← Nuevo torneo</button>
+    </div>
+  </div>
+  <div style="width:100%"><div class="progress-bar"><div class="progress-fill" id="progress-fill" style="width:0%"></div></div></div>
+  <div class="champion-banner" id="champion-banner">
+    <div class="trophy">🏆</div><h3>¡Campeón del torneo!</h3>
+    <div class="champion-name" id="champion-name"></div>
+  </div>
+  <div class="bracket-outer" id="bracket-outer">
+    <div id="bracket-scaler"><div id="bracket-container"></div></div>
+  </div>
+</div>
+
+<!-- MODO VISUALIZACIÓN -->
+<div id="display-screen">
+  <div class="dv-header">
+    <div class="dv-title" id="dv-title">—</div>
+    <div style="display:flex;align-items:center;gap:0.8rem;">
+      <div class="dv-live-dot"></div>
+      <div class="dv-badge" id="dv-badge-text">EN VIVO · Clasificación</div>
+    </div>
+  </div>
+  <div class="dv-groups" id="dv-groups"></div>
+  <div class="dv-footer">
+    <span class="dv-progress-text" id="dv-progress-text">—</span>
+    <div class="dv-progress-bar"><div class="dv-progress-fill" id="dv-progress-fill" style="width:0%"></div></div>
+  </div>
+</div>
+
+<!-- OVERLAY GESTIÓN TORNEOS -->
+<div id="tourneys-overlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.9); z-index:400; flex-direction:column; padding:2rem;">
+  <div style="max-width:600px; margin:0 auto; width:100%; background:var(--bg2); border:1px solid var(--border-strong); border-radius:var(--radius-lg); padding:2rem; display:flex; flex-direction:column; gap:1.5rem;">
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+      <h2 style="font-family:'Barlow Condensed', sans-serif; color:var(--gold); text-transform:uppercase;">Mis Torneos Guardados</h2>
+      <button class="btn btn-danger" onclick="$('tourneys-overlay').style.display='none'">✕</button>
+    </div>
+    <div id="tourneys-list" style="display:flex; flex-direction:column; gap:0.8rem; max-height:60vh; overflow-y:auto; padding-right:0.5rem;">
+      <!-- Lista de torneos -->
+    </div>
+    <div style="text-align:center; color:var(--text-muted); font-size:0.85rem;">
+      Los torneos se guardan automáticamente en este navegador.
+    </div>
+  </div>
+</div>
+
+<!-- CONECTAR DISPOSITIVO -->
+<div id="connect-overlay">
+  <div class="connect-modal">
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <div class="connect-modal-title">Conectar dispositivo</div>
+      <button class="btn btn-danger" onclick="$('connect-overlay').classList.remove('open')">✕</button>
+    </div>
+    <div>
+      <div class="field-label" style="margin-bottom:0.5rem;">Nombre del dispositivo</div>
+      <div style="display:flex;gap:0.5rem;">
+        <input type="text" id="connect-device-name" placeholder="iPad 1" style="flex:1;">
+        <button class="btn btn-primary" onclick="generateDeviceQR()">Generar QR</button>
+      </div>
+    </div>
+    <div class="connect-qr-wrap" id="connect-qr-wrap">
+      <div style="color:#aaa;font-size:0.84rem;text-align:center;line-height:1.6;">Introduce el nombre del dispositivo<br>y pulsa <strong>Generar QR</strong></div>
+    </div>
+    <div id="connect-url-row" style="display:none; flex-direction:column; gap:0.4rem;">
+      <div class="connect-url-box" id="connect-url-box"></div>
+      <button class="btn" onclick="copyConnectURL()" style="align-self:flex-end; font-size:0.78rem; padding:0.25rem 0.8rem;">📋 Copiar URL</button>
+    </div>
+    <div>
+      <div class="field-label" style="margin-bottom:0.5rem;">Dispositivos conectados</div>
+      <div id="connect-devices-list" class="connect-devices-list">
+        <div class="connect-empty" id="connect-empty-msg">Ningún dispositivo conectado todavía.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MODO IPAD -->
+<div id="ipad-screen">
+  <div class="ipad-hdr">
+    <div class="ipad-hdr-name" id="ipad-hdr-name">—</div>
+    <div style="display:flex;align-items:center;gap:0.7rem;">
+      <div class="ipad-hdr-status">
+        <span class="ntfy-dot" id="ipad-ntfy-dot"></span>
+        <span id="ipad-status-text">Conectando…</span>
+      </div>
+      <button class="ipad-fs-btn" id="ipad-fs-btn" onclick="ipadToggleFS()" title="Pantalla completa">⛶</button>
+    </div>
+  </div>
+  <div class="ipad-body" id="ipad-body">
+    <div class="ipad-waiting">
+      <div class="ipad-waiting-icon">📋</div>
+      <div class="ipad-waiting-text">Esperando partido…</div>
+      <div class="ipad-waiting-sub">El gestor enviará un partido en cualquier momento</div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<div id="fs-hint">F11 — Pantalla completa</div>
+
+<script>
+const $  = id => document.getElementById(id);
+let bracketSize = 4, numGroups = 2;
+let groupData   = {}, state = {};
+let isFsMode    = false, activePanel = null;
+
+/* ── PERSISTENCIA ──────────────────────────────────── */
+const STORAGE_KEY = 'torneoPro_allTournaments';
+const DV_KEY = 'torneoPro_groupData';
+const BRACKET_KEY = 'torneoPro_bracketData';
+const IS_DISPLAY = new URLSearchParams(location.search).get('display') === '1';
+const IS_BRACKET_DISPLAY = new URLSearchParams(location.search).get('bracket') === '1';
+
+function saveCurrentTournament(){
+  if(!groupData.title) return;
+  let all = getAllTournaments();
+  all[groupData.title] = { groupData, state };
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
+  localStorage.setItem(DV_KEY, JSON.stringify(groupData));
+  if(state.rounds) localStorage.setItem(BRACKET_KEY, JSON.stringify(state));
+}
+
+function getAllTournaments(){
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch(e) { return {}; }
+}
+
+function restoreTournament(entry, showToast){
+  groupData = entry.groupData;
+  state = entry.state || {};
+  connectedDevices = groupData.devices || [];
+  blockedDevices = groupData.blockedDevices || [];
+  tourneyTopic = groupData.topic || genTopic();
+  if(state.rounds){
+    $('display-title').textContent = groupData.title;
+    $('fs-bar-title').textContent = groupData.title;
+    $('setup-screen').style.display = 'none';
+    $('group-screen').style.display = 'none';
+    $('tournament-screen').style.display = 'block';
+    renderBracket();
+    updateProgress();
+  } else {
+    $('gs-title').textContent = groupData.title;
+    $('setup-screen').style.display = 'none';
+    $('group-screen').style.display = 'block';
+    $('pairing-screen').style.display = 'none';
+    renderGroups();
+  }
+  subscribeNtfy();
+  updateDeviceUI();
+  if(showToast) toast(`📂 Torneo "${groupData.title}" cargado`);
+}
+
+function loadTournament(title){
+  const entry = getAllTournaments()[title];
+  if(!entry) return;
+  restoreTournament(entry, true);
+  $('tourneys-overlay').style.display = 'none';
+}
+
+function deleteTournament(title, event){
+  if(event) event.stopPropagation();
+  if(!confirm(`¿Estás seguro de que quieres eliminar el torneo "${title}"?`)) return;
+  let all = getAllTournaments();
+  delete all[title];
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
+  renderTourneysList();
+  toast(`🗑️ Torneo "${title}" eliminado`);
+}
+
+function renderTourneysList(){
+  const list = $('tourneys-list');
+  const all = getAllTournaments();
+  const titles = Object.keys(all);
+  if(titles.length === 0){
+    list.innerHTML = '<div style="text-align:center; padding:2rem; color:var(--text-muted);">No hay torneos guardados.</div>';
+    return;
+  }
+  list.innerHTML = titles.map(title => {
+    const isKnockout = all[title].state?.rounds;
+    return `<div class="tourney-item" onclick="loadTournament('${title.replace(/'/g,"\\'")}')">
+      <div>
+        <div style="font-weight:700;color:var(--text)">${title}</div>
+        <div style="font-size:0.75rem;color:var(--text-muted)">${isKnockout ? 'Fase Eliminatoria' : 'Fase de Grupos'}</div>
+      </div>
+      <button class="btn btn-danger" style="padding:0.3rem 0.6rem" onclick="deleteTournament('${title.replace(/'/g,"\\'")}',event)">Eliminar</button>
+    </div>`;
+  }).join('');
+}
+
+$('btn-manage-tourneys').onclick = () => {
+  renderTourneysList();
+  $('tourneys-overlay').style.display = 'flex';
+};
+
+/* ── MODO VISUALIZACIÓN ─────────────────────────────── */
+function renderDisplayScreen(data){
+  if(!data || !data.groups) return;
+  $('dv-title').textContent = data.title || '—';
+  const cont = $('dv-groups'); cont.innerHTML = '';
+  const allM = data.groups.flatMap(g=>g.matches);
+  const played = allM.filter(m=>m.played).length;
+  const total  = allM.length;
+  $('dv-progress-text').textContent = `${played} / ${total} partidos jugados`;
+  $('dv-progress-fill').style.width = total ? Math.round(played/total*100)+'%' : '0%';
+  const n        = data.groups.length;
+  const topCount = Math.ceil(n / 2);
+  const botCount = Math.floor(n / 2);
+  const contW = cont.clientWidth || window.innerWidth;
+  const gapPx = Math.round(Math.min(contW * 0.012, 10));
+  const cardW = `calc((100% - ${(topCount - 1) * gapPx}px) / ${topCount})`;
+  function buildDvCard(g){
+    const st = calcStandings(g);
+    const rows = st.map((s, rank) => {
+      const gd = s.GF - s.GA;
+      const gdTxt = s.P > 0 ? (gd > 0 ? `+${gd}` : `${gd}`) : '—';
+      const gdCls = gd > 0 ? 'dv-dg-pos' : gd < 0 ? 'dv-dg-neg' : '';
+      const pj = s.P > 0 ? s.P : '—';
+      const pts = s.P > 0 ? s.Pts : '—';
+      const sep = (rank === 0 && st.length > 1) ? '<tr class="dv-sep-row"><td colspan="5"></td></tr>' : '';
+      return `<tr${rank===0?' class="dv-row-first"':''}><td><span class="dv-rank${rank===0?' top':''}">${rank+1}</span></td><td class="td-name">${s.team.name}</td><td>${pj}</td><td class="${gdCls}">${gdTxt}</td><td><span class="dv-pts">${pts}</span></td></tr>${sep}`;
+    }).join('');
+    const card = document.createElement('div');
+    card.className = 'dv-group-card';
+    card.style.width = cardW;
+    card.innerHTML = `<div class="dv-group-name">${g.name}</div><div class="dv-table-wrap"><table class="dv-table"><thead><tr><th style="width:2em">#</th><th class="th-name">Equipo</th><th>PJ</th><th>DG</th><th>Pts</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+    return card;
+  }
+  const row1 = document.createElement('div'); row1.className = 'dv-row';
+  data.groups.slice(0, topCount).forEach(g => row1.appendChild(buildDvCard(g)));
+  cont.appendChild(row1);
+  if(botCount > 0){
+    const row2 = document.createElement('div'); row2.className = 'dv-row';
+    data.groups.slice(topCount).forEach(g => row2.appendChild(buildDvCard(g)));
+    cont.appendChild(row2);
+  }
+}
+
+function renderBracketDisplay(data){
+  if(!data || !data.rounds) return;
+  $('dv-title').textContent = data.title || '—';
+  $('dv-badge-text').textContent = 'EN VIVO · Cuadro Eliminatorio';
+  const cont = $('dv-groups'); cont.innerHTML = '';
+  cont.style.overflow = 'auto';
+  cont.style.padding = '0';
+  
+  const scaler = document.createElement('div');
+  scaler.id = 'bracket-scaler-dv';
+  scaler.style.transition = 'transform 0.2s ease-out';
+  scaler.style.transformOrigin = 'center center';
+  
+  const bracketCont = document.createElement('div');
+  bracketCont.id = 'bracket-container-dv';
+  bracketCont.style.display = 'flex';
+  bracketCont.style.gap = '2rem';
+  bracketCont.style.alignItems = 'center';
+  bracketCont.style.padding = '2rem';
+  
+  state = data;
+  renderDual(bracketCont);
+  
+  scaler.appendChild(bracketCont);
+  cont.appendChild(scaler);
+  
+  setTimeout(() => {
+    syncBracketOverlay();
+    const sc = Math.min((cont.clientWidth-40)/bracketCont.scrollWidth, (cont.clientHeight-40)/bracketCont.scrollHeight);
+    scaler.style.width = bracketCont.scrollWidth + 'px';
+    scaler.style.height = bracketCont.scrollHeight + 'px';
+    scaler.style.transform = `scale(${sc})`;
+  }, 100);
+
+  const played = data.rounds.flat().filter(m=>m.winner).length;
+  const total = data.totalMatches;
+  $('dv-progress-text').textContent = `${played} / ${total} partidos jugados`;
+  $('dv-progress-fill').style.width = total ? Math.round(played/total*100)+'%' : '0%';
+  
+  const resizeListener = ()=>{
+    syncBracketOverlay();
+  };
+  window.addEventListener('resize', resizeListener);
+}
+
+if(IS_DISPLAY || IS_BRACKET_DISPLAY){
+  document.addEventListener('DOMContentLoaded', ()=>{
+    $('display-screen').classList.add('active');
+    document.querySelector('header').style.display='none';
+    $('setup-screen').style.display='none';
+    $('group-screen').style.display='none';
+    $('tournament-screen').style.display='none';
+    
+    function refreshDisplay(){
+      try {
+        if(IS_BRACKET_DISPLAY){
+          const raw = localStorage.getItem(BRACKET_KEY);
+          if(raw){ const data = JSON.parse(raw); renderBracketDisplay(data); }
+        } else {
+          const raw = localStorage.getItem(DV_KEY);
+          if(raw){ const data = JSON.parse(raw); renderDisplayScreen(data); }
+        }
+      } catch(e){}
+    }
+    refreshDisplay();
+    setInterval(refreshDisplay, 1500);
+    window.addEventListener('storage', e => { 
+      if(IS_BRACKET_DISPLAY && e.key === BRACKET_KEY) {
+        refreshDisplay();
+        setTimeout(()=>syncBracketOverlay(), 100);
+      }
+      if(!IS_BRACKET_DISPLAY && e.key === DV_KEY) refreshDisplay();
+    });
+    
+    // Escuchar cambios de pantalla completa
+    document.addEventListener('fullscreenchange', ()=>{
+      setTimeout(()=>syncBracketOverlay(), 50);
+    });
+    
+    // Activar pantalla completa automática si es modo bracket
+    if(IS_BRACKET_DISPLAY) {
+      setTimeout(()=>{
+        const elem = $('display-screen');
+        if(elem && elem.requestFullscreen) {
+          elem.requestFullscreen().then(()=>{
+            setTimeout(()=>{
+              syncBracketOverlay();
+              window.dispatchEvent(new Event('resize'));
+            }, 100);
+          }).catch(err=>console.log('Fullscreen no disponible:', err));
+        }
+      }, 500);
+    }
+  });
+}
+
+/* Toast */
+function toast(msg) { const t=$('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2400); }
+
+/* Fullscreen */
+function syncBracketOverlay(){
+  const c = $('bracket-container');
+  const svg = $('bracket-svg');
+  if(!c || !svg) return;
+  const width = Math.max(c.scrollWidth, 1);
+  const height = Math.max(c.scrollHeight, 1);
+  svg.setAttribute('width', width);
+  svg.setAttribute('height', height);
+  svg.style.width = width + 'px';
+  svg.style.height = height + 'px';
+  requestAnimationFrame(()=>requestAnimationFrame(drawLines));
+}
+function enterFs(){
+  const elem = $('tournament-screen');
+  if(!elem) return;
+  isFsMode = true;
+  const req = elem.requestFullscreen || elem.webkitRequestFullscreen || elem.mozRequestFullScreen || elem.msRequestFullscreen;
+  if(req) {
+    req.call(elem).then(()=>{
+      setTimeout(()=>{
+        syncBracketOverlay();
+        window.dispatchEvent(new Event('resize'));
+      }, 100);
+      toast('⛶ Pantalla completa — ESC para salir');
+    }).catch(err=>{
+      console.log('Fullscreen API no disponible:', err);
+      document.body.classList.add('fs-mode');
+      setTimeout(()=>{
+        syncBracketOverlay();
+        window.dispatchEvent(new Event('resize'));
+      }, 100);
+      toast('⛶ Pantalla completa (modo compatibilidad) — ESC para salir');
+    });
+  } else {
+    document.body.classList.add('fs-mode');
+    setTimeout(()=>{
+      syncBracketOverlay();
+      window.dispatchEvent(new Event('resize'));
+    }, 100);
+    toast('⛶ Pantalla completa (modo compatibilidad) — ESC para salir');
+  }
+}
+function exitFs() {
+  isFsMode = false;
+  if(document.fullscreenElement) {
+    document.exitFullscreen().catch(err=>console.log('Error al salir de fullscreen:', err));
+  } else if(document.webkitFullscreenElement) {
+    document.webkitExitFullscreen();
+  } else if(document.mozFullScreenElement) {
+    document.mozCancelFullScreen();
+  } else if(document.msFullscreenElement) {
+    document.msExitFullscreen();
+  }
+  document.body.classList.remove('fs-mode');
+  setTimeout(()=>{
+    syncBracketOverlay();
+    window.dispatchEvent(new Event('resize'));
+  }, 100);
+}
+document.addEventListener('keydown', e=>{
+  if(e.key==='F11'){
+    e.preventDefault();
+    if($('tournament-screen').style.display!=='none') {
+      isFsMode ? exitFs() : enterFs();
+    }
+  }
+  if(e.key==='Escape' && isFsMode) {
+    e.preventDefault();
+    exitFs();
+  }
+});
+document.addEventListener('fullscreenchange', ()=>{
+  setTimeout(()=>{
+    syncBracketOverlay();
+    window.dispatchEvent(new Event('resize'));
+  }, 50);
+});
+document.addEventListener('webkitfullscreenchange', ()=>{
+  setTimeout(()=>{
+    syncBracketOverlay();
+    window.dispatchEvent(new Event('resize'));
+  }, 50);
+});
+document.addEventListener('mozfullscreenchange', ()=>{
+  setTimeout(()=>{
+    syncBracketOverlay();
+    window.dispatchEvent(new Event('resize'));
+  }, 50);
+});
+$('btn-fullscreen').addEventListener('click',()=>isFsMode?exitFs():enterFs());
+window.addEventListener('resize',()=>{
+  syncBracketOverlay();
+});
+function flashHint(){ const h=$('fs-hint'); h.classList.add('show'); setTimeout(()=>h.classList.remove('show'),3500); }
+
+/* ── SETUP ─────────────────────────────────────────── */
+function divisors(n){ const r=[]; for(let i=2;i<=n;i++) if(n%i===0) r.push(i); return r; }
+
+function rebuildGroupOptions(){
+  const c=$('group-options'); c.innerHTML='';
+  divisors(bracketSize).forEach((g,i)=>{
+    const btn=document.createElement('button');
+    btn.className='size-btn'+(i===0?' active':'');
+    btn.textContent=g;
+    btn.addEventListener('click',()=>{
+      c.querySelectorAll('.size-btn').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      numGroups=g; updateGroupInfo(); rebuildTeamInputs();
+    });
+    c.appendChild(btn);
+  });
+  numGroups=divisors(bracketSize)[0];
+  updateGroupInfo(); rebuildTeamInputs();
+}
+
+function updateGroupInfo(){
+  const tpg=bracketSize/numGroups;
+  $('groups-info').innerHTML=
+    `<strong>${numGroups} grupos</strong> de <strong>${tpg} participante${tpg>1?'s':''}</strong> · `+
+    `<strong>Todos clasifican</strong> al cuadro (el orden en grupos determina el emparejamiento)`;
+}
+
+function rebuildTeamInputs(){
+  const g=$('teams-grid'); g.innerHTML='';
+  const letters='ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  const tpg=bracketSize/numGroups;
+  for(let i=1;i<=bracketSize;i++){
+    const row=document.createElement('div'); row.className='team-input-row';
+    const w=document.createElement('div'); w.className='team-input-wrap';
+    w.innerHTML=`<span class="team-num">${i}</span><input type="text" placeholder="Equipo ${i}" data-idx="${i}">`;
+    const sel=document.createElement('select'); sel.className='group-select'; sel.dataset.idx=i;
+    for(let j=0;j<numGroups;j++){
+      const opt=document.createElement('option'); opt.value=j; opt.textContent='Grupo '+letters[j];
+      if(Math.floor((i-1)/tpg) === j) opt.selected=true;
+      sel.appendChild(opt);
+    }
+    row.appendChild(w); row.appendChild(sel); g.appendChild(row);
+  }
+}
+
+document.querySelectorAll('#size-options .size-btn').forEach(btn=>btn.addEventListener('click',()=>{
+  document.querySelectorAll('#size-options .size-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active'); bracketSize=+btn.dataset.size; rebuildGroupOptions();
+}));
+rebuildGroupOptions();
+
+$('btn-fill-test').onclick = () => {
+  const inputs = [...$('teams-grid').querySelectorAll('input')];
+  inputs.forEach((inp, i) => {
+    if(!inp.value.trim()) inp.value = `Jugador ${i+1}`;
+  });
+  toast('🎲 Nombres de prueba rellenados');
+};
+
+$('start-btn').addEventListener('click',()=>{
+  const title=$('tourney-name').value.trim()||'Torneo';
+  const teamsData = [...$('teams-grid').querySelectorAll('.team-input-row')].map(row => {
+    let name = row.querySelector('input').value.trim();
+    if(!name) name = 'BYE'; // Hueco vacío = BYE
+    const groupIdx = parseInt(row.querySelector('select').value);
+    return { name, groupIdx };
+  });
+  const tpg = bracketSize / numGroups;
+  const counts = Array(numGroups).fill(0);
+  teamsData.forEach(t => counts[t.groupIdx]++);
+  const invalid = counts.some(c => c !== tpg);
+  if(invalid){ toast(`⚠️ Cada grupo debe tener exactamente ${tpg} equipos.`); return; }
+  launchGroupStageManual(title, teamsData);
+});
+
+function resetAll(){ if(isFsMode)exitFs(); ['group-screen','pairing-screen','tournament-screen'].forEach(id=>$(id).style.display='none'); $('setup-screen').style.display='block'; $('champion-banner').classList.remove('visible'); }
+$('reset-btn').addEventListener('click',resetAll);
+$('gs-reset-btn').addEventListener('click',resetAll);
+
+$('btn-display-mode').addEventListener('click',()=>{
+  saveCurrentTournament();
+  const url = location.href.split('?')[0] + '?display=1';
+  window.open(url, '_blank', 'noopener');
+  toast('📺 Pantalla grande abierta en nueva pestaña');
+});
+
+/* ── GROUP STAGE ────────────────────────────────────── */
+function makeRR(teams){
+  const m=[];
+  for(let i=0;i<teams.length;i++)
+    for(let j=i+1;j<teams.length;j++)
+      if(teams[i].name!=='BYE'&&teams[j].name!=='BYE')
+        m.push({t1:teams[i],t2:teams[j],s1:null,s2:null,played:false});
+  return m;
+}
+
+function calcStandings(group){
+  if(group.manualOrder) return group.manualOrder;
+  const mp={};
+  group.teams.forEach(t=>{ mp[t.name]={team:t,P:0,W:0,D:0,L:0,GF:0,GA:0,Pts:0}; });
+  group.matches.forEach(m=>{
+    if(!m.played) return;
+    const a=mp[m.t1.name],b=mp[m.t2.name];
+    a.P++; b.P++; a.GF+=m.s1; a.GA+=m.s2; b.GF+=m.s2; b.GA+=m.s1;
+    if(m.s1>m.s2){a.W++;a.Pts+=3;b.L++;}
+    else if(m.s1<m.s2){b.W++;b.Pts+=3;a.L++;}
+    else{a.D++;a.Pts++;b.D++;b.Pts++;}
+  });
+  return Object.values(mp).sort((a,b)=>
+    a.team.name==='BYE'?1:b.team.name==='BYE'?-1:
+    b.Pts-a.Pts||(b.GF-b.GA)-(a.GF-a.GA)||b.GF-a.GF
+  );
+}
+
+function launchGroupStageManual(title, teamsData){
+  const letters='ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  const groups=[];
+  for(let g=0;g<numGroups;g++){
+    const groupTeams = teamsData.filter(t => t.groupIdx === g).map((t, i) => ({ name: t.name, seed: g * (bracketSize/numGroups) + i + 1 }));
+    groups.push({ name: 'Grupo ' + letters[g], teams: groupTeams, matches: makeRR(groupTeams), manualOrder: null });
+  }
+  tourneyTopic = genTopic();
+  groupData={title,groups,topic:tourneyTopic};
+  state = {};
+  $('gs-title').textContent=title;
+  $('setup-screen').style.display='none';
+  $('group-screen').style.display='block';
+  saveCurrentTournament();
+  subscribeNtfy();
+  renderGroups();
+}
+
+function renderGroups(){
+  const c=$('groups-container'); c.innerHTML='';
+  groupData.groups.forEach((g,gi)=>c.appendChild(buildGroupCard(g,gi)));
+  updateGroupProgress();
+}
+
+function moveTeam(gi, fromIdx, toIdx){
+  const group = groupData.groups[gi];
+  if(!group.manualOrder) group.manualOrder = calcStandings(group);
+  const list = group.manualOrder;
+  if(toIdx < 0 || toIdx >= list.length) return;
+  const team = list.splice(fromIdx, 1)[0];
+  list.splice(toIdx, 0, team);
+  renderGroups();
+  saveCurrentTournament();
+}
+
+function buildGroupCard(group,gi){
+  const allM=group.matches.length, doneM=group.matches.filter(m=>m.played).length;
+  const card=document.createElement('div'); card.className='group-card'; card.id=`gc-${gi}`;
+  const hdr=document.createElement('div'); hdr.className='group-card-title';
+  hdr.innerHTML=`<span>${group.name}</span><span class="gcard-counter">${doneM}/${allM}</span>`;
+  card.appendChild(hdr);
+  const wrap=document.createElement('div'); wrap.className='standings-wrap';
+  const table=document.createElement('table'); table.className='standings-table';
+  table.innerHTML=`<thead><tr><th style="width:1.2rem">#</th><th style="text-align:left">Equipo</th><th>PJ</th><th>Pts</th><th style="width:2.5rem"></th></tr></thead>`;
+  const tbody=document.createElement('tbody');
+  const standings = calcStandings(group);
+  standings.forEach((s,i)=>{
+    const tr=document.createElement('tr');
+    const pj = s.P > 0 ? s.P : '—';
+    const pts = s.P > 0 ? s.Pts : '—';
+    tr.innerHTML=`<td><span class="rank">${i+1}</span></td><td>${s.team.name}</td><td>${pj}</td><td class="pts-col">${pts}</td><td><button class="move-btn" onclick="moveTeam(${gi},${i},${i-1})" title="Subir">▲</button><button class="move-btn" onclick="moveTeam(${gi},${i},${i+1})" title="Bajar">▼</button></td>`;
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody); wrap.appendChild(table); card.appendChild(wrap);
+  const lbl=document.createElement('div'); lbl.className='group-matches-lbl'; lbl.textContent='Partidos'; card.appendChild(lbl);
+  group.matches.forEach((m,mi)=>{
+    const live = isMatchLive(gi, mi);
+    const queueInfo = !live ? (isMatchQueued(gi,mi) ? getMatchQueueInfo(gi,mi) : null) : null;
+    let cls = 'group-match-item';
+    if(m.played) cls += ' played';
+    if(live) cls += ' live';
+    else if(queueInfo) cls += ' queued-match';
+    const item=document.createElement('div'); item.className=cls;
+    const s1=m.played?m.s1:'-', s2=m.played?m.s2:'-';
+    const editIcon = m.played ? '<span style="font-size:0.6rem;color:var(--text-muted);margin-left:auto;padding-left:4px;opacity:0.6">✎</span>' : '';
+    const dot = live ? '<span class="live-dot"></span>' : queueInfo ? '<span class="queue-dot"></span>' : '';
+    const devTag = live
+      ? `<span style="font-size:0.58rem;color:var(--win);margin-left:2px;opacity:0.8">${getMatchDeviceName(gi,mi)}</span>`
+      : queueInfo
+        ? `<span style="font-size:0.58rem;color:var(--gold);margin-left:2px;opacity:0.9">${queueInfo.name} · #${queueInfo.pos}/${queueInfo.total}</span>`
+        : '';
+    item.innerHTML=`${dot}<div class="gm-team">${m.t1.name}</div><div class="gm-score${m.played?'':' pending'}">${s1}–${s2}</div><div class="gm-team r">${m.t2.name}</div>${devTag}${editIcon}`;
+    item.style.cursor='pointer';
+    item.onclick=()=>openScorePanel(gi,mi);
+    card.appendChild(item);
+  });
+  const panel=document.createElement('div'); panel.className='score-panel'; panel.id=`sp-${gi}`;
+  card.appendChild(panel); return card;
+}
+
+/* ── CONNECTED DEVICES ──────────────────────────────── */
+let connectedDevices = []; // { clientId, name, lastSeen, busy, queue:[{gi,mi}] }
+let blockedDevices = [];   // clientIds bloqueados
+const DEVICE_TIMEOUT = 90000;
+
+function saveDevices(){
+  groupData.devices = connectedDevices;
+  groupData.blockedDevices = blockedDevices;
+  saveCurrentTournament();
+}
+
+function updateDeviceUI(){
+  const count = connectedDevices.length;
+  // mini badge en phase bar
+  const mini = $('ntfy-mini-text');
+  if(mini) mini.textContent = count === 0 ? '0 disp.' : `${count} disp.`;
+  const dot2 = $('ntfy-dot2');
+  if(dot2) { count > 0 ? dot2.classList.add('on') : dot2.classList.remove('on'); }
+  // lista en modal
+  renderDevicesList();
+  // refresca todos los score panels abiertos
+  document.querySelectorAll('.score-panel.open').forEach(p => {
+    const [,gi,mi] = (p.id||'').split('-');
+    if(gi !== undefined) {
+      const devSection = p.querySelector('.send-to-devices');
+      if(devSection) rebuildDeviceButtons(devSection, +gi, +mi);
+    }
+  });
+}
+
+function removeDevice(clientId){
+  connectedDevices = connectedDevices.filter(d => d.clientId !== clientId);
+  if(!blockedDevices.includes(clientId)) blockedDevices.push(clientId);
+  updateDeviceUI();
+  saveDevices();
+}
+
+function renderDevicesList(){
+  const list = $('connect-devices-list'); if(!list) return;
+  if(!connectedDevices.length){
+    list.innerHTML = '<div class="connect-empty">Ningún dispositivo conectado todavía.</div>';
+    return;
+  }
+  list.innerHTML = '';
+  connectedDevices.forEach(dev => {
+    const ago = Math.round((Date.now() - dev.lastSeen) / 1000);
+    const qLen = dev.queue?.length || 0;
+    const statusTxt = dev.busy
+      ? (qLen ? `⏳ En partido · ${qLen} en cola` : '⏳ En partido')
+      : (ago < 5 ? '✓ Libre' : `hace ${ago}s`);
+    const statusColor = dev.busy ? 'var(--gold)' : 'var(--win)';
+    const item = document.createElement('div'); item.className = 'connect-device-item';
+    item.innerHTML = `<span class="connect-device-dot"></span><span class="connect-device-name">📱 ${dev.name}</span><span class="connect-device-ago" style="color:${statusColor}">${statusTxt}</span><button onclick="removeDevice('${dev.clientId}')" title="Eliminar dispositivo" style="margin-left:auto;background:transparent;border:1px solid #E24B4A;color:#E24B4A;border-radius:4px;padding:0.15rem 0.5rem;font-size:0.72rem;cursor:pointer;font-family:'Barlow Condensed',sans-serif;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;flex-shrink:0;">✕ Quitar</button>`;
+    list.appendChild(item);
+  });
+}
+
+function rebuildDeviceButtons(container, gi, mi){
+  if(!connectedDevices.length){
+    container.innerHTML = '<span class="send-to-empty">Sin dispositivos conectados</span>';
+    return;
+  }
+  container.innerHTML = '';
+  connectedDevices.forEach(dev => {
+    const alreadyQueued = dev.queue?.some(q => q.gi === gi && q.mi === mi);
+    const isCurrent = dev.currentMatch?.gi === gi && dev.currentMatch?.mi === mi;
+    let label, extraClass;
+    if(isCurrent){
+      label = `▶ ${dev.name}`;
+      extraClass = 'sent';
+    } else if(alreadyQueued){
+      label = `📋 ${dev.name} (cola ${dev.queue.length})`;
+      extraClass = 'queued';
+    } else if(dev.busy){
+      const qLen = dev.queue?.length || 0;
+      label = `⏳ ${dev.name}${qLen ? ` +${qLen}` : ''}`;
+      extraClass = 'busy';
+    } else {
+      label = `📱 ${dev.name}`;
+      extraClass = '';
+    }
+    const btn = Object.assign(document.createElement('button'),{className:`send-to-btn${extraClass?' '+extraClass:''}`,innerHTML:label});
+    btn.dataset.clientId = dev.clientId;
+    btn.onclick = () => sendMatchToDevice(dev, gi, mi, btn);
+    container.appendChild(btn);
+  });
+}
+
+function renderSendToSection(gi, mi, container){
+  const section = document.createElement('div'); section.className = 'send-to-section';
+  const lbl = document.createElement('div'); lbl.className = 'send-to-lbl'; lbl.textContent = 'Enviar a';
+  section.appendChild(lbl);
+  const devList = document.createElement('div'); devList.className = 'send-to-devices'; devList.id = `send-devices-${gi}-${mi}`;
+  rebuildDeviceButtons(devList, gi, mi);
+  section.appendChild(devList);
+  container.appendChild(section);
+}
+
+function sendMatchToDevice(dev, gi, mi, btn){
+  if(!dev.queue) dev.queue = [];
+  if(dev.busy){
+    const alreadyQueued = dev.queue.some(q => q.gi === gi && q.mi === mi);
+    if(alreadyQueued){ toast(`⚠️ Ya está en cola de ${dev.name}`); return; }
+    dev.queue.push({ gi, mi });
+    toast(`📋 Partido en cola para ${dev.name}`);
+    saveDevices();
+    updateDeviceUI();
+    // Close the score panel so the user can't accidentally save 0-0
+    if(activePanel && activePanel.gi === gi && activePanel.mi === mi){
+      closeScorePanel(gi); activePanel = null;
+    }
+    renderGroups();
+    return;
+  }
+  _sendMatchNow(dev, gi, mi, btn);
+}
+
+function _sendMatchNow(dev, gi, mi, btn){
+  const m = groupData.groups[gi]?.matches[mi];
+  if(!m) return;
+  const queueRemaining = dev.queue?.length || 0;
+  const payload = { type:'match', gi, mi, t1:m.t1.name, t2:m.t2.name, group:groupData.groups[gi].name, target:dev.clientId, startAt:Date.now(), queueRemaining };
+  fetch(`https://ntfy.sh/${tourneyTopic}`, { method:'POST', body:JSON.stringify(payload) })
+    .then(r => {
+      if(r.ok){
+        dev.busy = true;
+        dev.currentMatch = { gi, mi };
+        saveDevices(); updateDeviceUI();
+        // Close panel to avoid accidental 0-0 save
+        if(activePanel && activePanel.gi === gi && activePanel.mi === mi){
+          closeScorePanel(gi); activePanel = null;
+        }
+        renderGroups();
+        if(btn){ btn.classList.add('sent'); btn.innerHTML = `▶ ${dev.name}`; }
+        toast(`📱 Partido iniciado en ${dev.name}`);
+      } else {
+        // Requeue on failure
+        dev.queue = dev.queue || [];
+        dev.queue.unshift({ gi, mi });
+        saveDevices(); updateDeviceUI();
+        toast('⚠️ Error al enviar — partido devuelto a la cola');
+      }
+    })
+    .catch(() => {
+      dev.queue = dev.queue || [];
+      dev.queue.unshift({ gi, mi });
+      saveDevices(); updateDeviceUI();
+      toast('⚠️ Sin conexión — partido devuelto a la cola');
+    });
+}
+
+function isMatchLive(gi, mi){
+  return connectedDevices.some(dev =>
+    dev.busy && dev.currentMatch?.gi === gi && dev.currentMatch?.mi === mi
+  );
+}
+
+function getMatchDeviceName(gi, mi){
+  const dev = connectedDevices.find(d => d.busy && d.currentMatch?.gi === gi && d.currentMatch?.mi === mi);
+  return dev?.name || null;
+}
+
+function isMatchQueued(gi, mi){
+  return connectedDevices.some(dev => dev.queue?.some(q => q.gi === gi && q.mi === mi));
+}
+
+function getMatchQueueInfo(gi, mi){
+  for(const dev of connectedDevices){
+    const pos = dev.queue?.findIndex(q => q.gi === gi && q.mi === mi);
+    if(pos !== undefined && pos >= 0)
+      return { name: dev.name, pos: pos + 1, total: dev.queue.length };
+  }
+  return null;
+}
+/* ── PÁGINA IPAD AUTOCONTENIDA (data URI) ───────────── */
+function makeIpadURL(ipadName, topic, clientId){
+  const N = ipadName.replace(/[<>"&']/g,''), T = topic, C = clientId;
+  const css =
+    '*{box-sizing:border-box;margin:0;padding:0}'+
+    'body{font:15px sans-serif;background:#0e0e12;color:#f0eee8;display:flex;flex-direction:column;height:100vh;height:100dvh}'+
+    'header{background:#161620;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;border-bottom:1px solid #333;gap:8px}'+
+    '.nm{color:#d4a017;font-weight:800;text-transform:uppercase;font-size:clamp(1rem,4vw,1.3rem)}'+
+    '.hdr-right{display:flex;align-items:center;gap:10px}'+
+    '#st{font-size:clamp(0.7rem,2.5vw,0.85rem);color:#888}'+
+    '.fsb{background:transparent;border:1px solid #444;color:#888;border-radius:6px;padding:5px 12px;font-size:1.2em;cursor:pointer;line-height:1;transition:all 0.15s}'+
+    '.fsb:hover{border-color:#d4a017;color:#d4a017}'+
+    'main{flex:1;display:flex;align-items:stretch;justify-content:center;padding:12px;overflow:hidden}'+
+    '.card{background:#161620;border:1px solid #333;border-radius:14px;padding:clamp(16px,4vw,28px);width:100%;display:flex;flex-direction:column;justify-content:space-evenly;gap:0}'+
+    '.grp{color:#d4a017;font-size:clamp(0.85rem,3vw,1.2rem);text-align:center;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px}'+
+    '.timer{font-size:clamp(2.4rem,10vw,6rem);font-weight:800;text-align:center;color:#f0eee8;letter-spacing:.04em;line-height:1;font-variant-numeric:tabular-nums}'+
+    '.timer.running{color:#2ecc71}'+
+    '.timer.stopped{color:#f0eee8}'+
+    '.rw{display:flex;align-items:center;gap:clamp(8px,3vw,24px);padding:clamp(8px,2vh,20px) 0}'+
+    '.tn{flex:1;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:clamp(1.2rem,5vw,2.4rem)}'+
+    '.sb{width:clamp(54px,14vw,100px);height:clamp(54px,14vw,100px);border-radius:50%;border:2px solid #555;background:#1e1e2a;color:#eee;font-size:clamp(1.6rem,6vw,2.8rem);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all 0.12s;-webkit-tap-highlight-color:transparent}'+
+    '.sb:active{background:#d4a017;color:#111;border-color:#d4a017;transform:scale(0.92)}'+
+    '.sc{font-size:clamp(3.5rem,14vw,8rem);font-weight:800;min-width:clamp(2rem,12vw,5rem);text-align:center;color:#d4a017;line-height:1}'+
+    'hr{border:none;border-top:1px solid #333;margin:4px 0}'+
+    '.btn-start{width:100%;padding:clamp(16px,4vh,26px);background:#2ecc71;color:#111;border:none;border-radius:10px;font-size:clamp(1.2rem,5vw,2rem);font-weight:800;cursor:pointer;margin-top:8px;-webkit-tap-highlight-color:transparent;transition:opacity 0.15s}'+
+    '.btn-start:active{opacity:0.8}'+
+    '.sv{width:100%;padding:clamp(16px,4vh,26px);background:#d4a017;color:#111;border:none;border-radius:10px;font-size:clamp(1.2rem,5vw,2rem);font-weight:800;cursor:pointer;margin-top:8px;-webkit-tap-highlight-color:transparent;transition:opacity 0.15s}'+
+    '.sv:active{opacity:0.8}'+
+    '.sv:disabled{opacity:.4}'+
+    '.ok{text-align:center;color:#2ecc71;font-weight:700;font-size:clamp(1rem,3.5vw,1.2rem);padding:8px 0}'+
+    '.wait{color:#555;text-align:center;font-size:clamp(1rem,3.5vw,1.1rem)}'+
+    '.qbadge{text-align:center;background:rgba(212,160,23,0.12);color:#d4a017;border:1px solid rgba(212,160,23,0.35);border-radius:6px;padding:3px 10px;font-size:clamp(0.72rem,2.5vw,0.85rem);font-weight:700;letter-spacing:.06em;text-transform:uppercase}';
+
+  const html =
+    '<header>'+
+      '<span class=nm>'+N+'</span>'+
+      '<div class=hdr-right>'+
+        '<span id=st>Conectando\u2026</span>'+
+        '<button class=fsb id=fsb onclick="toggleFS()">&#x26F6;</button>'+
+      '</div>'+
+    '</header>'+
+    '<main id=m><p class=wait>&#x1F4CB; Esperando partido\u2026</p></main>';
+
+  const js =
+    'const T=\''+T+'\',N=\''+N+'\',C=\''+C+'\';'+
+    'let sc={a:0,b:0},cur=null,timerInt=null,startTs=null,running=false;'+
+    'const $=id=>document.getElementById(id);'+
+    'const P=d=>fetch(\'https://ntfy.sh/\'+T,{method:\'POST\',body:JSON.stringify(d)});'+
+
+    // Fullscreen
+    'function toggleFS(){'+
+      'const el=document.documentElement;'+
+      'const isFs=!!(document.fullscreenElement||document.webkitFullscreenElement);'+
+      'if(!isFs){const r=el.requestFullscreen||el.webkitRequestFullscreen;if(r)r.call(el).catch(()=>{});}'+
+      'else{const x=document.exitFullscreen||document.webkitExitFullscreen;if(x)x.call(document).catch(()=>{});}'+
+    '}'+
+    '["fullscreenchange","webkitfullscreenchange"].forEach(ev=>document.addEventListener(ev,()=>{'+
+      'const b=$("fsb");if(!b)return;'+
+      'const f=!!(document.fullscreenElement||document.webkitFullscreenElement);'+
+      'b.innerHTML=f?"&#x2715;":"&#x26F6;";'+
+    '}));'+
+
+    // Timer helpers
+    'function fmtTime(ms){'+
+      'const s=Math.floor(ms/1000);'+
+      'const m=Math.floor(s/60);'+
+      'const ss=s%60;'+
+      'return String(m).padStart(2,"0")+":"+String(ss).padStart(2,"0");'+
+    '}'+
+    'function startTimer(){'+
+      'if(running)return;'+
+      'running=true;startTs=Date.now();'+
+      'const el=$("tmr");if(el)el.className="timer running";'+
+      'timerInt=setInterval(()=>{const el=$("tmr");if(el&&running)el.textContent=fmtTime(Date.now()-startTs);},500);'+
+      'const bs=$("btn-start");if(bs)bs.style.display="none";'+
+      'const sv=$("sv");if(sv)sv.style.display="block";'+
+    '}'+
+    'function stopTimer(){'+
+      'running=false;clearInterval(timerInt);'+
+      'const el=$("tmr");if(el)el.className="timer stopped";'+
+    '}'+
+
+    // Show match card — gestor owns the queue, device just renders
+    'function showMatch(d){'+
+      'cur=d;sc={a:0,b:0};running=false;clearInterval(timerInt);startTs=null;'+
+      'const qBadge=d.queueRemaining?\'<div class=qbadge>+\'+d.queueRemaining+\' en cola</div>\':\'\''+';'+
+      '$("m").innerHTML='+
+        '"<div class=card>"+qBadge+'+
+        '"<div class=grp>"+d.group+"</div>"+'+
+        '"<div class=timer stopped id=tmr>00:00</div>"+'+
+        '"<div class=rw><span class=tn>"+d.t1+"</span><button class=sb onclick=\'M(-1,1)\'>−</button><span class=sc id=n1>0</span><button class=sb onclick=\'M(1,1)\'>+</button></div>"+'+
+        '"<hr>"+'+
+        '"<div class=rw><span class=tn>"+d.t2+"</span><button class=sb onclick=\'M(-1,2)\'>−</button><span class=sc id=n2>0</span><button class=sb onclick=\'M(1,2)\'>+</button></div>"+'+
+        '"<button class=btn-start id=btn-start onclick=startTimer()>▶ Iniciar partido</button>"+'+
+        '"<button class=sv id=sv onclick=S() style=\'display:none\'>Guardar resultado ✓</button>"+'+
+        '"<p id=ok style=\'display:none\' class=ok>✓ Enviado</p>"+'+
+        '"</div>";'+
+    '}'+
+
+    // SSE — always show match immediately when it arrives
+    'const es=new EventSource(\'https://ntfy.sh/\'+T+\'/sse\');'+
+    'es.onopen=()=>{$("st").textContent="✓ OK";P({type:"register",clientId:C,name:N});setInterval(()=>P({type:"ping",clientId:C}),3e4)};'+
+    'es.onerror=()=>{$("st").textContent="Sin conexión"};'+
+    'es.onmessage=e=>{try{'+
+      'const v=JSON.parse(e.data);if(v.event!="message")return;'+
+      'const d=JSON.parse(v.message);'+
+      'if(d.type=="match"&&d.target==C)showMatch(d);'+
+    '}catch(x){}};'+
+
+    'window.M=(v,n)=>{if(n<2){sc.a=Math.max(0,sc.a+v);$("n1").textContent=sc.a}else{sc.b=Math.max(0,sc.b+v);$("n2").textContent=sc.b}};'+
+
+    'window.S=()=>{'+
+      'stopTimer();'+
+      'const b=$("sv");b.disabled=1;b.textContent="Enviando\u2026";'+
+      'const elapsed=startTs?Date.now()-startTs:0;'+
+      'const done=cur;cur=null;'+  // free before fetch so next match can arrive cleanly
+      'P({type:"score",gi:done.gi,mi:done.mi,s1:sc.a,s2:sc.b,from:C,elapsed})'+
+      '.then(r=>{'+
+        'if(r.ok){$("ok").style.display="block";b.style.display="none";'+
+        'setTimeout(()=>{if(!cur)$("m").innerHTML="<p class=wait>&#x2705; Listo!</p>";},2500)}'+
+        'else{cur=done;b.disabled=0;b.textContent="Guardar resultado ✓"}})'+
+      '.catch(()=>{cur=done;b.disabled=0;b.textContent="Guardar resultado ✓"})};';
+
+  const fullHtml =
+    '<!DOCTYPE html><html><head>'+
+    '<meta charset="UTF-8">'+
+    '<meta name=viewport content="width=device-width,initial-scale=1">'+
+    '<style>'+css+'</style></head><body>'+
+    html+
+    '<script>'+js+'<\/script></body></html>';
+  return 'data:text/html;charset=utf-8,' + encodeURIComponent(fullHtml);
+}
+
+let _connectURL = '';
+function openConnectModal(){
+  $('connect-overlay').classList.add('open');
+  renderDevicesList();
+  if(!$('connect-device-name').value){
+    const n = connectedDevices.length + 1;
+    $('connect-device-name').value = `iPad ${n}`;
+  }
+}
+
+function generateDeviceQR(){
+  const name = $('connect-device-name').value.trim() || 'iPad';
+  const existing = connectedDevices.find(d => d.name === name);
+  const clientId = existing ? existing.clientId : ('dev-' + Math.random().toString(36).slice(2,10));
+  _connectURL = makeIpadURL(name, tourneyTopic, clientId);
+  const wrap = $('connect-qr-wrap'); wrap.innerHTML = '';
+  try {
+    new QRCode(wrap, {
+      text: _connectURL,
+      width: 200, height: 200,
+      colorDark: '#000000', colorLight: '#ffffff',
+      correctLevel: QRCode.CorrectLevel.L
+    });
+      if(!wrap.querySelector('canvas') && !wrap.querySelector('img')){
+      throw new Error('QR vacío');
+    }
+  } catch(e){
+    wrap.innerHTML = '<div style="color:#888;font-size:0.8rem;text-align:center;padding:1rem;">⚠️ URL demasiado larga para QR.<br>Usa el botón <strong>Copiar URL</strong><br>y envíala por WhatsApp / AirDrop.</div>';
+  }
+  $('connect-url-box').textContent = _connectURL;
+  $('connect-url-row').style.display = 'flex';
+}
+
+function copyConnectURL(){
+  if(!_connectURL) return;
+  (navigator.clipboard?.writeText(_connectURL) ?? Promise.reject())
+    .catch(()=>{ const ta=Object.assign(document.createElement('textarea'),{value:_connectURL}); document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); })
+    .then(()=>toast('✓ URL copiada'));
+}
+
+$('btn-connect-device').addEventListener('click', openConnectModal);
+
+function openScorePanel(gi,mi){
+  if(activePanel && activePanel.gi===gi && activePanel.mi===mi) return;
+  const m=groupData.groups[gi].matches[mi];
+  const p=$(`sp-${gi}`); p.innerHTML=''; p.classList.add('open');
+  const initS1 = m.played ? m.s1 : 0;
+  const initS2 = m.played ? m.s2 : 0;
+  activePanel={gi,mi,s1:initS1,s2:initS2};
+  const row=document.createElement('div'); row.className='score-row';
+  row.innerHTML=`<div class="sc-lbl">${m.t1.name}</div><div class="sc-grp"><button class="sc-btn" onclick="modSc(-1,1)">-</button><div class="sc-num" id="sc1">${initS1}</div><button class="sc-btn" onclick="modSc(1,1)">+</button></div><div class="sc-sep">:</div><div class="sc-grp"><button class="sc-btn" onclick="modSc(-1,2)">-</button><div class="sc-num" id="sc2">${initS2}</div><button class="sc-btn" onclick="modSc(1,2)">+</button></div><div class="sc-lbl">${m.t2.name}</div>`;
+  const acts=document.createElement('div'); acts.className='score-actions';
+  const clearBtn = m.played
+    ? `<button class="sc-cancel" style="color:#E24B4A;border-color:#E24B4A;" onclick="clearScore(${gi},${mi})">✕ Borrar</button>`
+    : '';
+  acts.innerHTML=`${clearBtn}<button class="sc-cancel" onclick="closeScorePanel(${gi})">Cancelar</button><button class="sc-save" onclick="applyScore(${gi},${mi})">${m.played ? 'Actualizar' : 'Guardar'}</button>`;
+  p.appendChild(row);
+  renderSendToSection(gi, mi, p);
+  p.appendChild(acts);
+}
+
+window.modSc=(v,n)=>{ if(!activePanel)return; if(n===1){activePanel.s1=Math.max(0,activePanel.s1+v);$('sc1').textContent=activePanel.s1;}else{activePanel.s2=Math.max(0,activePanel.s2+v);$('sc2').textContent=activePanel.s2;} };
+window.closeScorePanel=gi=>$(`sp-${gi}`).classList.remove('open');
+
+function applyScore(gi,mi,forceS1,forceS2){
+  const m=groupData.groups[gi].matches[mi];
+  if(forceS1!==undefined){m.s1=forceS1;m.s2=forceS2;}
+  else{m.s1=activePanel.s1;m.s2=activePanel.s2;}
+  m.played=true;
+  _commitScore(gi);
+}
+
+function clearScore(gi,mi){
+  const m=groupData.groups[gi].matches[mi];
+  m.played=false;m.s1=null;m.s2=null;
+  _commitScore(gi);
+  toast('🗑️ Resultado eliminado');
+}
+
+function _commitScore(gi){
+  groupData.groups[gi].manualOrder=null;
+  closeScorePanel(gi);activePanel=null;
+  renderGroups();saveCurrentTournament();
+}
+
+$('btn-simulate-gs').onclick = () => {
+  groupData.groups.forEach((g, gi) => {
+    g.matches.forEach((m, mi) => {
+      if(!m.played){
+        const s1 = Math.floor(Math.random() * 5);
+        const s2 = Math.floor(Math.random() * 5);
+        applyScore(gi, mi, s1, s2);
+      }
+    });
+  });
+  toast('🎲 Resultados de grupos simulados');
+};
+
+function updateGroupProgress(){
+  const all=groupData.groups.flatMap(g=>g.matches);
+  const done=all.filter(m=>m.played).length;
+  $('gs-fill').style.width=(all.length?Math.round(done/all.length*100):100)+'%';
+  $('gs-progress-text').textContent=`${done} / ${all.length} partidos`;
+  const complete=done===all.length;
+  $('btn-advance').classList.toggle('ready',complete);
+  $('footer-info').innerHTML=complete?'<strong>¡Fase de grupos completada!</strong> Ya puedes configurar los cruces.':'Completa todos los partidos para continuar.';
+}
+
+$('btn-advance').onclick=()=>{
+  renderPairingScreen();
+};
+
+/* ── PAIRING LOGIC ─────────────────────────────────── */
+function renderPairingScreen(){
+  const grid = $('pairing-grid'); grid.innerHTML = '';
+  const numPairs = numGroups / 2;
+  
+  for(let i=0; i<numPairs; i++){
+    const pairDiv = document.createElement('div');
+    pairDiv.className = 'pairing-match';
+    pairDiv.innerHTML = `<div class="pairing-match-title">Cruce de Grupos ${i+1}</div>`;
+    
+    const row = document.createElement('div');
+    row.className = 'pairing-row';
+    
+    const sel1 = document.createElement('select');
+    sel1.className = 'group-pairing-select';
+    sel1.dataset.pair = i;
+    sel1.dataset.side = 0;
+    
+    const sel2 = document.createElement('select');
+    sel2.className = 'group-pairing-select';
+    sel2.dataset.pair = i;
+    sel2.dataset.side = 1;
+    
+    groupData.groups.forEach((g, idx) => {
+      const opt1 = document.createElement('option');
+      opt1.value = idx; opt1.textContent = g.name;
+      if(idx === i*2) opt1.selected = true;
+      sel1.appendChild(opt1);
+      
+      const opt2 = document.createElement('option');
+      opt2.value = idx; opt2.textContent = g.name;
+      if(idx === i*2 + 1) opt2.selected = true;
+      sel2.appendChild(opt2);
+    });
+    
+    row.appendChild(sel1);
+    const vs = document.createElement('div'); vs.className = 'pairing-vs-text'; vs.textContent = 'VS';
+    row.appendChild(vs);
+    row.appendChild(sel2);
+    
+    pairDiv.appendChild(row);
+    grid.appendChild(pairDiv);
+  }
+  
+  $('group-screen').style.display = 'none';
+  $('pairing-screen').style.display = 'block';
+}
+
+$('btn-start-bracket').onclick = () => {
+  const selects = [...document.querySelectorAll('.group-pairing-select')];
+  const groupIndices = selects.map(s => parseInt(s.value));
+  
+  const unique = new Set(groupIndices);
+  if(unique.size !== groupIndices.length){
+    toast('⚠️ No puedes repetir grupos en los cruces.');
+    return;
+  }
+  
+  const pairings = [];
+  for(let i=0; i<groupIndices.length; i+=2){
+    pairings.push([groupIndices[i], groupIndices[i+1]]);
+  }
+  
+  const names = generateProfessionalNames(pairings);
+  $('pairing-screen').style.display = 'none';
+  launchTournament(groupData.title, names);
+};
+
+function generateProfessionalNames(pairings){
+  const sortedGroups = groupData.groups.map(g => calcStandings(g));
+  const tpg = bracketSize / numGroups;
+  const groupMap = {};
+  pairings.forEach((pair, i) => {
+    groupMap[i*2] = sortedGroups[pair[0]];
+    groupMap[i*2+1] = sortedGroups[pair[1]];
+  });
+  const names = new Array(bracketSize).fill(null);
+  const getT = (gIdx, pos) => groupMap[gIdx][pos].team.name;
+
+  if (numGroups === 4) {
+    if (tpg === 4) {
+      names[0] = getT(0, 0); names[1] = getT(3, 3);
+      names[2] = getT(1, 1); names[3] = getT(2, 2);
+      names[4] = getT(2, 0); names[5] = getT(1, 3);
+      names[6] = getT(3, 1); names[7] = getT(0, 2);
+      names[8] = getT(1, 0); names[9] = getT(2, 3);
+      names[10]= getT(0, 1); names[11]= getT(3, 2);
+      names[12]= getT(3, 0); names[13]= getT(0, 3);
+      names[14]= getT(2, 1); names[15]= getT(1, 2);
+    } 
+    else if (tpg === 8) {
+      names[0] = getT(0, 0); names[1] = getT(3, 7);
+      names[2] = getT(2, 3); names[3] = getT(1, 4);
+      names[4] = getT(1, 1); names[5] = getT(2, 6);
+      names[6] = getT(0, 2); names[7] = getT(3, 5);
+      names[8] = getT(2, 0); names[9] = getT(1, 7);
+      names[10]= getT(0, 3); names[11]= getT(3, 4);
+      names[12]= getT(3, 1); names[13]= getT(0, 6);
+      names[14]= getT(2, 2); names[15]= getT(1, 5);
+      names[16]= getT(1, 0); names[17]= getT(2, 7);
+      names[18]= getT(3, 3); names[19]= getT(0, 4);
+      names[20]= getT(0, 1); names[21]= getT(3, 6);
+      names[22]= getT(1, 2); names[23]= getT(2, 5);
+      names[24]= getT(3, 0); names[25]= getT(0, 7);
+      names[26]= getT(1, 3); names[27]= getT(2, 4);
+      names[28]= getT(2, 1); names[29]= getT(1, 6);
+      names[30]= getT(3, 2); names[31]= getT(0, 5);
+    }
+  }
+  if (names.some(n => n === null)) {
+    const leftSide = [], rightSide = [];
+    pairings.forEach((pair, pairIdx) => {
+      const gA = sortedGroups[pair[0]];
+      const gB = sortedGroups[pair[1]];
+      for(let i=0; i < tpg/2; i++){
+        const top = i, bot = tpg - 1 - i;
+        const match1 = [gA[top].team.name, gB[bot].team.name];
+        const match2 = [gB[top].team.name, gA[bot].team.name];
+        if(i % 2 === 0){ leftSide.push(...match1); rightSide.push(...match2); }
+        else { rightSide.push(...match1); leftSide.push(...match2); }
+      }
+    });
+    return [...leftSide, ...rightSide];
+  }
+  return names;
+}
+
+/* ── KNOCKOUT STAGE ─────────────────────────────────── */
+function launchTournament(title,names){
+  state={ title, numTeams:names.length, totalMatches:names.length-1, rounds:buildRounds(names) };
+  $('display-title').textContent=title;
+  $('fs-bar-title').textContent=title;
+  $('tournament-screen').style.display='block';
+  saveCurrentTournament();
+  renderBracket(); updateProgress(); flashHint();
+}
+
+function buildRounds(names){
+  const objs=names.map((n,i)=>({name:n,seed:i+1}));
+  const rounds=[], first=[];
+  for(let i=0;i<objs.length;i+=2) first.push({t1:objs[i],t2:objs[i+1]||null,winner:null});
+  rounds.push(first);
+  for(let p=first.length; p>1; p=Math.ceil(p/2))
+    rounds.push(Array.from({length:Math.ceil(p/2)},()=>({t1:null,t2:null,winner:null})));
+  
+  rounds[0].forEach((m,mi)=>{
+    if(!m.t2 || m.t2.name === 'BYE'){
+      m.winner=m.t1;
+      if(rounds[1]) rounds[1][Math.floor(mi/2)][mi%2===0?'t1':'t2']=m.t1;
+    } else if(m.t1.name === 'BYE'){
+      m.winner=m.t2;
+      if(rounds[1]) rounds[1][Math.floor(mi/2)][mi%2===0?'t1':'t2']=m.t2;
+    }
+  });
+  return rounds;
+}
+
+function roundLabel(total,ri){ const r=['Final','Semifinal','Cuartos de Final','Octavos de Final']; return r[total-1-ri]??`Ronda ${ri+1}`; }
+
+function renderBracket(){ 
+  const c=$('bracket-container'); c.innerHTML=''; 
+  if(state.numTeams === 32) c.classList.add('size-32'); else c.classList.remove('size-32');
+  renderDual(c); 
+  setTimeout(syncBracketOverlay, 100);
+  if(isFsMode) requestAnimationFrame(scaleBracket); 
+}
+
+function renderDual(c){
+  const {rounds}=state, total=rounds.length, halfR=total-1;
+  const root=document.createElement('div'); root.className='bracket-dual';
+  
+  const left=document.createElement('div'); left.className='bracket-half-left';
+  for(let ri=0; ri<halfR; ri++){
+    const h=Math.ceil(rounds[ri].length/2); 
+    left.appendChild(makeCol(roundLabel(total,ri), rounds[ri].slice(0,h), ri, 0, 'left'));
+  }
+  
+  const center=document.createElement('div'); center.className='bracket-center';
+  const ch=document.createElement('div'); ch.className='round-header'; ch.textContent='⚽ FINAL ⚽'; center.appendChild(ch);
+  const ca=document.createElement('div'); ca.className='center-match-area'; 
+  const finalMatch = buildCard(rounds[total-1][0], total-1, 0, true);
+  finalMatch.id = `match-${total-1}-0`;
+  ca.appendChild(finalMatch); 
+  center.appendChild(ca);
+  
+  const right=document.createElement('div'); right.className='bracket-half-right';
+  for(let ri=0; ri<halfR; ri++){
+    const h=Math.ceil(rounds[ri].length/2); 
+    right.appendChild(makeCol(roundLabel(total,ri), rounds[ri].slice(h), ri, h, 'right'));
+  }
+  
+  root.appendChild(left); root.appendChild(center); root.appendChild(right); 
+  c.appendChild(root);
+  
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("class", "bracket-svg");
+  svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
+  svg.id = "bracket-svg";
+  c.appendChild(svg);
+}
+
+function makeCol(label, matches, ri, startMi, side){
+  const col=document.createElement('div'); col.className='round-col';
+  const h=document.createElement('div'); h.className='round-header'; h.textContent=label; col.appendChild(h);
+  const mc=document.createElement('div'); mc.className='match-col';
+  
+  const totalMatches = matches.length;
+  matches.forEach((m, li)=>{ 
+    const wr=document.createElement('div'); wr.className='match-wrapper'; 
+    const matchCard = buildCard(m, ri, startMi+li);
+    matchCard.id = `match-${ri}-${startMi+li}`;
+    wr.appendChild(matchCard); 
+    
+      const step = 100 / totalMatches;
+    const topPos = (li * step) + (step / 2);
+    wr.style.top = `${topPos}%`;
+    
+    mc.appendChild(wr); 
+  });
+  col.appendChild(mc); return col;
+}
+
+function drawLines(){
+  const svg = $('bracket-svg'); if(!svg) return;
+  svg.innerHTML = '';
+  const {rounds} = state;
+  const totalRounds = rounds.length;
+  const scaler = $('bracket-scaler');
+  
+  let scale = 1;
+  if(scaler && scaler.style.transform) {
+    const match = scaler.style.transform.match(/scale\(([^)]+)\)/);
+    if(match) scale = parseFloat(match[1]);
+  }
+  
+  const svgRect = svg.getBoundingClientRect();
+  
+  for(let ri=0; ri < totalRounds - 1; ri++){
+    rounds[ri].forEach((m, mi) => {
+      const startEl = $(`match-${ri}-${mi}`);
+      const nextMi = Math.floor(mi/2);
+      const endEl = $(`match-${ri+1}-${nextMi}`);
+      if(!startEl || !endEl) return;
+      
+      const startRect = startEl.getBoundingClientRect();
+      const endRect = endEl.getBoundingClientRect();
+      
+      // Compensar la escala del navegador (zoom)
+      const devicePixelRatio = window.devicePixelRatio || 1;
+      
+      // Calcular coordenadas relativas al SVG, compensando la escala
+      let x1 = (startRect.right - svgRect.left) / devicePixelRatio / scale;
+      let y1 = (startRect.top + startRect.height / 2 - svgRect.top) / devicePixelRatio / scale;
+      let x2 = (endRect.left - svgRect.left) / devicePixelRatio / scale;
+      let y2 = (endRect.top + endRect.height / 2 - svgRect.top) / devicePixelRatio / scale;
+      
+      // Ajustar si el siguiente está a la izquierda
+      if(x2 < x1) {
+        x1 = (startRect.left - svgRect.left) / devicePixelRatio / scale;
+        x2 = (endRect.right - svgRect.left) / devicePixelRatio / scale;
+      }
+      
+      const midX = x1 + (x2 - x1) / 2;
+      
+      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      const d = `M ${x1} ${y1} L ${midX} ${y1} L ${midX} ${y2} L ${x2} ${y2}`;
+      path.setAttribute("d", d);
+      path.setAttribute("class", "bracket-line" + (m.winner ? " active" : ""));
+      svg.appendChild(path);
+    });
+  }
+}
+
+function buildCard(match,ri,mi,isFinal=false){
+  const card=document.createElement('div'); card.className='match'+(isFinal?' final-match':'');
+  [match.t1,match.t2].forEach((team,si)=>{
+    const slot=document.createElement('div');
+    const isBye=team && team.name === 'BYE';
+    const isWin=match.winner&&team&&match.winner.name===team.name,isLos=match.winner&&team&&match.winner.name!==team.name;
+    slot.className='team-slot'+(isBye?' bye empty':'')+(!team?' empty':'')+(isWin?' winner':'')+(isLos?' loser':'');
+    
+    if(!isBye && team && !IS_DISPLAY && !IS_BRACKET_DISPLAY){
+      slot.onclick = (e) => {
+        e.stopPropagation();
+        if(!match.winner) selectWinner(ri,mi,si);
+        else if(isWin) resetWinner(ri,mi);
+      };
+    }
+    
+    slot.innerHTML=`<span class="slot-seed">${team?'#'+team.seed:''}</span><span class="slot-name">${isBye?'BYE':(team?team.name:'Por decidir')}</span><span class="slot-win-icon">▲</span>`;
+    card.appendChild(slot);
+  });
+  return card;
+}
+
+function selectWinner(ri,mi,si){
+  const match=state.rounds[ri][mi];
+  if(match.winner){toast('Ya hay un ganador.');return;}
+  if(!match.t1||!match.t2){toast('Faltan equipos en este partido.');return;}
+  const winner=si===0?match.t1:match.t2; match.winner=winner;
+  if(ri+1<state.rounds.length){const nmi=Math.floor(mi/2); state.rounds[ri+1][nmi][mi%2===0?'t1':'t2']=winner;}
+  const last=state.rounds[state.rounds.length-1];
+  if(last.length===1&&last[0].winner){
+    const champ=last[0].winner; $('champion-name').textContent=champ.name;
+    if(!isFsMode){$('champion-banner').classList.add('visible'); $('champion-banner').scrollIntoView({behavior:'smooth',block:'center'});}
+    toast(`🏆 ¡${champ.name} es el CAMPEÓN!`);
+  } else toast(`✓ ${winner.name} avanza a la siguiente ronda`);
+  saveCurrentTournament();
+  renderBracket(); updateProgress();
+}
+
+function resetWinner(ri, mi){
+  if(!confirm('¿Quieres resetear el resultado de este partido? Se borrarán los avances posteriores.')) return;
+  
+  function clearForward(r, m){
+    const match = state.rounds[r][m];
+    if(!match.winner) return;
+    const oldWinner = match.winner;
+    match.winner = null;
+    if(r + 1 < state.rounds.length){
+      const nextMi = Math.floor(m/2);
+      const nextMatch = state.rounds[r+1][nextMi];
+      if(nextMatch.t1 && nextMatch.t1.name === oldWinner.name) nextMatch.t1 = null;
+      if(nextMatch.t2 && nextMatch.t2.name === oldWinner.name) nextMatch.t2 = null;
+      clearForward(r+1, nextMi);
+    }
+  }
+  
+  clearForward(ri, mi);
+  $('champion-banner').classList.remove('visible');
+  saveCurrentTournament();
+  renderBracket(); updateProgress();
+  toast('✓ Resultado reseteado');
+}
+
+function updateProgress(){
+  const played=state.rounds.flat().filter(m=>m.winner).length;
+  $('progress-fill').style.width=Math.round(played/state.totalMatches*100)+'%';
+  const txt=`${played} / ${state.totalMatches} partidos`;
+  $('progress-text').textContent=$('fs-bar-progress').textContent=txt;
+}
+
+/* ── TICKETS QR + NTFY.SH ──────────────────────────── */
+let tourneyTopic = '';
+let ntfySource   = null;
+function genTopic(){ return 'trn-'+Math.random().toString(36).slice(2,12).padEnd(10,'0'); }
+
+function subscribeNtfy(){
+  if(ntfySource) ntfySource.close();
+  const dot2 = $('ntfy-dot2');
+  if(dot2) dot2.classList.remove('on');
+
+  ntfySource = new EventSource(`https://ntfy.sh/${tourneyTopic}/sse`);
+
+  ntfySource.onopen = () => {
+    if(dot2) dot2.classList.add('on');
+  };
+
+  ntfySource.onmessage = e => {
+    try{
+      const evt = JSON.parse(e.data);
+      if(evt.event !== 'message') return;
+      const d = JSON.parse(evt.message);
+
+      if(d.type === 'register'){
+        if(blockedDevices.includes(d.clientId)) return;
+        const existing = connectedDevices.find(x => x.clientId === d.clientId);
+        if(existing){ existing.lastSeen = Date.now(); }
+        else { connectedDevices.push({ clientId: d.clientId, name: d.name, lastSeen: Date.now() }); toast(`📱 ${d.name} conectado`); }
+        updateDeviceUI(); saveDevices(); return;
+      }
+
+      if(d.type === 'ping'){
+        if(blockedDevices.includes(d.clientId)) return;
+        const dev = connectedDevices.find(x => x.clientId === d.clientId);
+        if(dev){ dev.lastSeen = Date.now(); updateDeviceUI(); saveDevices(); }
+        return;
+      }
+
+      if(d.type === 'score'){
+        const match = groupData.groups[d.gi]?.matches[d.mi];
+        const dev = connectedDevices.find(x => x.clientId === d.from);
+        // Mark device free first, before applyScore triggers renderGroups
+        if(dev){
+          dev.busy = false;
+          dev.currentMatch = null;
+        }
+        if(match && !match.played){
+          applyScore(d.gi, d.mi, +d.s1, +d.s2);
+          toast(`📱 ${match.t1.name} ${d.s1}–${d.s2} ${match.t2.name}${dev ? ' · '+dev.name : ''}`);
+        }
+        if(dev){
+          if(dev.queue?.length){
+            const next = dev.queue.shift();
+            saveDevices(); updateDeviceUI();
+            _sendMatchNow(dev, next.gi, next.mi, null);
+          } else {
+            saveDevices(); updateDeviceUI(); renderGroups();
+          }
+        }
+        return;
+      }
+
+      if(typeof d.g === 'number' && typeof d.m === 'number' && !d.type){
+        const match = groupData.groups[d.g]?.matches[d.m];
+        if(match && !match.played){ applyScore(d.g, d.m, +d.s1, +d.s2); toast(`📱 ${match.t1.name} ${d.s1}–${d.s2} ${match.t2.name}`); }
+      }
+
+    }catch(err){}
+  };
+
+  ntfySource.onerror = () => {
+    if(dot2) dot2.classList.remove('on');
+  };
+}
+
+// Limpiar dispositivos que no han hecho ping en >90s, pero nunca los que están ocupados
+setInterval(() => {
+  const before = connectedDevices.length;
+  connectedDevices = connectedDevices.filter(d => d.busy || (Date.now() - d.lastSeen < DEVICE_TIMEOUT));
+  if(connectedDevices.length !== before){ updateDeviceUI(); saveDevices(); }
+}, 15000);
+
+/* ── MODO IPAD ──────────────────────────────────────── */
+const IS_IPAD = new URLSearchParams(location.search).has('ipad');
+const IPAD_NAME = IS_IPAD ? decodeURIComponent(new URLSearchParams(location.search).get('ipad') || 'iPad') : null;
+const IPAD_TOPIC = IS_IPAD ? new URLSearchParams(location.search).get('topic') || '' : null;
+const IPAD_CLIENT_ID = IS_IPAD ? (()=>{
+  const ck = 'ipad_cid_' + IPAD_TOPIC;
+  const saved = localStorage.getItem(ck);
+  if(saved) return saved;
+  const id = 'ipad-' + Math.random().toString(36).slice(2,10);
+  localStorage.setItem(ck, id);
+  return id;
+})() : null;
+
+let ipadCurrentMatch = null; // { gi, mi, t1, t2, group }
+let ipadScores = { s1: 0, s2: 0 };
+let ipadPingInterval = null;
+let ipadNtfySource = null;
+
+function ipadInit(){
+  // Ocultar toda la interfaz del gestor
+  document.querySelector('header').style.display = 'none';
+  $('setup-screen').style.display = 'none';
+
+  const screen = $('ipad-screen');
+  screen.classList.add('active');
+  $('ipad-hdr-name').textContent = IPAD_NAME;
+
+  ipadConnectNtfy();
+}
+
+function ipadConnectNtfy(){
+  if(ipadNtfySource) ipadNtfySource.close();
+  const dot = $('ipad-ntfy-dot'), st = $('ipad-status-text');
+  dot.classList.remove('on'); st.textContent = 'Conectando…';
+
+  ipadNtfySource = new EventSource(`https://ntfy.sh/${IPAD_TOPIC}/sse`);
+
+  ipadNtfySource.onopen = () => {
+    dot.classList.add('on'); st.textContent = 'Conectado';
+    ipadRegister();
+    clearInterval(ipadPingInterval);
+    ipadPingInterval = setInterval(ipadPing, 30000);
+  };
+
+  ipadNtfySource.onmessage = e => {
+    try{
+      const evt = JSON.parse(e.data);
+      if(evt.event !== 'message') return;
+      const d = JSON.parse(evt.message);
+        if(d.type === 'match' && d.target === IPAD_CLIENT_ID){
+        ipadShowMatch(d);
+      }
+    } catch(err){}
+  };
+
+  ipadNtfySource.onerror = () => {
+    dot.classList.remove('on'); st.textContent = 'Sin conexión — reintentando…';
+  };
+}
+
+function ipadToggleFS(){
+  const el = $('ipad-screen');
+  const isFs = !!(document.fullscreenElement || document.webkitFullscreenElement);
+  if(!isFs){
+    const req = el.requestFullscreen || el.webkitRequestFullscreen || el.mozRequestFullScreen;
+    if(req) req.call(el).catch(()=>{});
+  } else {
+    const exit = document.exitFullscreen || document.webkitExitFullscreen || document.mozCancelFullScreen;
+    if(exit) exit.call(document).catch(()=>{});
+  }
+}
+
+['fullscreenchange','webkitfullscreenchange'].forEach(ev => {
+  document.addEventListener(ev, () => {
+    const btn = $('ipad-fs-btn'); if(!btn) return;
+    const isFs = !!(document.fullscreenElement || document.webkitFullscreenElement);
+    btn.textContent = isFs ? '✕' : '⛶';
+    btn.title = isFs ? 'Salir de pantalla completa' : 'Pantalla completa';
+  });
+});
+
+function ipadSend(payload){
+  return fetch(`https://ntfy.sh/${IPAD_TOPIC}`, {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+}
+
+function ipadRegister(){
+  ipadSend({ type: 'register', clientId: IPAD_CLIENT_ID, name: IPAD_NAME });
+}
+
+function ipadPing(){
+  ipadSend({ type: 'ping', clientId: IPAD_CLIENT_ID });
+}
+
+function ipadShowMatch(d){
+  ipadCurrentMatch = { gi: d.gi, mi: d.mi, t1: d.t1, t2: d.t2, group: d.group };
+  ipadScores = { s1: 0, s2: 0 };
+
+  const body = $('ipad-body');
+  body.innerHTML = '';
+
+  const card = document.createElement('div'); card.className = 'ipad-match-card';
+  card.innerHTML = `
+    <div class="ipad-match-group">${d.group}</div>
+    <div class="ipad-score-area">
+      <div class="ipad-team-row">
+        <div class="ipad-team-name">${d.t1}</div>
+        <div class="ipad-score-ctrl">
+          <button class="ipad-sc-btn" onclick="ipadMod(-1,1)">−</button>
+          <div class="ipad-sc-num" id="ipad-sc1">0</div>
+          <button class="ipad-sc-btn" onclick="ipadMod(1,1)">+</button>
+        </div>
+      </div>
+      <div class="ipad-sep">vs</div>
+      <div class="ipad-team-row">
+        <div class="ipad-team-name">${d.t2}</div>
+        <div class="ipad-score-ctrl">
+          <button class="ipad-sc-btn" onclick="ipadMod(-1,2)">−</button>
+          <div class="ipad-sc-num" id="ipad-sc2">0</div>
+          <button class="ipad-sc-btn" onclick="ipadMod(1,2)">+</button>
+        </div>
+      </div>
+    </div>
+    <button class="ipad-save-btn" id="ipad-save-btn" onclick="ipadSaveScore()">Guardar resultado ✓</button>
+    <div id="ipad-sent-msg" style="display:none;" class="ipad-sent-msg">✓ Resultado enviado</div>
+  `;
+  body.appendChild(card);
+}
+
+window.ipadMod = function(v, n){
+  if(!ipadCurrentMatch) return;
+  if(n === 1){ ipadScores.s1 = Math.max(0, ipadScores.s1 + v); $('ipad-sc1').textContent = ipadScores.s1; }
+  else       { ipadScores.s2 = Math.max(0, ipadScores.s2 + v); $('ipad-sc2').textContent = ipadScores.s2; }
+};
+
+function ipadSaveScore(){
+  if(!ipadCurrentMatch) return;
+  const btn = $('ipad-save-btn');
+  btn.disabled = true; btn.textContent = 'Enviando…';
+  ipadSend({
+    type: 'score',
+    gi: ipadCurrentMatch.gi,
+    mi: ipadCurrentMatch.mi,
+    s1: ipadScores.s1,
+    s2: ipadScores.s2,
+    from: IPAD_CLIENT_ID
+  }).then(r => {
+    if(r.ok){
+      btn.style.display = 'none';
+      $('ipad-sent-msg').style.display = 'block';
+          setTimeout(() => {
+        ipadCurrentMatch = null;
+        $('ipad-body').innerHTML = `
+          <div class="ipad-waiting">
+            <div class="ipad-waiting-icon">✅</div>
+            <div class="ipad-waiting-text">Resultado guardado</div>
+            <div class="ipad-waiting-sub">Esperando el próximo partido…</div>
+          </div>`;
+      }, 3000);
+    } else {
+      btn.disabled = false; btn.textContent = 'Guardar resultado ✓';
+      alert('Error al enviar el resultado. Inténtalo de nuevo.');
+    }
+  }).catch(() => {
+    btn.disabled = false; btn.textContent = 'Guardar resultado ✓';
+    alert('Sin conexión a internet.');
+  });
+}
+
+// Arrancar modo iPad si corresponde
+if(IS_IPAD && IPAD_TOPIC) {
+  document.addEventListener('DOMContentLoaded', ipadInit);
+} else if(!IS_DISPLAY && !IS_BRACKET_DISPLAY) {
+  document.addEventListener('DOMContentLoaded', () => {
+    try {
+      const raw = localStorage.getItem(DV_KEY);
+      if(!raw) return;
+      const saved = JSON.parse(raw);
+      if(!saved?.title) return;
+      const entry = getAllTournaments()[saved.title];
+      if(entry) restoreTournament(entry, false);
+    } catch(e){}
+  });
+}
+
+</script>
+</body>
+</html>
