@@ -742,9 +742,9 @@ function showAdminView(){
   $('admin-btn').style.display = 'none';
   $('admin-header').style.display = 'flex';
 
-  // Iniciar listener global de dispositivos si no está ya activo
-  if(!unsubscribeDevices){
-    unsubscribeDevices = onSnapshot(collection(db,'devices'), snap=>{
+  // Iniciar listener global de dispositivos (cancelar anterior si existía)
+  if(unsubscribeDevices){ unsubscribeDevices(); unsubscribeDevices=null; }
+  unsubscribeDevices = onSnapshot(collection(db,'devices'), snap=>{
       snap.docChanges().forEach(change=>{
         const d=change.doc.data();
         if(change.type==='removed'){
@@ -783,8 +783,7 @@ function showAdminView(){
         }
         updateDeviceUI();
       });
-    });
-  }
+  });
 
   const last = localStorage.getItem('torneoPro_lastSession');
   if(last){
@@ -1535,9 +1534,8 @@ async function getAllTournaments(){
 }
 
 async function restoreTournament(sid, data, showToast){
-  // Limpiar listeners anteriores
+  // Limpiar listeners del torneo anterior (no el de dispositivos — es global)
   if(unsubscribeSession) unsubscribeSession();
-  if(unsubscribeDevices) unsubscribeDevices();
   if(unsubscribeScores) unsubscribeScores();
 
   sessionId = sid;
