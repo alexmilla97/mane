@@ -408,9 +408,10 @@
 <header id="admin-header" style="display:none">
   <div class="logo">Torneo<span>Pro</span> <span style="font-size:0.7rem;color:var(--gold);background:rgba(212,160,23,0.12);border:1px solid rgba(212,160,23,0.3);border-radius:4px;padding:0.15rem 0.5rem;vertical-align:middle;letter-spacing:0.08em;">ADMIN</span></div>
   <div style="display:flex; gap: 0.5rem; align-items:center;">
-    <button id="publish-btn" onclick="togglePublish()">📡 Publicar</button>
-    <button class="btn btn-fs" id="btn-manage-tourneys" title="Gestionar torneos guardados">📂 Mis Torneos</button>
-    <button id="admin-logout-btn" onclick="adminLogout()">Cerrar sesión</button>
+    <button class="btn btn-fs" id="publish-btn" onclick="togglePublish()" style="display:none">📡 Publicar</button>
+    <button class="btn btn-fs" id="btn-manage-tourneys">📂 Mis Torneos</button>
+    <button class="btn btn-fs" id="reset-btn">＋ Nuevo Torneo</button>
+    <button class="btn btn-danger" id="admin-logout-btn" onclick="adminLogout()">Cerrar sesión</button>
   </div>
 </header>
 
@@ -430,20 +431,8 @@
       <div class="pub-hero-sub" id="pub-hero-sub">Selecciona un torneo para ver la clasificación o el cuadro eliminatorio en directo.</div>
     </div>
 
-    <!-- Tarjeta del torneo activo -->
-    <div id="pub-torneo-card" style="display:none" class="pub-torneo-card">
-      <div class="pub-card-header">
-        <div class="pub-card-title" id="pub-card-title">—</div>
-        <div class="pub-live-badge">● En directo</div>
-      </div>
-      <div class="pub-phase-badges" id="pub-phase-badges"></div>
-      <div class="pub-card-stats" id="pub-card-stats"></div>
-      <div class="pub-card-actions">
-        <button class="pub-action-btn standings" onclick="showPubPanel('queue')">📋 Siguientes</button>
-        <button class="pub-action-btn standings" onclick="showPubPanel('standings')">📊 Clasificación</button>
-        <button class="pub-action-btn bracket" id="pub-bracket-btn" onclick="showPubPanel('bracket')" style="display:none">🏅 Cuadro</button>
-      </div>
-    </div>
+    <!-- Tarjetas de torneos publicados -->
+    <div id="pub-torneos-list" style="width:100%;max-width:480px;display:flex;flex-direction:column;gap:0.8rem;"></div>
 
     <!-- Panel inline (cola / clasificación / cuadro) -->
     <div id="pub-inline-panel" class="pub-inline-panel" style="display:none">
@@ -536,10 +525,9 @@
     <div style="display:flex;gap:0.6rem;align-items:center;flex-wrap:wrap;">
       <div style="font-size:0.84rem;color:var(--text-muted)" id="gs-progress-text"></div>
       <button class="btn btn-fs" id="btn-simulate-gs" style="border-color:var(--gold); color:var(--gold);">🎲 Simular Resultados</button>
-      <button class="btn btn-danger" id="gs-reset-btn">← Nuevo torneo</button>
-      <button class="btn btn-fs" id="btn-display-mode" title="Abre la clasificación en grande en una nueva pestaña">📺 Pantalla grande</button>
-      <button class="btn btn-fs" id="btn-queue-mode" title="Abre la lista de partidos pendientes en una nueva pestaña">📋 Cola de partidos</button>
-      <button class="btn btn-fs" id="btn-connect-device" title="Conectar iPad u otro dispositivo">📱 Conectar</button>
+      <button class="btn btn-fs" id="btn-display-mode">📺 Pantalla grande</button>
+      <button class="btn btn-fs" id="btn-queue-mode">📋 Cola de partidos</button>
+      <button class="btn btn-fs" id="btn-connect-device">📱 Conectar</button>
       <div class="ntfy-mini" id="ntfy-mini" onclick="openConnectModal()">
         <span class="ntfy-dot" id="ntfy-dot2"></span>
         <span id="ntfy-mini-text">0 disp.</span>
@@ -586,7 +574,6 @@
     <div style="display:flex;gap:0.6rem;align-items:center;flex-wrap:wrap;">
       <div style="font-size:0.85rem;color:var(--text-muted)" id="progress-text"></div>
       <button class="btn btn-fs" id="btn-fullscreen">⛶ Pantalla completa</button>
-      <button class="btn btn-danger" id="reset-btn">← Nuevo torneo</button>
     </div>
   </div>
   <div style="width:100%"><div class="progress-bar"><div class="progress-fill" id="progress-fill" style="width:0%"></div></div></div>
@@ -754,10 +741,10 @@ let isPublished = false;
 
 async function checkPublishState(){
   try {
-    const snap = await getDoc(doc(db, 'config', 'activeTorneo'));
+    const snap = await getDoc(doc(db, 'config', 'publishedTorneos'));
     const data = snap.data();
-    const last = localStorage.getItem('torneoPro_lastSession');
-    isPublished = data?.sessionId && data.sessionId === last;
+    const ids = data?.sessionIds || [];
+    isPublished = sessionId ? ids.includes(sessionId) : false;
     updatePublishBtn();
   } catch(e){}
 }
@@ -766,32 +753,32 @@ function updatePublishBtn(){
   const btn = $('publish-btn');
   if(!btn) return;
   if(!sessionId){ btn.style.display='none'; return; }
-  btn.style.display = 'block';
+  btn.style.display = 'inline-flex';
   if(isPublished){
-    btn.className = 'published';
+    btn.classList.add('published');
     btn.textContent = '✓ Publicado — Ocultar';
   } else {
-    btn.className = '';
+    btn.classList.remove('published');
     btn.textContent = '📡 Publicar';
   }
 }
 
 window.togglePublish = async () => {
   if(!sessionId){ toast('⚠️ Crea o carga un torneo primero'); return; }
-  const btn = $('publish-btn');
-  btn.disabled = true;
+  const btn = $('publish-btn'); btn.disabled = true;
   try {
+    const snap = await getDoc(doc(db, 'config', 'publishedTorneos'));
+    let ids = snap.data()?.sessionIds || [];
     if(isPublished){
-      // Despublicar — borrar torneo activo
-      await setDoc(doc(db, 'config', 'activeTorneo'), { sessionId: null, updatedAt: serverTimestamp() });
+      ids = ids.filter(id => id !== sessionId);
       isPublished = false;
       toast('🔒 Torneo ocultado al público');
     } else {
-      // Publicar
-      await setDoc(doc(db, 'config', 'activeTorneo'), { sessionId, updatedAt: serverTimestamp() });
+      if(!ids.includes(sessionId)) ids.push(sessionId);
       isPublished = true;
       toast('📡 Torneo publicado — ya visible para todos');
     }
+    await setDoc(doc(db, 'config', 'publishedTorneos'), { sessionIds: ids, updatedAt: serverTimestamp() });
     updatePublishBtn();
   } catch(e){
     toast('⚠️ Error al cambiar estado de publicación');
@@ -848,89 +835,93 @@ document.addEventListener('DOMContentLoaded', () => {
   $('login-email')?.addEventListener('keydown', e => { if(e.key==='Enter') $('login-password').focus(); });
 });
 
-// ── Vista pública: suscripción al torneo activo ────────
+// ── Vista pública: suscripción a torneos publicados ───
 let pubUnsub = null;
-let pubTorneoData = null; // datos del torneo activo para renderizar paneles
+let pubTorneosData = {}; // sid -> tData
 
 function subscribePublicView(){
   if(pubUnsub) pubUnsub();
-  pubUnsub = onSnapshot(doc(db, 'config', 'activeTorneo'), snap => {
+  pubUnsub = onSnapshot(doc(db, 'config', 'publishedTorneos'), snap => {
     const data = snap.data();
-    if(!data?.sessionId){
-      $('pub-torneo-card').style.display = 'none';
+    const ids = data?.sessionIds?.filter(Boolean) || [];
+    if(!ids.length){
+      $('pub-torneos-list').innerHTML = '';
       $('pub-no-torneo').style.display = 'block';
       $('pub-hero-sub').textContent = 'No hay ningún torneo activo en este momento.';
       return;
     }
     $('pub-no-torneo').style.display = 'none';
-    const sid = data.sessionId;
-    // Cola
-    onSnapshot(queueRef(sid), qSnap => {
-      const qData = qSnap.data();
-      if(!qData) return;
-      $('pub-torney-name').textContent = qData.title || '';
+    $('pub-hero-sub').textContent = 'Selecciona un torneo para seguirlo en directo.';
+    // Suscribirse a cada torneo publicado
+    ids.forEach(sid => {
+      onSnapshot(tourneyRef(sid), tSnap => {
+        const tData = tSnap.data();
+        if(!tData) return;
+        pubTorneosData[sid] = tData;
+        renderAllPublicCards(ids);
+      });
     });
-    // Torneo completo
-    onSnapshot(tourneyRef(sid), tSnap => {
-      const tData = tSnap.data();
-      if(!tData) return;
-      pubTorneoData = tData;
-      renderPublicCard(tData);
+    // Limpiar torneos que ya no están publicados
+    Object.keys(pubTorneosData).forEach(sid => {
+      if(!ids.includes(sid)) delete pubTorneosData[sid];
     });
   });
 }
 
-function renderPublicCard(tData){
-  const gd = tData.groupData;
-  const st = tData.state;
-  if(!gd?.title) return;
-
-  $('pub-card-title').textContent = gd.title;
-  $('pub-torney-name').textContent = gd.title;
-
-  // Badges de fase
-  const badges = $('pub-phase-badges'); badges.innerHTML = '';
-  if(gd.groups){
-    const b1 = document.createElement('div'); b1.className='pub-phase-badge groups'; b1.textContent='Fase de Grupos';
-    badges.appendChild(b1);
-  }
-  if(st?.rounds){
-    const b2 = document.createElement('div'); b2.className='pub-phase-badge knockout'; b2.textContent='Eliminatoria';
-    badges.appendChild(b2);
-    $('pub-bracket-btn').style.display = 'flex';
-  } else {
-    $('pub-bracket-btn').style.display = 'none';
-  }
-
-  // Stats
-  const stats = $('pub-card-stats'); stats.innerHTML = '';
-  if(gd.groups){
-    const allM = gd.groups.flatMap(g=>g.matches);
-    const played = allM.filter(m=>m.played).length;
-    stats.innerHTML =
-      `<span class="pub-card-stat">👥 ${gd.groups.length} grupos</span>`+
-      `<span class="pub-card-stat">🎮 ${played}/${allM.length} partidos</span>`+
-      (st?.rounds ? `<span class="pub-card-stat">🏅 Cuadro: ${st.rounds.flat().filter(m=>m.winner).length}/${st.totalMatches||0}</span>` : '');
-  }
-
-  $('pub-torneo-card').style.display = 'flex';
-  $('pub-hero-sub').textContent = 'Selecciona una vista para seguir el torneo en directo.';
-
-  // Si hay panel abierto, refrescarlo
-  const panel = $('pub-inline-panel');
-  if(panel.style.display !== 'none'){
-    const currentTab = panel.dataset.tab;
-    if(currentTab) renderPubPanelContent(currentTab);
-  }
+function renderAllPublicCards(ids){
+  const list = $('pub-torneos-list'); list.innerHTML = '';
+  ids.forEach(sid => {
+    const tData = pubTorneosData[sid];
+    if(!tData) return;
+    list.appendChild(buildPublicCard(sid, tData));
+  });
 }
 
-window.showPubPanel = (tab) => {
+function buildPublicCard(sid, tData){
+  const gd = tData.groupData, st = tData.state;
+  if(!gd?.title) return document.createElement('div');
+  const card = document.createElement('div'); card.className = 'pub-torneo-card';
+
+  // Badges
+  const phaseBadges = [];
+  if(gd.groups) phaseBadges.push(`<div class="pub-phase-badge groups">Fase de Grupos</div>`);
+  if(st?.rounds) phaseBadges.push(`<div class="pub-phase-badge knockout">Eliminatoria</div>`);
+
+  // Stats
+  const allM = gd.groups?.flatMap(g=>g.matches) || [];
+  const played = allM.filter(m=>m.played).length;
+  const statsHtml =
+    `<span class="pub-card-stat">👥 ${gd.groups?.length||0} grupos</span>`+
+    `<span class="pub-card-stat">🎮 ${played}/${allM.length} partidos</span>`+
+    (st?.rounds ? `<span class="pub-card-stat">🏅 Cuadro: ${st.rounds.flat().filter(m=>m.winner).length}/${st.totalMatches||0}</span>` : '');
+
+  const bracketBtn = st?.rounds
+    ? `<button class="pub-action-btn bracket" onclick="showPubPanel('${sid}','bracket')">🏅 Cuadro</button>`
+    : '';
+
+  card.innerHTML =
+    `<div class="pub-card-header">
+      <div class="pub-card-title">${gd.title}</div>
+      <div class="pub-live-badge">● En directo</div>
+    </div>
+    <div class="pub-phase-badges">${phaseBadges.join('')}</div>
+    <div class="pub-card-stats">${statsHtml}</div>
+    <div class="pub-card-actions">
+      <button class="pub-action-btn standings" onclick="showPubPanel('${sid}','queue')">📋 Siguientes</button>
+      <button class="pub-action-btn standings" onclick="showPubPanel('${sid}','standings')">📊 Clasificación</button>
+      ${bracketBtn}
+    </div>`;
+  return card;
+}
+
+window.showPubPanel = (sid, tab) => {
   const panel = $('pub-inline-panel');
   panel.style.display = 'flex';
   panel.dataset.tab = tab;
+  panel.dataset.sid = sid;
   const titles = { queue:'📋 Siguientes Partidos', standings:'📊 Clasificación', bracket:'🏅 Cuadro Eliminatorio' };
   $('pub-inline-title').textContent = titles[tab] || '';
-  renderPubPanelContent(tab);
+  renderPubPanelContent(sid, tab);
   panel.scrollIntoView({ behavior:'smooth', block:'nearest' });
 };
 
@@ -938,28 +929,27 @@ window.closePubPanel = () => {
   $('pub-inline-panel').style.display = 'none';
 };
 
-function renderPubPanelContent(tab){
+function renderPubPanelContent(sid, tab){
   const cont = $('pub-inline-content'); cont.innerHTML = '';
+  const tData = pubTorneosData[sid];
+  if(!tData) return;
   if(tab === 'queue'){
-    const body = document.createElement('div'); body.className = 'qv-body'; body.style.cssText='min-height:120px;';
+    const body = document.createElement('div'); body.className = 'qv-body'; body.style.minHeight='120px';
     cont.appendChild(body);
-    const last = localStorage.getItem('torneoPro_lastSession');
-    if(!last) return;
-    onSnapshot(queueRef(last), snap => {
-      const data = snap.data();
-      renderPublicQueue(data?.items || [], body);
+    onSnapshot(queueRef(sid), snap => {
+      renderPublicQueue(snap.data()?.items || [], body);
     });
-  } else if(tab === 'standings' && pubTorneoData?.groupData){
+  } else if(tab === 'standings' && tData.groupData){
     const body = document.createElement('div'); body.className='dv-groups'; body.style.cssText='padding:1.2rem;overflow-y:auto;';
     cont.appendChild(body);
-    renderPublicStandings(pubTorneoData.groupData, body);
-  } else if(tab === 'bracket' && pubTorneoData?.state?.rounds){
+    renderPublicStandings(tData.groupData, body);
+  } else if(tab === 'bracket' && tData.state?.rounds){
     const wrap = document.createElement('div'); wrap.style.cssText='overflow:auto;padding:1.5rem;min-height:300px;';
     cont.appendChild(wrap);
     const inner = document.createElement('div'); inner.style.cssText='display:flex;gap:2rem;align-items:center;';
     wrap.appendChild(inner);
     const savedState = state;
-    state = pubTorneoData.state;
+    state = tData.state;
     renderDual(inner);
     state = savedState;
     setTimeout(()=>{
@@ -1686,8 +1676,7 @@ function resetAll(){
   $('setup-screen').style.display='block';
   $('champion-banner').classList.remove('visible');
 }
-$('reset-btn').addEventListener('click',resetAll);
-$('gs-reset-btn').addEventListener('click',resetAll);
+$('reset-btn').addEventListener('click', resetAll);
 
 // ── Group stage ───────────────────────────────────────
 function makeRR(teams){
@@ -1988,12 +1977,6 @@ const _origSave = saveCurrentTournament;
 window.saveCurrentTournament = async function(){
   if(sessionId){
     localStorage.setItem('torneoPro_lastSession', sessionId);
-    // Si ya estaba publicado, actualizar los datos del torneo activo
-    if(isPublished){
-      try {
-        await setDoc(doc(db, 'config', 'activeTorneo'), { sessionId, updatedAt: serverTimestamp() });
-      } catch(e){}
-    }
     updatePublishBtn();
   }
   return _origSave();
