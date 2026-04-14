@@ -874,36 +874,66 @@ function subscribePublicView(){
     renderMergedQueue(queueMap, body);
   }
 
+  // Mapa de unsubs activos por torneo { sid: { torneoUnsub, queueUnsub } }
+  const activeSubs = {};
+
+  function unsubAll(){
+    Object.values(activeSubs).forEach(({torneoUnsub, queueUnsub}) => {
+      try { torneoUnsub?.(); queueUnsub?.(); } catch(e){}
+    });
+    Object.keys(activeSubs).forEach(k => delete activeSubs[k]);
+  }
+
   pubUnsub = onSnapshot(doc(db, 'config', 'publishedTorneos'), snap => {
     const data = snap.data();
-    const ids = data?.sessionIds?.filter(Boolean) || [];
+    const ids = (data?.sessionIds || []).filter(Boolean);
+
+    // Cancelar suscripciones de torneos que ya no están publicados
+    Object.keys(activeSubs).forEach(sid => {
+      if(!ids.includes(sid)){
+        try { activeSubs[sid].torneoUnsub?.(); activeSubs[sid].queueUnsub?.(); } catch(e){}
+        delete activeSubs[sid];
+        delete pubTorneosData[sid];
+        delete pubQueues[sid];
+      }
+    });
+
     if(!ids.length){
       $('pub-torneos-list').innerHTML = '';
       $('pub-combined-queue').style.display = 'none';
       $('pub-no-torneo').style.display = 'block';
       $('pub-hero-sub').textContent = 'No hay ningún torneo activo en este momento.';
+      renderCombinedQueue();
       return;
     }
+
     $('pub-no-torneo').style.display = 'none';
     $('pub-hero-sub').textContent = 'Selecciona un torneo para seguirlo en directo.';
-    // Limpiar torneos que ya no están publicados
-    Object.keys(pubTorneosData).forEach(sid => { if(!ids.includes(sid)) delete pubTorneosData[sid]; });
-    Object.keys(pubQueues).forEach(sid => { if(!ids.includes(sid)) delete pubQueues[sid]; });
-    // Suscribirse a cada torneo publicado
+
+    // Suscribirse solo a torneos nuevos (no repetir los que ya tienen sub activa)
     ids.forEach(sid => {
-      onSnapshot(tourneyRef(sid), tSnap => {
+      if(activeSubs[sid]) return; // ya suscrito
+
+      const torneoUnsub = onSnapshot(tourneyRef(sid), tSnap => {
+        if(!ids.includes(sid)) return; // torneo ya no publicado, ignorar
         const tData = tSnap.data();
         if(!tData) return;
         pubTorneosData[sid] = tData;
         renderAllPublicCards(ids);
       });
-      // Suscribirse a la cola de cada torneo
-      onSnapshot(queueRef(sid), qSnap => {
+
+      const queueUnsub = onSnapshot(queueRef(sid), qSnap => {
+        if(!ids.includes(sid)) return; // torneo ya no publicado, ignorar
         const qData = qSnap.data();
         pubQueues[sid] = { items: qData?.items || [], title: qData?.title || '' };
         renderCombinedQueue();
       });
+
+      activeSubs[sid] = { torneoUnsub, queueUnsub };
     });
+
+    renderAllPublicCards(ids);
+    renderCombinedQueue();
   });
 }
 
