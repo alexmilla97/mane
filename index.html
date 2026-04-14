@@ -363,6 +363,10 @@
   /* Header admin con logout */
   #admin-logout-btn { font-family: 'Barlow Condensed', sans-serif; font-size: 0.8rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; padding: 0.3rem 0.8rem; border-radius: var(--radius); border: 1px solid var(--border-strong); cursor: pointer; background: transparent; color: var(--text-muted); transition: all 0.15s; }
   #admin-logout-btn:hover { border-color: #E24B4A; color: #E24B4A; }
+  #publish-btn { font-family: 'Barlow Condensed', sans-serif; font-size: 0.8rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; padding: 0.3rem 0.9rem; border-radius: var(--radius); border: 1px solid var(--border-strong); cursor: pointer; background: transparent; color: var(--text-muted); transition: all 0.15s; display: none; }
+  #publish-btn:hover { border-color: var(--win); color: var(--win); background: rgba(46,204,113,0.08); }
+  #publish-btn.published { border-color: var(--win); color: var(--win); background: rgba(46,204,113,0.1); }
+  #publish-btn.published:hover { border-color: #E24B4A; color: #E24B4A; background: rgba(226,75,74,0.08); }
 
 </style>
 </head>
@@ -372,6 +376,7 @@
 <header id="admin-header" style="display:none">
   <div class="logo">Torneo<span>Pro</span> <span style="font-size:0.7rem;color:var(--gold);background:rgba(212,160,23,0.12);border:1px solid rgba(212,160,23,0.3);border-radius:4px;padding:0.15rem 0.5rem;vertical-align:middle;letter-spacing:0.08em;">ADMIN</span></div>
   <div style="display:flex; gap: 0.5rem; align-items:center;">
+    <button id="publish-btn" onclick="togglePublish()">📡 Publicar</button>
     <button class="btn btn-fs" id="btn-manage-tourneys" title="Gestionar torneos guardados">📂 Mis Torneos</button>
     <button id="admin-logout-btn" onclick="adminLogout()">Cerrar sesión</button>
   </div>
@@ -653,7 +658,7 @@ const _wp = new Proxy({}, { get(_, k){ return (...a) => window[k]?.(...a); } });
  'applyScore','clearScore','removeDevice','generateDeviceQR','copyConnectURL','openConnectModal',
  'sendMatchToDevice','ipadToggleFS','ipadMod','ipadSave','ipadStart','renderPairingScreen',
  'closeTourneysOverlay','closeConnectOverlay','goBackToGroups',
- 'openLoginModal','closeLoginModal','doLogin','adminLogout','switchPubTab'
+ 'openLoginModal','closeLoginModal','doLogin','adminLogout','switchPubTab','togglePublish'
 ].forEach(fn => window[fn] = (...a) => window['_fn_'+fn]?.(...a));
 window.$ = id => document.getElementById(id);
 </script>
@@ -676,23 +681,26 @@ const app = initializeApp(firebaseConfig);
 const db  = getFirestore(app);
 const auth = getAuth(app);
 
-// ── Auth: primero anónima para Firestore, luego detectar rol ─
-await signInAnonymously(auth);
-
-// ── Detectar si ya hay sesión admin guardada ──────────
+// ── Auth: persistente por defecto en Firebase ────────
+// NO llamar signInAnonymously inmediatamente — esperar a ver si hay sesión guardada
 let isAdmin = false;
+let authReady = false;
 
-onAuthStateChanged(auth, user => {
+onAuthStateChanged(auth, async user => {
+  if(authReady) return; // solo ejecutar una vez al inicio
+  authReady = true;
+
+  if(IS_DEVICE || IS_DISPLAY || IS_BRACKET || IS_QUEUE) return; // modos especiales, no tocar
+
   if(user && !user.isAnonymous){
-    // Usuario admin logueado con email
+    // Sesión de admin guardada en el navegador — restaurar sin pedir login
     isAdmin = true;
     showAdminView();
   } else {
-    // Usuario anónimo o sin sesión — vista pública
+    // Sin sesión o anónima — asegurar auth anónima para Firestore y mostrar vista pública
+    if(!user) await signInAnonymously(auth);
     isAdmin = false;
-    if(!IS_DEVICE && !IS_DISPLAY && !IS_BRACKET && !IS_QUEUE){
-      showPublicView();
-    }
+    showPublicView();
   }
 });
 
@@ -704,7 +712,60 @@ function showAdminView(){
   // Restaurar última sesión
   const last = localStorage.getItem('torneoPro_lastSession');
   if(last) loadTournament(last).catch(()=>{});
+  // Comprobar si hay torneo publicado
+  checkPublishState();
 }
+
+// ── Publicar torneo ───────────────────────────────────
+let isPublished = false;
+
+async function checkPublishState(){
+  try {
+    const snap = await getDoc(doc(db, 'config', 'activeTorneo'));
+    const data = snap.data();
+    const last = localStorage.getItem('torneoPro_lastSession');
+    isPublished = data?.sessionId && data.sessionId === last;
+    updatePublishBtn();
+  } catch(e){}
+}
+
+function updatePublishBtn(){
+  const btn = $('publish-btn');
+  if(!btn) return;
+  if(!sessionId){ btn.style.display='none'; return; }
+  btn.style.display = 'block';
+  if(isPublished){
+    btn.className = 'published';
+    btn.textContent = '✓ Publicado — Ocultar';
+  } else {
+    btn.className = '';
+    btn.textContent = '📡 Publicar';
+  }
+}
+
+window.togglePublish = async () => {
+  if(!sessionId){ toast('⚠️ Crea o carga un torneo primero'); return; }
+  const btn = $('publish-btn');
+  btn.disabled = true;
+  try {
+    if(isPublished){
+      // Despublicar — borrar torneo activo
+      await setDoc(doc(db, 'config', 'activeTorneo'), { sessionId: null, updatedAt: serverTimestamp() });
+      isPublished = false;
+      toast('🔒 Torneo ocultado al público');
+    } else {
+      // Publicar
+      await setDoc(doc(db, 'config', 'activeTorneo'), { sessionId, updatedAt: serverTimestamp() });
+      isPublished = true;
+      toast('📡 Torneo publicado — ya visible para todos');
+    }
+    updatePublishBtn();
+  } catch(e){
+    toast('⚠️ Error al cambiar estado de publicación');
+  } finally {
+    btn.disabled = false;
+  }
+};
 
 function showPublicView(){
   $('admin-header').style.display = 'none';
@@ -862,6 +923,7 @@ async function sendToDevice(sid, deviceId, payload){
 // MODO DISPOSITIVO
 // ══════════════════════════════════════════════════════
 if(IS_DEVICE && DEVICE_ID && SESSION_ID){
+  await signInAnonymously(auth);
   document.querySelector('header').style.display = 'none';
   ['setup-screen','group-screen','tournament-screen','queue-screen','display-screen']
     .forEach(id => { const el=$(id); if(el) el.style.display='none'; });
@@ -1016,6 +1078,7 @@ if(IS_DEVICE && DEVICE_ID && SESSION_ID){
 // MODO PANTALLA GRANDE / COLA (pestaña secundaria)
 // ══════════════════════════════════════════════════════
 if((IS_DISPLAY||IS_BRACKET||IS_QUEUE) && SESSION_ID){
+  await signInAnonymously(auth);
   document.querySelector('header').style.display='none';
   ['setup-screen','group-screen','tournament-screen'].forEach(id=>{const el=$(id);if(el)el.style.display='none';});
 
@@ -1161,6 +1224,7 @@ async function restoreTournament(sid, data, showToast){
   }
   subscribeToSession();
   updateDeviceUI();
+  updatePublishBtn(); // mostrar botón publicar
   // Avisar si había dispositivos ocupados al restaurar
   const busyDevs = connectedDevices.filter(d => d.busy);
   if(busyDevs.length){
@@ -1796,10 +1860,13 @@ const _origSave = saveCurrentTournament;
 window.saveCurrentTournament = async function(){
   if(sessionId){
     localStorage.setItem('torneoPro_lastSession', sessionId);
-    // Publicar torneo activo en Firestore para que usuarios anónimos lo vean
-    try {
-      await setDoc(doc(db, 'config', 'activeTorneo'), { sessionId, updatedAt: serverTimestamp() });
-    } catch(e){ console.error('Error publicando torneo activo:', e); }
+    // Si ya estaba publicado, actualizar los datos del torneo activo
+    if(isPublished){
+      try {
+        await setDoc(doc(db, 'config', 'activeTorneo'), { sessionId, updatedAt: serverTimestamp() });
+      } catch(e){}
+    }
+    updatePublishBtn();
   }
   return _origSave();
 };
@@ -1818,7 +1885,7 @@ const _fns = {
   goBackToGroups: () => { $('pairing-screen').style.display='none'; $('group-screen').style.display='block'; },
   openLoginModal: window.openLoginModal, closeLoginModal: window.closeLoginModal,
   doLogin: window.doLogin, adminLogout: window.adminLogout,
-  switchPubTab: window.switchPubTab,
+  switchPubTab: window.switchPubTab, togglePublish: window.togglePublish,
 };
 Object.entries(_fns).forEach(([k,v]) => { if(v){ window[k]=v; window['_fn_'+k]=v; } });
 
