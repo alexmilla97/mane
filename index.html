@@ -434,7 +434,13 @@
     <!-- Tarjetas de torneos publicados -->
     <div id="pub-torneos-list" style="width:100%;max-width:480px;display:flex;flex-direction:column;gap:0.8rem;"></div>
 
-    <!-- Panel inline (cola / clasificación / cuadro) -->
+    <!-- Cola combinada de todos los torneos — siempre visible -->
+    <div id="pub-combined-queue" style="display:none;width:100%;max-width:480px;flex-direction:column;gap:0.5rem;">
+      <div style="font-family:'Barlow Condensed',sans-serif;font-size:1rem;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;color:var(--gold);">📋 Siguientes Partidos</div>
+      <div class="qv-body" id="pub-combined-queue-body" style="min-height:80px;background:var(--bg2);border:1px solid var(--border-strong);border-radius:var(--radius-lg);"></div>
+    </div>
+
+    <!-- Panel inline (clasificación / cuadro) -->
     <div id="pub-inline-panel" class="pub-inline-panel" style="display:none">
       <div class="pub-inline-header">
         <div class="pub-inline-title" id="pub-inline-title">—</div>
@@ -704,9 +710,9 @@ window.$ = id => document.getElementById(id);
 </script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
-import { getFirestore, doc, setDoc, getDoc, onSnapshot, collection, getDocs, deleteDoc, serverTimestamp }
+import { getFirestore, doc, setDoc, getDoc, onSnapshot, collection, getDocs, deleteDoc, serverTimestamp, addDoc }
   from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
-import { getAuth, signInAnonymously, signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
+import { getAuth, signInAnonymously, signInWithEmailAndPassword, signOut, onAuthStateChanged, setPersistence, browserLocalPersistence } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
 
 const firebaseConfig = {
   apiKey: "AIzaSyC8nmmUQou1hQWF0Br9Y329nTL2ryrWacc",
@@ -721,6 +727,10 @@ const app = initializeApp(firebaseConfig);
 const db  = getFirestore(app);
 const auth = getAuth(app);
 
+// Persistencia permanente — la sesión sobrevive a F5, cierres de pestaña, reinicios del navegador
+// Solo se cierra con el botón "Cerrar sesión"
+await setPersistence(auth, browserLocalPersistence);
+
 
 // ── Auth: persistente — esperar a Firebase antes de mostrar nada ──
 let isAdmin = false;
@@ -730,9 +740,17 @@ function showAdminView(){
   $('public-view').classList.remove('active');
   $('admin-btn').style.display = 'none';
   $('admin-header').style.display = 'flex';
-  $('setup-screen').style.display = 'block';
   const last = localStorage.getItem('torneoPro_lastSession');
-  if(last) loadTournament(last).catch(()=>{});
+  if(last){
+    // Mostrar estado de carga brevemente mientras Firestore responde
+    $('setup-screen').style.display = 'none';
+    document.body.style.cursor = 'wait';
+    loadTournament(last)
+      .catch(()=>{ $('setup-screen').style.display = 'block'; })
+      .finally(()=>{ document.body.style.cursor = ''; });
+  } else {
+    $('setup-screen').style.display = 'block';
+  }
   checkPublishState();
 }
 
@@ -841,17 +859,36 @@ let pubTorneosData = {}; // sid -> tData
 
 function subscribePublicView(){
   if(pubUnsub) pubUnsub();
+  const pubQueues = {}; // sid -> items[]
+
+  function renderCombinedQueue(){
+    const body = $('pub-combined-queue-body'); if(!body) return;
+    const queueMap = {};
+    Object.entries(pubQueues).forEach(([sid, {items, title}]) => {
+      queueMap[sid] = items.map(it => ({ ...it, torneoName: title }));
+    });
+    const hasActive = Object.values(queueMap).some(items =>
+      items.some(it => it.status==='live' || it.status==='queued')
+    );
+    $('pub-combined-queue').style.display = hasActive ? 'flex' : 'none';
+    renderMergedQueue(queueMap, body);
+  }
+
   pubUnsub = onSnapshot(doc(db, 'config', 'publishedTorneos'), snap => {
     const data = snap.data();
     const ids = data?.sessionIds?.filter(Boolean) || [];
     if(!ids.length){
       $('pub-torneos-list').innerHTML = '';
+      $('pub-combined-queue').style.display = 'none';
       $('pub-no-torneo').style.display = 'block';
       $('pub-hero-sub').textContent = 'No hay ningún torneo activo en este momento.';
       return;
     }
     $('pub-no-torneo').style.display = 'none';
     $('pub-hero-sub').textContent = 'Selecciona un torneo para seguirlo en directo.';
+    // Limpiar torneos que ya no están publicados
+    Object.keys(pubTorneosData).forEach(sid => { if(!ids.includes(sid)) delete pubTorneosData[sid]; });
+    Object.keys(pubQueues).forEach(sid => { if(!ids.includes(sid)) delete pubQueues[sid]; });
     // Suscribirse a cada torneo publicado
     ids.forEach(sid => {
       onSnapshot(tourneyRef(sid), tSnap => {
@@ -860,10 +897,12 @@ function subscribePublicView(){
         pubTorneosData[sid] = tData;
         renderAllPublicCards(ids);
       });
-    });
-    // Limpiar torneos que ya no están publicados
-    Object.keys(pubTorneosData).forEach(sid => {
-      if(!ids.includes(sid)) delete pubTorneosData[sid];
+      // Suscribirse a la cola de cada torneo
+      onSnapshot(queueRef(sid), qSnap => {
+        const qData = qSnap.data();
+        pubQueues[sid] = { items: qData?.items || [], title: qData?.title || '' };
+        renderCombinedQueue();
+      });
     });
   });
 }
@@ -907,7 +946,6 @@ function buildPublicCard(sid, tData){
     <div class="pub-phase-badges">${phaseBadges.join('')}</div>
     <div class="pub-card-stats">${statsHtml}</div>
     <div class="pub-card-actions">
-      <button class="pub-action-btn standings" onclick="showPubPanel('${sid}','queue')">📋 Siguientes</button>
       <button class="pub-action-btn standings" onclick="showPubPanel('${sid}','standings')">📊 Clasificación</button>
       ${bracketBtn}
     </div>`;
@@ -933,13 +971,7 @@ function renderPubPanelContent(sid, tab){
   const cont = $('pub-inline-content'); cont.innerHTML = '';
   const tData = pubTorneosData[sid];
   if(!tData) return;
-  if(tab === 'queue'){
-    const body = document.createElement('div'); body.className = 'qv-body'; body.style.minHeight='120px';
-    cont.appendChild(body);
-    onSnapshot(queueRef(sid), snap => {
-      renderPublicQueue(snap.data()?.items || [], body);
-    });
-  } else if(tab === 'standings' && tData.groupData){
+  if(tab === 'standings' && tData.groupData){
     const body = document.createElement('div'); body.className='dv-groups'; body.style.cssText='padding:1.2rem;overflow-y:auto;';
     cont.appendChild(body);
     renderPublicStandings(tData.groupData, body);
@@ -958,6 +990,41 @@ function renderPubPanelContent(sid, tab){
       inner.style.transformOrigin = 'top left';
     }, 100);
   }
+}
+
+function renderMergedQueue(queueMap, body){
+  // Fusionar items de todos los torneos, solo live y queued
+  const allItems = Object.values(queueMap).flatMap(items =>
+    (items || []).filter(it => it.status === 'live' || it.status === 'queued')
+  );
+  // Ordenar: live primero, luego por dispositivo y posición en cola
+  allItems.sort((a,b) => {
+    if(a.status !== b.status) return a.status === 'live' ? -1 : 1;
+    // Agrupar por dispositivo
+    const devA = a.devName || '', devB = b.devName || '';
+    if(devA !== devB) return devA.localeCompare(devB);
+    return (a.queuePos||0) - (b.queuePos||0);
+  });
+  if(!allItems.length){ body.innerHTML='<div class="qv-empty">Sin partidos asignados</div>'; return; }
+  body.innerHTML='';
+  // Calcular posición por dispositivo
+  const devCounters = {};
+  allItems.forEach(it => {
+    const isLive = it.status === 'live';
+    const dev = it.devName || '—';
+    if(!devCounters[dev]) devCounters[dev] = 0;
+    if(!isLive) devCounters[dev]++;
+    const posLabel = isLive ? 'En juego' : `#${devCounters[dev]}`;
+    const div = document.createElement('div'); div.className='qv-item '+(isLive?'live':'queued');
+    div.innerHTML =
+      `<div class="qv-indicator"><div class="qv-dot ${it.status}"></div><div class="qv-pos-num ${it.status}">${posLabel}</div></div>`+
+      `<div>`+
+        `<div class="qv-teams">${it.t1}<span class="vs">vs</span>${it.t2}</div>`+
+        `<div class="qv-group">${it.group}${it.torneoName ? ` · <span style="opacity:0.6">${it.torneoName}</span>` : ''}</div>`+
+      `</div>`+
+      (it.devName?`<div class="qv-device"><div class="qv-device-name ${it.status}">📱 ${it.devName}</div><div class="qv-device-lbl">${isLive?'dispositivo':'siguiente en'}</div></div>`:'');
+    body.appendChild(div);
+  });
 }
 
 function renderPublicQueue(items, body){
@@ -1034,7 +1101,8 @@ async function saveQueueMeta(sid, items, title){
   await setDoc(queueRef(sid), { items, title, updatedAt: serverTimestamp() });
 }
 async function sendToDevice(sid, deviceId, payload){
-  await setDoc(deviceDoc(deviceId), { ...payload, ts: serverTimestamp() });
+  // Mensajes van a subcolección inbox — no toca el documento de presencia
+  await addDoc(collection(db, 'devices', deviceId, 'inbox'), { ...payload, ts: serverTimestamp() });
 }
 
 // ══════════════════════════════════════════════════════
@@ -1159,12 +1227,15 @@ if(IS_DEVICE && DEVICE_ID){
     }
   };
 
-  // Escuchar asignaciones en tiempo real — colección global
-  onSnapshot(doc(db,'devices',DEVICE_ID), snap => {
-    const data = snap.data();
-    if(!data) return;
-    if(data.match && data.match.target === DEVICE_ID){
+  // Escuchar mensajes entrantes — subcolección inbox, no toca la presencia
+  onSnapshot(collection(db,'devices',DEVICE_ID,'inbox'), snap => {
+    snap.docChanges().forEach(change => {
+      if(change.type !== 'added') return;
+      const data = change.doc.data();
       const m = data.match;
+      if(!m || m.target !== DEVICE_ID) return;
+      // Borrar el mensaje después de procesarlo
+      deleteDoc(change.doc.ref).catch(()=>{});
       if(curMatch && m.type === 'queueUpdate'){
         const nb = document.querySelector('.ipad-next');
         if(m.nextT1 && m.nextT2){
@@ -1175,7 +1246,7 @@ if(IS_DEVICE && DEVICE_ID){
         return;
       }
       if(m.type === 'match') showMatch(m);
-    }
+    });
   });
 
   window.ipadToggleFS = () => {
@@ -1288,6 +1359,7 @@ async function buildAndSaveQueue(){
         }
       }
       items.push({ gi,mi,t1:m.t1.name,t2:m.t2.name,group:g.name,
+        torneoName:groupData.title,
         status:dev?'live':qInfo?'queued':'pending',
         devName:dev?dev.name:qInfo?.devName||null,
         queuePos:qInfo?.pos||null, queueTotal:qInfo?.total||null });
