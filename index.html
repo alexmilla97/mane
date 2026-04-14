@@ -1314,7 +1314,7 @@ if(IS_DEVICE && DEVICE_ID){
 // ══════════════════════════════════════════════════════
 // MODO PANTALLA GRANDE / COLA (pestaña secundaria)
 // ══════════════════════════════════════════════════════
-if((IS_DISPLAY||IS_BRACKET||IS_QUEUE) && SESSION_ID){
+if((IS_DISPLAY||IS_BRACKET||IS_QUEUE) && (SESSION_ID||IS_QUEUE)){
   if(!auth.currentUser) await signInAnonymously(auth);
   document.querySelector('header').style.display='none';
   ['setup-screen','group-screen','tournament-screen'].forEach(id=>{const el=$(id);if(el)el.style.display='none';});
@@ -1322,12 +1322,11 @@ if((IS_DISPLAY||IS_BRACKET||IS_QUEUE) && SESSION_ID){
   if(IS_QUEUE){
     $('queue-screen').classList.add('active');
     const sub=$('qv-subtitle');
-    onSnapshot(queueRef(SESSION_ID), snap=>{
-      const data=snap.data();
-      if(!data) return;
-      if(sub) sub.textContent=data.title||'';
+
+    function renderQueueItems(allItems, title){
+      if(sub) sub.textContent = title || '';
       const body=$('qv-body');
-      const active=(data.items||[]).filter(it=>it.status==='live'||it.status==='queued');
+      const active=allItems.filter(it=>it.status==='live'||it.status==='queued');
       if(!active.length){ body.innerHTML='<div class="qv-empty">Sin partidos asignados</div>'; return; }
       body.innerHTML='';
       active.forEach((it,idx)=>{
@@ -1335,11 +1334,47 @@ if((IS_DISPLAY||IS_BRACKET||IS_QUEUE) && SESSION_ID){
         const div=document.createElement('div'); div.className='qv-item '+(isLive?'live':'queued');
         const posLabel=isLive?'En juego':`#${idx+1-active.filter((x,i)=>i<idx&&x.status==='live').length}`;
         div.innerHTML=`<div class="qv-indicator"><div class="qv-dot ${it.status}"></div><div class="qv-pos-num ${it.status}">${posLabel}</div></div>`+
-          `<div><div class="qv-teams">${it.t1}<span class="vs">vs</span>${it.t2}</div><div class="qv-group">${it.group}</div></div>`+
+          `<div><div class="qv-teams">${it.t1}<span class="vs">vs</span>${it.t2}</div>`+
+          `<div class="qv-group">${it.torneoName?`<span style="color:var(--gold);opacity:0.8">${it.torneoName}</span> · `:''}${it.group}</div></div>`+
           (it.devName?`<div class="qv-device"><div class="qv-device-name ${it.status}">📱 ${it.devName}</div><div class="qv-device-lbl">${isLive?'dispositivo':'siguiente en'}</div></div>`:'');
         body.appendChild(div);
       });
-    });
+    }
+
+    if(SESSION_ID){
+      // Cola de un torneo específico (compatibilidad)
+      onSnapshot(queueRef(SESSION_ID), snap=>{
+        const data=snap.data();
+        renderQueueItems(data?.items||[], data?.title||'');
+      });
+    } else {
+      // Cola combinada de todos los torneos publicados
+      const pubQueuesLocal = {};
+      function mergAndRender(){
+        const allItems=[];
+        Object.entries(pubQueuesLocal).forEach(([sid,{items,title}])=>{
+          items.forEach(it=>allItems.push({...it,torneoName:title}));
+        });
+        allItems.sort((a,b)=>({live:0,queued:1,pending:2}[a.status]||2)-({live:0,queued:1,pending:2}[b.status]||2));
+        renderQueueItems(allItems, 'Todos los torneos');
+      }
+      onSnapshot(doc(db,'config','publishedTorneos'), snap=>{
+        const ids=(snap.data()?.sessionIds||[]).filter(Boolean);
+        if(!ids.length){ renderQueueItems([],''); return; }
+        ids.forEach(sid=>{
+          if(pubQueuesLocal[sid]) return;
+          pubQueuesLocal[sid]={items:[],title:''};
+          onSnapshot(queueRef(sid), qSnap=>{
+            const qData=qSnap.data();
+            pubQueuesLocal[sid]={items:qData?.items||[],title:qData?.title||''};
+            mergAndRender();
+          });
+        });
+        // Limpiar torneos ya no publicados
+        Object.keys(pubQueuesLocal).forEach(sid=>{if(!ids.includes(sid)){delete pubQueuesLocal[sid];}});
+        mergAndRender();
+      });
+    }
   } else {
     $('display-screen').classList.add('active');
     onSnapshot(tourneyRef(SESSION_ID), snap=>{
@@ -1727,14 +1762,31 @@ async function _sendQueueUpdate(dev){
 
 async function sendMatchToDevice(dev, gi, mi, btn){
   if(!dev.queue) dev.queue=[];
-  // Ocupado — ya sea por este torneo o por otro
-  const isBusy = dev.busy || dev.firestoreBusy;
+
+  // Verificar estado busy en Firestore en tiempo real (puede estar ocupado en otro torneo)
+  let firestoreBusy = dev.firestoreBusy || false;
+  let busyTorneoName = dev.busyTorneo || null;
+  try {
+    const snap = await getDoc(doc(db,'devices',dev.clientId));
+    const data = snap.data();
+    if(data?.busy){
+      firestoreBusy = true;
+      busyTorneoName = data.busyTorneo || null;
+      // Sincronizar estado local
+      if(!dev.busy){ dev.firestoreBusy = true; dev.busyTorneo = busyTorneoName; }
+    } else {
+      firestoreBusy = false;
+      dev.firestoreBusy = false;
+    }
+  } catch(e){}
+
+  const isBusy = dev.busy || firestoreBusy;
   if(isBusy){
     const already=dev.queue.some(q=>q.gi===gi&&q.mi===mi);
     if(already){ toast(`⚠️ Ya está en cola de ${dev.name}`); return; }
     dev.queue.push({gi,mi});
-    const reason = dev.firestoreBusy && !dev.busy
-      ? `📋 ${dev.name} está en otro torneo (${dev.busyTorneo}) — partido en cola`
+    const reason = firestoreBusy && !dev.busy
+      ? `📋 ${dev.name} está en ${busyTorneoName||'otro torneo'} — partido en cola`
       : `📋 Partido en cola para ${dev.name}`;
     toast(reason);
     if(activePanel?.gi===gi&&activePanel?.mi===mi){ closeScorePanel(gi); activePanel=null; }
@@ -1788,13 +1840,13 @@ function rebuildDeviceButtons(container,gi,mi){
   connectedDevices.forEach(dev=>{
     const alreadyQueued=dev.queue?.some(q=>q.gi===gi&&q.mi===mi);
     const isCurrent=dev.currentMatch?.gi===gi&&dev.currentMatch?.mi===mi;
-    const otherTorneo=dev.firestoreBusy&&!dev.busy; // ocupado en otro torneo
-    let label,extraClass;
-    if(isCurrent){label=`▶ ${dev.name}`;extraClass='sent';}
-    else if(alreadyQueued){label=`📋 ${dev.name} (cola ${dev.queue.length})`;extraClass='queued';}
-    else if(otherTorneo){label=`⏳ ${dev.name} · ${dev.busyTorneo||'otro torneo'}`;extraClass='busy';}
-    else if(dev.busy){label=`⏳ ${dev.name}${dev.queue?.length?` +${dev.queue.length}`:''}`;extraClass='busy';}
-    else{label=`📱 ${dev.name}`;extraClass='';}
+    const otherTorneo = dev.firestoreBusy && !dev.busy;
+    let label, extraClass;
+    if(isCurrent){ label=`▶ ${dev.name}`; extraClass='sent'; }
+    else if(alreadyQueued){ label=`📋 ${dev.name} (cola ${dev.queue.length})`; extraClass='queued'; }
+    else if(otherTorneo){ label=`⏳ ${dev.name} · ${dev.busyTorneo||'otro torneo'}`; extraClass='busy'; }
+    else if(dev.busy){ label=`⏳ ${dev.name}${dev.queue?.length?` +${dev.queue.length}`:''}`;extraClass='busy'; }
+    else{ label=`📱 ${dev.name}`; extraClass=''; }
     const btn=Object.assign(document.createElement('button'),{className:`send-to-btn${extraClass?' '+extraClass:''}`,innerHTML:label});
     btn.onclick=()=>sendMatchToDevice(dev,gi,mi,btn);
     container.appendChild(btn);
@@ -1818,9 +1870,9 @@ $('btn-display-mode').addEventListener('click',()=>{
   toast('📺 Pantalla grande abierta');
 });
 $('btn-queue-mode').addEventListener('click',()=>{
-  if(!sessionId){toast('⚠️ Crea o carga un torneo primero');return;}
-  window.open(`${location.pathname}?mode=queue&session=${sessionId}`,'_blank','noopener');
-  toast('📋 Cola de partidos abierta');
+  // Cola combinada de todos los torneos publicados — sin session específica
+  window.open(`${location.pathname}?mode=queue`,'_blank','noopener');
+  toast('📋 Cola combinada abierta');
 });
 
 // ── Setup ─────────────────────────────────────────────
