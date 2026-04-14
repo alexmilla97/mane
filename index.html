@@ -473,6 +473,14 @@
 
 <!-- SETUP -->
 <div id="setup-screen">
+  <!-- Barra de dispositivos visible siempre en modo admin -->
+  <div id="setup-device-bar" style="background:var(--bg2);border-bottom:1px solid var(--border);padding:0.6rem 2rem;display:flex;align-items:center;justify-content:flex-end;gap:0.6rem;">
+    <button class="btn btn-fs" id="btn-connect-device-setup">📱 Conectar dispositivo</button>
+    <div class="ntfy-mini" id="ntfy-mini-setup" onclick="openConnectModal()" style="display:none">
+      <span class="ntfy-dot" id="ntfy-dot-setup"></span>
+      <span id="ntfy-mini-text-setup">0 disp.</span>
+    </div>
+  </div>
   <div style="max-width:680px;margin:3rem auto;padding:0 1.5rem;">
     <div class="setup-card">
       <h2>Nuevo Torneo</h2>
@@ -1536,9 +1544,10 @@ function subscribeToSession(){
       const existing=connectedDevices.find(x=>x.clientId===d.clientId);
       if(existing){
         existing.lastSeen=Date.now();
-        // Si el dispositivo reporta idle pero el gestor lo tiene como busy, corregir
-        if(d.status === 'idle' && existing.busy){
-          existing.busy=false; existing.currentMatch=null;
+        // Solo resetear busy si el dispositivo reporta idle Y no tiene currentMatch
+        // (evitar borrar el estado live al recargar el gestor)
+        if(d.status === 'idle' && existing.busy && !existing.currentMatch){
+          existing.busy=false;
           saveDevices();
         }
       } else if(d.clientId){
@@ -1620,8 +1629,16 @@ $('btn-manage-tourneys').onclick=()=>{ renderTourneysList(); $('tourneys-overlay
 // ── Dispositivos ──────────────────────────────────────
 function updateDeviceUI(){
   const count=connectedDevices.length;
+  // Sync main phase bar badge
   const mini=$('ntfy-mini-text'); if(mini) mini.textContent=count===0?'0 disp.':`${count} disp.`;
   const dot2=$('ntfy-dot2'); if(dot2){ count>0?dot2.classList.add('on'):dot2.classList.remove('on'); }
+  // Sync setup screen badge
+  const miniSetup=$('ntfy-mini-text-setup');
+  const dotSetup=$('ntfy-dot-setup');
+  const badgeSetup=$('ntfy-mini-setup');
+  if(miniSetup) miniSetup.textContent=count===0?'0 disp.':`${count} disp.`;
+  if(dotSetup){ count>0?dotSetup.classList.add('on'):dotSetup.classList.remove('on'); }
+  if(badgeSetup) badgeSetup.style.display=count>0?'flex':'none';
   renderDevicesList();
   document.querySelectorAll('.score-panel.open').forEach(p=>{
     const [,gi,mi]=(p.id||'').split('-');
@@ -1686,6 +1703,7 @@ function openConnectModal(){
   if(!$('connect-device-name').value){ $('connect-device-name').value=`Dispositivo ${connectedDevices.length+1}`; }
 }
 $('btn-connect-device').addEventListener('click', openConnectModal);
+$('btn-connect-device-setup').addEventListener('click', openConnectModal);
 
 // Limpieza dispositivos inactivos (nunca los ocupados)
 setInterval(()=>{
