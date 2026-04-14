@@ -1373,17 +1373,26 @@ let unsubscribeSession=null, unsubscribeDevices=null, unsubscribeScores=null;
 function genSessionId(){ return 'trn-'+Math.random().toString(36).slice(2,14); }
 
 // ── Persistencia en Firestore ─────────────────────────
-let _saveTimer = null;
+let _saveInFlight = false;
+let _savePending = false;
+
 async function saveCurrentTournament(){
   if(!sessionId || !groupData.title) return;
-  // Debounce — esperar 300ms para agrupar múltiples saves seguidos
-  clearTimeout(_saveTimer);
-  await new Promise(resolve => { _saveTimer = setTimeout(resolve, 300); });
+  // Si ya hay un save en curso, marcar pendiente y salir
+  if(_saveInFlight){ _savePending = true; return; }
+  _saveInFlight = true;
   try {
     await saveState(sessionId, groupData, state);
     await saveDevicesMeta(sessionId, connectedDevices, blockedDevices);
     await buildAndSaveQueue();
+    localStorage.setItem('torneoPro_lastSession', sessionId);
+    updatePublishBtn();
   } catch(e){ console.error('Save error',e); }
+  finally {
+    _saveInFlight = false;
+    // Si había un save pendiente, ejecutarlo ahora
+    if(_savePending){ _savePending = false; saveCurrentTournament(); }
+  }
 }
 
 async function saveDevices(){
@@ -1479,12 +1488,19 @@ async function restoreTournament(sid, data, showToast){
 }
 
 function subscribeToSession(){
-  // Cambios en el torneo (para pantallas secundarias)
+  // Listener del torneo — sincroniza estado si viene de otro origen (no nuestros propios writes)
+  let _lastWriteTs = 0;
   unsubscribeSession = onSnapshot(tourneyRef(sessionId), snap=>{
     const data=snap.data();
     if(!data) return;
-    // Solo actualizar si viene de otro cliente (no de nosotros mismos)
-    // En el gestor lo ignoramos — somos nosotros quienes escribimos
+    // Ignorar cambios que acabamos de escribir nosotros (dentro de 2s)
+    const remoteTs = data.updatedAt?.toMillis?.() || 0;
+    if(remoteTs <= _lastWriteTs + 2000) return;
+    // Si llegamos aquí es porque otro cliente (o recarga) escribió
+    // Restaurar groupData y state sin redirigir
+    if(data.groupData?.groups) groupData = data.groupData;
+    if(data.state) state = data.state;
+    if(groupData.groups) renderGroups();
   });
 
   // Scores entrantes desde dispositivos
@@ -2152,16 +2168,6 @@ function drawLines(){
     });
   }
 }
-
-// ── Guardar última sesión usada ───────────────────────
-const _origSave = saveCurrentTournament;
-window.saveCurrentTournament = async function(){
-  if(sessionId){
-    localStorage.setItem('torneoPro_lastSession', sessionId);
-    updatePublishBtn();
-  }
-  return _origSave();
-};
 
 // ── Exponer funciones al HTML (onclick inline) ────────
 const _fns = {
