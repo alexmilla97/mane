@@ -1040,31 +1040,23 @@ function renderPubPanelContent(sid, tab){
 }
 
 function renderMergedQueue(queueMap, body){
-  // Fusionar items de todos los torneos, solo live y queued
   const allItems = Object.values(queueMap).flatMap(items =>
     (items || []).filter(it => it.status === 'live' || it.status === 'queued')
   );
-  // Ordenar: live primero, luego por dispositivo y posición en cola
+  // Live primero, luego por orden de asignación (assignedAt)
   allItems.sort((a,b) => {
     if(a.status !== b.status) return a.status === 'live' ? -1 : 1;
-    // Agrupar por dispositivo
-    const devA = a.devName || '', devB = b.devName || '';
-    if(devA !== devB) return devA.localeCompare(devB);
-    return (a.queuePos||0) - (b.queuePos||0);
+    return (a.assignedAt||0) - (b.assignedAt||0);
   });
   if(!allItems.length){ body.innerHTML='<div class="qv-empty">Sin partidos asignados</div>'; return; }
   body.innerHTML='';
-  // Calcular posición por dispositivo
-  const devCounters = {};
+  let queueIdx = 0;
   allItems.forEach(it => {
     const isLive = it.status === 'live';
-    const dev = it.devName || '—';
-    if(!devCounters[dev]) devCounters[dev] = 0;
-    if(!isLive) devCounters[dev]++;
-    const posLabel = isLive ? 'En juego' : `#${devCounters[dev]}`;
+    if(!isLive) queueIdx++;
     const div = document.createElement('div'); div.className='qv-item '+(isLive?'live':'queued');
     div.innerHTML =
-      `<div class="qv-indicator"><div class="qv-dot ${it.status}"></div><div class="qv-pos-num ${it.status}">${posLabel}</div></div>`+
+      `<div class="qv-indicator"><div class="qv-dot ${it.status}"></div><div class="qv-pos-num ${it.status}">${isLive?'En juego':'#'+queueIdx}</div></div>`+
       `<div>`+
         `<div class="qv-teams">${it.t1}<span class="vs">vs</span>${it.t2}</div>`+
         `<div class="qv-group">${it.group}${it.torneoName ? ` · <span style="opacity:0.6">${it.torneoName}</span>` : ''}</div>`+
@@ -1136,13 +1128,14 @@ function toast(msg){ const t=$('toast'); t.textContent=msg; t.classList.add('sho
 const tourneyRef  = sid => doc(db, 'torneos', sid);
 const devicesRef  = sid => doc(db, 'torneos', sid, 'meta', 'devices');
 const queueRef    = sid => doc(db, 'torneos', sid, 'meta', 'queue');
-const deviceDoc   = did => doc(db, 'devices', did);  // colección global
+const globalDevicesRef = doc(db, 'config', 'devicesList'); // lista global de dispositivos
 
 async function saveState(sid, groupData, state){
   await setDoc(tourneyRef(sid), { groupData, state, updatedAt: serverTimestamp() }, { merge: true });
 }
 async function saveDevicesMeta(sid, devices, blocked){
-  await setDoc(devicesRef(sid), { devices, blocked, updatedAt: serverTimestamp() });
+  // Guardar en global (todos los torneos comparten la misma lista)
+  await setDoc(globalDevicesRef, { devices, blocked, updatedAt: serverTimestamp() });
 }
 async function saveQueueMeta(sid, items, title){
   await setDoc(queueRef(sid), { items, title, updatedAt: serverTimestamp() });
@@ -1413,7 +1406,6 @@ let _savePending = false;
 
 async function saveCurrentTournament(){
   if(!sessionId || !groupData.title) return;
-  // Si ya hay un save en curso, marcar pendiente y salir
   if(_saveInFlight){ _savePending = true; return; }
   _saveInFlight = true;
   try {
@@ -1425,18 +1417,16 @@ async function saveCurrentTournament(){
   } catch(e){ console.error('Save error',e); }
   finally {
     _saveInFlight = false;
-    // Si había un save pendiente, ejecutarlo ahora
     if(_savePending){ _savePending = false; saveCurrentTournament(); }
   }
 }
 
 async function saveDevices(){
-  if(!sessionId) return;
   try {
     await saveDevicesMeta(sessionId, connectedDevices, blockedDevices);
-    await buildAndSaveQueue();
+    if(sessionId) await buildAndSaveQueue();
     updateDeviceUI();
-    renderGroups();
+    if(sessionId) renderGroups();
   } catch(e){ console.error(e); }
 }
 
@@ -1451,18 +1441,24 @@ async function buildAndSaveQueue(){
       if(!dev){
         for(const d of connectedDevices){
           const pos=d.queue?.findIndex(q=>q.gi===gi&&q.mi===mi);
-          if(pos!==undefined&&pos>=0){ qInfo={devName:d.name,pos:pos+1,total:d.queue.length}; break; }
+          if(pos!==undefined&&pos>=0){ qInfo={devName:d.name,pos:pos+1,total:d.queue.length,assignedAt:d.queue[pos].assignedAt||null}; break; }
         }
       }
       items.push({ gi,mi,t1:m.t1.name,t2:m.t2.name,group:g.name,
         torneoName:groupData.title,
         status:dev?'live':qInfo?'queued':'pending',
         devName:dev?dev.name:qInfo?.devName||null,
-        queuePos:qInfo?.pos||null, queueTotal:qInfo?.total||null });
+        queuePos:qInfo?.pos||null, queueTotal:qInfo?.total||null,
+        assignedAt: dev?.currentMatch?.assignedAt || qInfo?.assignedAt || null });
     });
   });
-  items.sort((a,b)=>({live:0,queued:1,pending:2}[a.status]-{live:0,queued:1,pending:2}[b.status]||
-    (a.status==='queued'?a.queuePos-b.queuePos:0)));
+  // Ordenar: live primero, luego queued por orden de asignación, pending al final
+  items.sort((a,b)=>{
+    const rank = {live:0, queued:1, pending:2};
+    if(rank[a.status] !== rank[b.status]) return rank[a.status] - rank[b.status];
+    if(a.status === 'queued') return (a.assignedAt||0) - (b.assignedAt||0);
+    return 0;
+  });
   await saveQueueMeta(sessionId, items, groupData.title);
 }
 
@@ -1615,7 +1611,8 @@ async function loadTournament(sid){
       return;
     }
     const data=snap.data();
-    const devSnap=await getDoc(devicesRef(sid));
+    // Cargar dispositivos desde la lista global
+    const devSnap=await getDoc(globalDevicesRef);
     const devData=devSnap.exists()?devSnap.data():{};
     await restoreTournament(sid,{...data,devices:devData.devices||[],blocked:devData.blocked||[]},true);
     $('tourneys-overlay').style.display='none';
@@ -1784,7 +1781,7 @@ async function sendMatchToDevice(dev, gi, mi, btn){
   if(isBusy){
     const already=dev.queue.some(q=>q.gi===gi&&q.mi===mi);
     if(already){ toast(`⚠️ Ya está en cola de ${dev.name}`); return; }
-    dev.queue.push({gi,mi});
+    dev.queue.push({gi, mi, assignedAt: Date.now()});
     const reason = firestoreBusy && !dev.busy
       ? `📋 ${dev.name} está en ${busyTorneoName||'otro torneo'} — partido en cola`
       : `📋 Partido en cola para ${dev.name}`;
@@ -1811,7 +1808,7 @@ async function _sendMatchNow(dev, gi, mi, btn){
   };
   try {
     await sendToDevice(sessionId, dev.clientId, { match:payload });
-    dev.busy=true; dev.currentMatch={gi,mi};
+    dev.busy=true; dev.currentMatch={gi, mi, assignedAt: Date.now()};
     // Marcar ocupado en Firestore para que otros gestores lo vean
     await setDoc(doc(db,'devices',dev.clientId), { busy:true, busyTorneo:groupData.title||sessionId }, { merge:true });
     if(activePanel?.gi===gi&&activePanel?.mi===mi){ closeScorePanel(gi); activePanel=null; }
