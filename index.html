@@ -699,8 +699,7 @@
 <!-- Firebase -->
 <!-- Proxy global para onclick inline — las funciones reales se definen en el módulo -->
 <script>
-const _wp = new Proxy({}, { get(_, k){ return (...a) => window[k]?.(...a); } });
-['loadTournament','deleteTournament','moveTeam','openScorePanel','modSc','closeScorePanel',
+['loadTournament','deleteTournament','moveTeam','openScorePanel',
  'applyScore','clearScore','removeDevice','generateDeviceQR','copyConnectURL','openConnectModal',
  'sendMatchToDevice','ipadToggleFS','ipadMod','ipadSave','ipadStart','renderPairingScreen',
  'closeTourneysOverlay','closeConnectOverlay','goBackToGroups',
@@ -708,6 +707,7 @@ const _wp = new Proxy({}, { get(_, k){ return (...a) => window[k]?.(...a); } });
  'showPubPanel','closePubPanel'
 ].forEach(fn => window[fn] = (...a) => window['_fn_'+fn]?.(...a));
 window.$ = id => document.getElementById(id);
+// modSc e closeScorePanel se definen directamente en window dentro del módulo
 </script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
@@ -746,6 +746,7 @@ function showAdminView(){
     $('setup-screen').style.display = 'none';
     loadTournament(last);
   } else {
+    // Sin torneo previo — mostrar setup solo la primera vez
     $('setup-screen').style.display = 'block';
   }
   checkPublishState();
@@ -1356,8 +1357,12 @@ let unsubscribeSession=null, unsubscribeDevices=null, unsubscribeScores=null;
 function genSessionId(){ return 'trn-'+Math.random().toString(36).slice(2,14); }
 
 // ── Persistencia en Firestore ─────────────────────────
+let _saveTimer = null;
 async function saveCurrentTournament(){
   if(!sessionId || !groupData.title) return;
+  // Debounce — esperar 300ms para agrupar múltiples saves seguidos
+  clearTimeout(_saveTimer);
+  await new Promise(resolve => { _saveTimer = setTimeout(resolve, 300); });
   try {
     await saveState(sessionId, groupData, state);
     await saveDevicesMeta(sessionId, connectedDevices, blockedDevices);
@@ -1499,12 +1504,20 @@ function subscribeToSession(){
       const existing=connectedDevices.find(x=>x.clientId===d.clientId);
       if(existing){
         existing.lastSeen=Date.now();
+        // Si el dispositivo reporta idle pero el gestor lo tiene como busy, corregir
+        if(d.status === 'idle' && existing.busy){
+          existing.busy=false; existing.currentMatch=null;
+          saveDevices();
+        }
       } else if(d.clientId){
         connectedDevices.push({
           clientId:d.clientId, name:d.name, lastSeen:Date.now(),
           busy:false, queue:[], currentMatch:null
         });
         toast(`📱 ${d.name} conectado`);
+        // Cerrar modal de conexión automáticamente
+        const overlay=$('connect-overlay');
+        if(overlay?.classList.contains('open')) overlay.classList.remove('open');
       }
       updateDeviceUI();
     });
@@ -1515,9 +1528,8 @@ async function loadTournament(sid){
   try {
     const snap=await getDoc(tourneyRef(sid));
     if(!snap.exists()){
-      // Torneo no existe — limpiar lastSession y mostrar setup
       localStorage.removeItem('torneoPro_lastSession');
-      $('setup-screen').style.display='block';
+      toast('⚠️ Torneo no encontrado');
       return;
     }
     const data=snap.data();
@@ -1527,7 +1539,6 @@ async function loadTournament(sid){
     $('tourneys-overlay').style.display='none';
   } catch(e){
     toast('⚠️ Error al cargar torneo');
-    $('setup-screen').style.display='block';
   }
 }
 
