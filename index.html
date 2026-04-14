@@ -781,7 +781,8 @@ function updatePublishBtn(){
 
 window.togglePublish = async () => {
   if(!sessionId){ toast('⚠️ Crea o carga un torneo primero'); return; }
-  const btn = $('publish-btn'); btn.disabled = true;
+  const btns = [$('publish-btn'), $('publish-btn-bracket')].filter(Boolean);
+  btns.forEach(b => b.disabled = true);
   try {
     const snap = await getDoc(doc(db, 'config', 'publishedTorneos'));
     let ids = snap.data()?.sessionIds || [];
@@ -799,7 +800,7 @@ window.togglePublish = async () => {
   } catch(e){
     toast('⚠️ Error al cambiar estado de publicación');
   } finally {
-    btn.disabled = false;
+    btns.forEach(b => b.disabled = false);
   }
 };
 
@@ -1388,6 +1389,8 @@ async function restoreTournament(sid, data, showToast){
   sessionId = sid;
   groupData = data.groupData || {};
   state     = data.state || {};
+  isPublished = false; // resetear hasta que checkPublishState confirme
+  updatePublishBtn();
   // Restaurar estado completo de dispositivos (busy, queue, currentMatch)
   connectedDevices = (data.devices || []).map(d => ({
     clientId: d.clientId,
@@ -1413,6 +1416,7 @@ async function restoreTournament(sid, data, showToast){
   }
   subscribeToSession();
   updateDeviceUI();
+  checkPublishState(); // verificar si este torneo estaba publicado
   updatePublishBtn(); // mostrar botón publicar
   // Avisar si había dispositivos ocupados al restaurar
   const busyDevs = connectedDevices.filter(d => d.busy);
@@ -1498,7 +1502,18 @@ async function deleteTournament(sid, event){
   if(event) event.stopPropagation();
   if(!confirm('¿Eliminar este torneo?')) return;
   try {
+    // Quitar de torneos publicados si estaba
+    const pubSnap = await getDoc(doc(db, 'config', 'publishedTorneos'));
+    const ids = (pubSnap.data()?.sessionIds || []).filter(id => id !== sid);
+    await setDoc(doc(db, 'config', 'publishedTorneos'), { sessionIds: ids, updatedAt: serverTimestamp() });
+    // Limpiar la cola del torneo para que no aparezca en la vista pública
+    await setDoc(queueRef(sid), { items: [], title: '', updatedAt: serverTimestamp() });
+    // Borrar el torneo
     await deleteDoc(tourneyRef(sid));
+    if(sid === sessionId){
+      sessionId = null; isPublished = false; updatePublishBtn();
+      localStorage.removeItem('torneoPro_lastSession');
+    }
     renderTourneysList();
     toast('🗑️ Torneo eliminado');
   } catch(e){ toast('⚠️ Error al eliminar'); }
@@ -1755,6 +1770,24 @@ $('start-btn').addEventListener('click',async()=>{
 
 function resetAll(){
   if(isFsMode) exitFs();
+  // Limpiar cola del torneo actual para que no quede en vista pública
+  if(sessionId){
+    saveQueueMeta(sessionId, [], groupData.title||'').catch(()=>{});
+    // Despublicar si estaba publicado
+    if(isPublished){
+      getDoc(doc(db,'config','publishedTorneos')).then(snap=>{
+        const ids=(snap.data()?.sessionIds||[]).filter(id=>id!==sessionId);
+        setDoc(doc(db,'config','publishedTorneos'),{sessionIds:ids,updatedAt:serverTimestamp()});
+      }).catch(()=>{});
+      isPublished=false;
+    }
+  }
+  sessionId=null; groupData={}; state={};
+  connectedDevices=[]; blockedDevices=[];
+  if(unsubscribeSession) unsubscribeSession();
+  if(unsubscribeDevices) unsubscribeDevices();
+  if(unsubscribeScores) unsubscribeScores();
+  updatePublishBtn();
   ['group-screen','pairing-screen','tournament-screen'].forEach(id=>$(id).style.display='none');
   $('setup-screen').style.display='block';
   $('champion-banner').classList.remove('visible');
