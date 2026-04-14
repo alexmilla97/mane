@@ -1022,7 +1022,7 @@ function toast(msg){ const t=$('toast'); t.textContent=msg; t.classList.add('sho
 const tourneyRef  = sid => doc(db, 'torneos', sid);
 const devicesRef  = sid => doc(db, 'torneos', sid, 'meta', 'devices');
 const queueRef    = sid => doc(db, 'torneos', sid, 'meta', 'queue');
-const deviceDoc   = (sid,did) => doc(db, 'torneos', sid, 'devices', did);
+const deviceDoc   = did => doc(db, 'devices', did);  // colección global
 
 async function saveState(sid, groupData, state){
   await setDoc(tourneyRef(sid), { groupData, state, updatedAt: serverTimestamp() }, { merge: true });
@@ -1034,13 +1034,13 @@ async function saveQueueMeta(sid, items, title){
   await setDoc(queueRef(sid), { items, title, updatedAt: serverTimestamp() });
 }
 async function sendToDevice(sid, deviceId, payload){
-  await setDoc(deviceDoc(sid, deviceId), { ...payload, ts: serverTimestamp() });
+  await setDoc(deviceDoc(deviceId), { ...payload, ts: serverTimestamp() });
 }
 
 // ══════════════════════════════════════════════════════
 // MODO DISPOSITIVO
 // ══════════════════════════════════════════════════════
-if(IS_DEVICE && DEVICE_ID && SESSION_ID){
+if(IS_DEVICE && DEVICE_ID){
   await signInAnonymously(auth);
   document.querySelector('header').style.display = 'none';
   ['setup-screen','group-screen','tournament-screen','queue-screen','display-screen']
@@ -1051,8 +1051,8 @@ if(IS_DEVICE && DEVICE_ID && SESSION_ID){
   const dot = $('ipad-ntfy-dot'), st = $('ipad-status-text');
   dot.classList.add('on'); st.textContent = 'Conectado';
 
-  // Registrar presencia
-  await setDoc(doc(db,'torneos',SESSION_ID,'devices',DEVICE_ID), {
+  // Registrar presencia en colección global de dispositivos
+  await setDoc(doc(db,'devices',DEVICE_ID), {
     name: DEVICE_NAME, clientId: DEVICE_ID,
     lastSeen: serverTimestamp(), status: 'idle'
   }, { merge: true });
@@ -1060,12 +1060,10 @@ if(IS_DEVICE && DEVICE_ID && SESSION_ID){
   // Ping cada 30s
   setInterval(async () => {
     try {
-      await setDoc(doc(db,'torneos',SESSION_ID,'devices',DEVICE_ID),
-        { lastSeen: serverTimestamp() }, { merge: true });
+      await setDoc(doc(db,'devices',DEVICE_ID), { lastSeen: serverTimestamp() }, { merge: true });
     } catch(e){}
   }, 30000);
 
-  // Estado del dispositivo
   let curMatch = null, sc = {s1:0,s2:0}, timerInt = null, startTs = null, running = false;
 
   function fmtTime(ms){ const s=ms/1000|0,m=s/60|0,ss=s%60; return ('0'+m).slice(-2)+':'+('0'+ss).slice(-2); }
@@ -1090,9 +1088,13 @@ if(IS_DEVICE && DEVICE_ID && SESSION_ID){
       ? `<div class="ipad-next"><span class="ipad-next-lbl">Siguiente</span><span class="ipad-next-teams">${data.nextT1} vs ${data.nextT2}</span></div>` : '';
     const qHtml = data.queueRemaining
       ? `<div class="ipad-qbadge">+${data.queueRemaining} en cola</div>` : '';
+    // Mostrar nombre del torneo si viene en el payload
+    const torneoTag = data.torneoName
+      ? `<div style="font-family:'Barlow Condensed',sans-serif;font-size:0.7rem;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--text-muted);text-align:center;opacity:0.6;margin-bottom:2px;">${data.torneoName}</div>` : '';
     const card = document.createElement('div'); card.className='ipad-match-card';
     card.innerHTML = `
       ${qHtml}
+      ${torneoTag}
       <div class="ipad-match-group-row">
         <div class="ipad-match-group">${data.group}</div>
         ${nextHtml}
@@ -1134,13 +1136,13 @@ if(IS_DEVICE && DEVICE_ID && SESSION_ID){
     stopTimer();
     const btn=$('ipad-btn-save'); btn.disabled=true; btn.textContent='Enviando…';
     const done=curMatch; curMatch=null;
+    const sid=done.sessionId; // cada partido lleva el sessionId de su torneo
     try {
-      await setDoc(doc(db,'torneos',SESSION_ID,'scores', `${done.gi}_${done.mi}`),{
+      await setDoc(doc(db,'torneos',sid,'scores',`${done.gi}_${done.mi}`),{
         gi:done.gi, mi:done.mi, s1:sc.s1, s2:sc.s2,
         from:DEVICE_ID, elapsed:startTs?Date.now()-startTs:0, ts:serverTimestamp()
       });
-      await setDoc(doc(db,'torneos',SESSION_ID,'devices',DEVICE_ID),
-        { status:'idle' }, { merge: true });
+      await setDoc(doc(db,'devices',DEVICE_ID), { status:'idle' }, { merge: true });
       $('ipad-sent-msg').style.display='block';
       btn.style.display='none';
       setTimeout(()=>{
@@ -1157,13 +1159,12 @@ if(IS_DEVICE && DEVICE_ID && SESSION_ID){
     }
   };
 
-  // Escuchar asignaciones en tiempo real
-  onSnapshot(doc(db,'torneos',SESSION_ID,'devices',DEVICE_ID), snap => {
+  // Escuchar asignaciones en tiempo real — colección global
+  onSnapshot(doc(db,'devices',DEVICE_ID), snap => {
     const data = snap.data();
     if(!data) return;
     if(data.match && data.match.target === DEVICE_ID){
       const m = data.match;
-      // Actualizar siguiente en tiempo real si ya hay partido en curso
       if(curMatch && m.type === 'queueUpdate'){
         const nb = document.querySelector('.ipad-next');
         if(m.nextT1 && m.nextT2){
@@ -1188,7 +1189,6 @@ if(IS_DEVICE && DEVICE_ID && SESSION_ID){
     btn.textContent=!!(document.fullscreenElement||document.webkitFullscreenElement)?'✕':'⛶';
   }));
 
-  // No ejecutar resto del código de gestor
   throw new Error('device-mode');
 }
 
@@ -1382,19 +1382,16 @@ function subscribeToSession(){
     });
   });
 
-  // Presencia de dispositivos — solo actualiza lastSeen, nunca sobreescribe estado
-  unsubscribeDevices = onSnapshot(collection(db,'torneos',sessionId,'devices'), snap=>{
+  // Presencia de dispositivos — colección global, no ligada al torneo
+  unsubscribeDevices = onSnapshot(collection(db,'devices'), snap=>{
     snap.docChanges().forEach(change=>{
       const d=change.doc.data();
       if(!d || blockedDevices.includes(d.clientId)) return;
       if(change.type==='removed') return;
       const existing=connectedDevices.find(x=>x.clientId===d.clientId);
       if(existing){
-        // Solo actualizar lastSeen — preservar busy, queue, currentMatch
         existing.lastSeen=Date.now();
       } else if(d.clientId){
-        // Dispositivo nuevo — buscar si tiene estado guardado en meta/devices
-        const saved=connectedDevices.find(x=>x.clientId===d.clientId);
         connectedDevices.push({
           clientId:d.clientId, name:d.name, lastSeen:Date.now(),
           busy:false, queue:[], currentMatch:null
@@ -1491,7 +1488,8 @@ function generateDeviceQR(){
   const name=$('connect-device-name').value.trim()||'Dispositivo';
   const existing=connectedDevices.find(d=>d.name===name);
   const deviceId=existing?existing.clientId:('dev-'+Math.random().toString(36).slice(2,10));
-  const url=`${location.origin}${location.pathname}?device=${encodeURIComponent(name)}&id=${deviceId}&session=${sessionId}`;
+  // URL sin session — el dispositivo es global y puede recibir de cualquier torneo
+  const url=`${location.origin}${location.pathname}?device=${encodeURIComponent(name)}&id=${deviceId}`;
   const wrap=$('connect-qr-wrap'); wrap.innerHTML='';
   try {
     new QRCode(wrap,{ text:url, width:200, height:200, colorDark:'#000000', colorLight:'#ffffff', correctLevel:QRCode.CorrectLevel.L });
@@ -1555,7 +1553,14 @@ async function _sendMatchNow(dev, gi, mi, btn){
   const queueRemaining=dev.queue?.length||0;
   let nextT1=null,nextT2=null;
   if(queueRemaining>0){ const nxt=dev.queue[0]; const nm=groupData.groups[nxt.gi]?.matches[nxt.mi]; if(nm){nextT1=nm.t1.name;nextT2=nm.t2.name;} }
-  const payload={ type:'match', gi, mi, t1:m.t1.name, t2:m.t2.name, group:groupData.groups[gi].name, target:dev.clientId, startAt:Date.now(), queueRemaining, nextT1, nextT2 };
+  const payload={
+    type:'match', gi, mi, t1:m.t1.name, t2:m.t2.name,
+    group:groupData.groups[gi].name,
+    target:dev.clientId, startAt:Date.now(),
+    queueRemaining, nextT1, nextT2,
+    sessionId,                        // para saber dónde guardar el score
+    torneoName:groupData.title        // para mostrarlo en la tarjeta del iPad
+  };
   try {
     await sendToDevice(sessionId, dev.clientId, { match:payload });
     dev.busy=true; dev.currentMatch={gi,mi};
