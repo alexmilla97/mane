@@ -1109,7 +1109,8 @@ async function sendToDevice(sid, deviceId, payload){
 // MODO DISPOSITIVO
 // ══════════════════════════════════════════════════════
 if(IS_DEVICE && DEVICE_ID){
-  await signInAnonymously(auth);
+  // Solo autenticar si no hay sesión activa — no sobreescribir sesión de admin
+  if(!auth.currentUser) await signInAnonymously(auth);
   document.querySelector('header').style.display = 'none';
   ['setup-screen','group-screen','tournament-screen','queue-screen','display-screen']
     .forEach(id => { const el=$(id); if(el) el.style.display='none'; });
@@ -1119,10 +1120,10 @@ if(IS_DEVICE && DEVICE_ID){
   const dot = $('ipad-ntfy-dot'), st = $('ipad-status-text');
   dot.classList.add('on'); st.textContent = 'Conectado';
 
-  // Registrar presencia en colección global de dispositivos
+  // Registrar presencia — limpiar flag blocked por si fue eliminado previamente
   await setDoc(doc(db,'devices',DEVICE_ID), {
     name: DEVICE_NAME, clientId: DEVICE_ID,
-    lastSeen: serverTimestamp(), status: 'idle'
+    lastSeen: serverTimestamp(), status: 'idle', blocked: false
   }, { merge: true });
 
   // Ping cada 30s
@@ -1267,7 +1268,7 @@ if(IS_DEVICE && DEVICE_ID){
 // MODO PANTALLA GRANDE / COLA (pestaña secundaria)
 // ══════════════════════════════════════════════════════
 if((IS_DISPLAY||IS_BRACKET||IS_QUEUE) && SESSION_ID){
-  await signInAnonymously(auth);
+  if(!auth.currentUser) await signInAnonymously(auth);
   document.querySelector('header').style.display='none';
   ['setup-screen','group-screen','tournament-screen'].forEach(id=>{const el=$(id);if(el)el.style.display='none';});
 
@@ -1461,7 +1462,9 @@ function subscribeToSession(){
   unsubscribeDevices = onSnapshot(collection(db,'devices'), snap=>{
     snap.docChanges().forEach(change=>{
       const d=change.doc.data();
-      if(!d || blockedDevices.includes(d.clientId)) return;
+      if(!d) return;
+      // Ignorar si está bloqueado en Firestore o en la lista local
+      if(d.blocked || blockedDevices.includes(d.clientId)) return;
       if(change.type==='removed') return;
       const existing=connectedDevices.find(x=>x.clientId===d.clientId);
       if(existing){
@@ -1553,9 +1556,14 @@ function updateDeviceUI(){
   });
 }
 
-function removeDevice(clientId){
+async function removeDevice(clientId){
   connectedDevices=connectedDevices.filter(d=>d.clientId!==clientId);
   if(!blockedDevices.includes(clientId)) blockedDevices.push(clientId);
+  // Marcar en Firestore como bloqueado — así no vuelve a aparecer en ningún torneo
+  // hasta que el dispositivo haga ping de nuevo (lo que limpia el bloqueo)
+  try {
+    await setDoc(doc(db,'devices',clientId), { blocked: true }, { merge: true });
+  } catch(e){}
   saveDevices();
 }
 
