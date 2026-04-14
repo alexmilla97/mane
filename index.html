@@ -408,6 +408,12 @@
 <header id="admin-header" style="display:none">
   <div class="logo">Torneo<span>Pro</span> <span style="font-size:0.7rem;color:var(--gold);background:rgba(212,160,23,0.12);border:1px solid rgba(212,160,23,0.3);border-radius:4px;padding:0.15rem 0.5rem;vertical-align:middle;letter-spacing:0.08em;">ADMIN</span></div>
   <div style="display:flex; gap: 0.5rem; align-items:center;">
+    <button class="btn btn-fs" id="btn-queue-mode">📋 Cola</button>
+    <button class="btn btn-fs" id="btn-connect-device">📱 Conectar</button>
+    <div class="ntfy-mini" id="ntfy-mini" onclick="openConnectModal()">
+      <span class="ntfy-dot" id="ntfy-dot2"></span>
+      <span id="ntfy-mini-text">0 disp.</span>
+    </div>
     <button class="btn btn-fs" id="btn-manage-tourneys">📂 Mis Torneos</button>
     <button class="btn btn-fs" id="reset-btn">＋ Nuevo Torneo</button>
     <button class="btn btn-danger" id="admin-logout-btn" onclick="adminLogout()">Cerrar sesión</button>
@@ -473,14 +479,6 @@
 
 <!-- SETUP -->
 <div id="setup-screen">
-  <!-- Barra de dispositivos visible siempre en modo admin -->
-  <div id="setup-device-bar" style="background:var(--bg2);border-bottom:1px solid var(--border);padding:0.6rem 2rem;display:flex;align-items:center;justify-content:flex-end;gap:0.6rem;">
-    <button class="btn btn-fs" id="btn-connect-device-setup">📱 Conectar dispositivo</button>
-    <div class="ntfy-mini" id="ntfy-mini-setup" onclick="openConnectModal()" style="display:none">
-      <span class="ntfy-dot" id="ntfy-dot-setup"></span>
-      <span id="ntfy-mini-text-setup">0 disp.</span>
-    </div>
-  </div>
   <div style="max-width:680px;margin:3rem auto;padding:0 1.5rem;">
     <div class="setup-card">
       <h2>Nuevo Torneo</h2>
@@ -539,13 +537,7 @@
       <div style="font-size:0.84rem;color:var(--text-muted)" id="gs-progress-text"></div>
       <button class="btn btn-fs" id="btn-simulate-gs" style="border-color:var(--gold); color:var(--gold);">🎲 Simular Resultados</button>
       <button class="btn btn-fs" id="btn-display-mode">📺 Pantalla grande</button>
-      <button class="btn btn-fs" id="btn-queue-mode">📋 Cola de partidos</button>
-      <button class="btn btn-fs" id="btn-connect-device">📱 Conectar</button>
       <button class="btn btn-fs" id="publish-btn" onclick="togglePublish()" style="display:none">📡 Publicar</button>
-      <div class="ntfy-mini" id="ntfy-mini" onclick="openConnectModal()">
-        <span class="ntfy-dot" id="ntfy-dot2"></span>
-        <span id="ntfy-mini-text">0 disp.</span>
-      </div>
     </div>
   </div>
   <div style="width:100%"><div class="progress-bar"><div class="progress-fill" id="gs-fill" style="width:0%"></div></div></div>
@@ -1518,8 +1510,10 @@ function subscribeToSession(){
       const d=change.doc.data();
       const match=groupData.groups?.[d.gi]?.matches?.[d.mi];
       const dev=connectedDevices.find(x=>x.clientId===d.from);
-      // Marcar device libre primero
+      // Marcar device libre
       if(dev){ dev.busy=false; dev.currentMatch=null; }
+      // Limpiar busy en Firestore para que otros gestores lo vean
+      if(d.from){ setDoc(doc(db,'devices',d.from), { busy:false, busyTorneo:null }, { merge:true }).catch(()=>{}); }
       if(match && !match.played){
         applyScore(d.gi, d.mi, +d.s1, +d.s2);
         toast(`📱 ${match.t1.name} ${d.s1}–${d.s2} ${match.t2.name}${dev?' · '+dev.name:''}`);
@@ -1544,11 +1538,23 @@ function subscribeToSession(){
       const existing=connectedDevices.find(x=>x.clientId===d.clientId);
       if(existing){
         existing.lastSeen=Date.now();
-        // Solo resetear busy si el dispositivo reporta idle Y no tiene currentMatch
-        // (evitar borrar el estado live al recargar el gestor)
-        if(d.status === 'idle' && existing.busy && !existing.currentMatch){
-          existing.busy=false;
-          saveDevices();
+        // Sincronizar busy desde Firestore — otro torneo puede haberlo marcado
+        if(d.busy !== undefined){
+          const wasLocalBusy = existing.busy;
+          const isFirestoreBusy = !!d.busy;
+          // Si Firestore dice busy pero es de OTRO torneo (busyTorneo != nuestro sessionId)
+          if(isFirestoreBusy && d.busyTorneo && d.busyTorneo !== groupData.title){
+            existing.firestoreBusy = true;
+            existing.busyTorneo = d.busyTorneo;
+          } else if(!isFirestoreBusy){
+            existing.firestoreBusy = false;
+            existing.busyTorneo = null;
+            // Solo resetear busy local si no tenemos currentMatch
+            if(wasLocalBusy && !existing.currentMatch){
+              existing.busy = false;
+              saveDevices();
+            }
+          }
         }
       } else if(d.clientId){
         connectedDevices.push({
@@ -1629,16 +1635,8 @@ $('btn-manage-tourneys').onclick=()=>{ renderTourneysList(); $('tourneys-overlay
 // ── Dispositivos ──────────────────────────────────────
 function updateDeviceUI(){
   const count=connectedDevices.length;
-  // Sync main phase bar badge
   const mini=$('ntfy-mini-text'); if(mini) mini.textContent=count===0?'0 disp.':`${count} disp.`;
   const dot2=$('ntfy-dot2'); if(dot2){ count>0?dot2.classList.add('on'):dot2.classList.remove('on'); }
-  // Sync setup screen badge
-  const miniSetup=$('ntfy-mini-text-setup');
-  const dotSetup=$('ntfy-dot-setup');
-  const badgeSetup=$('ntfy-mini-setup');
-  if(miniSetup) miniSetup.textContent=count===0?'0 disp.':`${count} disp.`;
-  if(dotSetup){ count>0?dotSetup.classList.add('on'):dotSetup.classList.remove('on'); }
-  if(badgeSetup) badgeSetup.style.display=count>0?'flex':'none';
   renderDevicesList();
   document.querySelectorAll('.score-panel.open').forEach(p=>{
     const [,gi,mi]=(p.id||'').split('-');
@@ -1664,8 +1662,11 @@ function renderDevicesList(){
   connectedDevices.forEach(dev=>{
     const ago=Math.round((Date.now()-dev.lastSeen)/1000);
     const qLen=dev.queue?.length||0;
-    const statusTxt=dev.busy?(qLen?`⏳ En partido · ${qLen} en cola`:'⏳ En partido'):(ago<5?'✓ Libre':`hace ${ago}s`);
-    const statusColor=dev.busy?'var(--gold)':'var(--win)';
+    const otherTorneo=dev.firestoreBusy&&!dev.busy;
+    const statusTxt=otherTorneo
+      ? `⏳ En partido · ${dev.busyTorneo||'otro torneo'}`
+      : dev.busy?(qLen?`⏳ En partido · ${qLen} en cola`:'⏳ En partido'):(ago<5?'✓ Libre':`hace ${ago}s`);
+    const statusColor=dev.busy||otherTorneo?'var(--gold)':'var(--win)';
     const item=document.createElement('div'); item.className='connect-device-item';
     item.innerHTML=`<span class="connect-device-dot"></span><span class="connect-device-name">📱 ${dev.name}</span>`+
       `<span class="connect-device-ago" style="color:${statusColor}">${statusTxt}</span>`+
@@ -1703,7 +1704,6 @@ function openConnectModal(){
   if(!$('connect-device-name').value){ $('connect-device-name').value=`Dispositivo ${connectedDevices.length+1}`; }
 }
 $('btn-connect-device').addEventListener('click', openConnectModal);
-$('btn-connect-device-setup').addEventListener('click', openConnectModal);
 
 // Limpieza dispositivos inactivos (nunca los ocupados)
 setInterval(()=>{
@@ -1727,14 +1727,19 @@ async function _sendQueueUpdate(dev){
 
 async function sendMatchToDevice(dev, gi, mi, btn){
   if(!dev.queue) dev.queue=[];
-  if(dev.busy){
+  // Ocupado — ya sea por este torneo o por otro
+  const isBusy = dev.busy || dev.firestoreBusy;
+  if(isBusy){
     const already=dev.queue.some(q=>q.gi===gi&&q.mi===mi);
     if(already){ toast(`⚠️ Ya está en cola de ${dev.name}`); return; }
     dev.queue.push({gi,mi});
-    toast(`📋 Partido en cola para ${dev.name}`);
+    const reason = dev.firestoreBusy && !dev.busy
+      ? `📋 ${dev.name} está en otro torneo (${dev.busyTorneo}) — partido en cola`
+      : `📋 Partido en cola para ${dev.name}`;
+    toast(reason);
     if(activePanel?.gi===gi&&activePanel?.mi===mi){ closeScorePanel(gi); activePanel=null; }
     await saveDevices();
-    await _sendQueueUpdate(dev);
+    if(dev.busy) await _sendQueueUpdate(dev);
     return;
   }
   await _sendMatchNow(dev, gi, mi, btn);
@@ -1750,12 +1755,13 @@ async function _sendMatchNow(dev, gi, mi, btn){
     group:groupData.groups[gi].name,
     target:dev.clientId, startAt:Date.now(),
     queueRemaining, nextT1, nextT2,
-    sessionId,                        // para saber dónde guardar el score
-    torneoName:groupData.title        // para mostrarlo en la tarjeta del iPad
+    sessionId, torneoName:groupData.title
   };
   try {
     await sendToDevice(sessionId, dev.clientId, { match:payload });
     dev.busy=true; dev.currentMatch={gi,mi};
+    // Marcar ocupado en Firestore para que otros gestores lo vean
+    await setDoc(doc(db,'devices',dev.clientId), { busy:true, busyTorneo:groupData.title||sessionId }, { merge:true });
     if(activePanel?.gi===gi&&activePanel?.mi===mi){ closeScorePanel(gi); activePanel=null; }
     await saveDevices();
     if(btn){ btn.classList.add('sent'); btn.innerHTML=`▶ ${dev.name}`; }
@@ -1782,9 +1788,11 @@ function rebuildDeviceButtons(container,gi,mi){
   connectedDevices.forEach(dev=>{
     const alreadyQueued=dev.queue?.some(q=>q.gi===gi&&q.mi===mi);
     const isCurrent=dev.currentMatch?.gi===gi&&dev.currentMatch?.mi===mi;
+    const otherTorneo=dev.firestoreBusy&&!dev.busy; // ocupado en otro torneo
     let label,extraClass;
     if(isCurrent){label=`▶ ${dev.name}`;extraClass='sent';}
     else if(alreadyQueued){label=`📋 ${dev.name} (cola ${dev.queue.length})`;extraClass='queued';}
+    else if(otherTorneo){label=`⏳ ${dev.name} · ${dev.busyTorneo||'otro torneo'}`;extraClass='busy';}
     else if(dev.busy){label=`⏳ ${dev.name}${dev.queue?.length?` +${dev.queue.length}`:''}`;extraClass='busy';}
     else{label=`📱 ${dev.name}`;extraClass='';}
     const btn=Object.assign(document.createElement('button'),{className:`send-to-btn${extraClass?' '+extraClass:''}`,innerHTML:label});
