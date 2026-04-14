@@ -408,7 +408,6 @@
 <header id="admin-header" style="display:none">
   <div class="logo">Torneo<span>Pro</span> <span style="font-size:0.7rem;color:var(--gold);background:rgba(212,160,23,0.12);border:1px solid rgba(212,160,23,0.3);border-radius:4px;padding:0.15rem 0.5rem;vertical-align:middle;letter-spacing:0.08em;">ADMIN</span></div>
   <div style="display:flex; gap: 0.5rem; align-items:center;">
-    <button class="btn btn-fs" id="publish-btn" onclick="togglePublish()" style="display:none">📡 Publicar</button>
     <button class="btn btn-fs" id="btn-manage-tourneys">📂 Mis Torneos</button>
     <button class="btn btn-fs" id="reset-btn">＋ Nuevo Torneo</button>
     <button class="btn btn-danger" id="admin-logout-btn" onclick="adminLogout()">Cerrar sesión</button>
@@ -534,6 +533,7 @@
       <button class="btn btn-fs" id="btn-display-mode">📺 Pantalla grande</button>
       <button class="btn btn-fs" id="btn-queue-mode">📋 Cola de partidos</button>
       <button class="btn btn-fs" id="btn-connect-device">📱 Conectar</button>
+      <button class="btn btn-fs" id="publish-btn" onclick="togglePublish()" style="display:none">📡 Publicar</button>
       <div class="ntfy-mini" id="ntfy-mini" onclick="openConnectModal()">
         <span class="ntfy-dot" id="ntfy-dot2"></span>
         <span id="ntfy-mini-text">0 disp.</span>
@@ -580,6 +580,7 @@
     <div style="display:flex;gap:0.6rem;align-items:center;flex-wrap:wrap;">
       <div style="font-size:0.85rem;color:var(--text-muted)" id="progress-text"></div>
       <button class="btn btn-fs" id="btn-fullscreen">⛶ Pantalla completa</button>
+      <button class="btn btn-fs" id="publish-btn-bracket" onclick="togglePublish()" style="display:none">📡 Publicar</button>
     </div>
   </div>
   <div style="width:100%"><div class="progress-bar"><div class="progress-fill" id="progress-fill" style="width:0%"></div></div></div>
@@ -742,12 +743,8 @@ function showAdminView(){
   $('admin-header').style.display = 'flex';
   const last = localStorage.getItem('torneoPro_lastSession');
   if(last){
-    // Mostrar estado de carga brevemente mientras Firestore responde
     $('setup-screen').style.display = 'none';
-    document.body.style.cursor = 'wait';
-    loadTournament(last)
-      .catch(()=>{ $('setup-screen').style.display = 'block'; })
-      .finally(()=>{ document.body.style.cursor = ''; });
+    loadTournament(last);
   } else {
     $('setup-screen').style.display = 'block';
   }
@@ -768,17 +765,18 @@ async function checkPublishState(){
 }
 
 function updatePublishBtn(){
-  const btn = $('publish-btn');
-  if(!btn) return;
-  if(!sessionId){ btn.style.display='none'; return; }
-  btn.style.display = 'inline-flex';
-  if(isPublished){
-    btn.classList.add('published');
-    btn.textContent = '✓ Publicado — Ocultar';
-  } else {
-    btn.classList.remove('published');
-    btn.textContent = '📡 Publicar';
-  }
+  const btns = [$('publish-btn'), $('publish-btn-bracket')].filter(Boolean);
+  btns.forEach(btn => {
+    if(!sessionId){ btn.style.display='none'; return; }
+    btn.style.display = 'inline-flex';
+    if(isPublished){
+      btn.classList.add('published');
+      btn.textContent = '✓ Publicado';
+    } else {
+      btn.classList.remove('published');
+      btn.textContent = '📡 Publicar';
+    }
+  });
 }
 
 window.togglePublish = async () => {
@@ -819,6 +817,7 @@ function showPublicView(){
 window.openLoginModal  = () => { $('login-error').textContent=''; $('login-modal').classList.add('open'); $('login-email').focus(); };
 window.closeLoginModal = () => $('login-modal').classList.remove('open');
 window.adminLogout = async () => {
+  isAdmin = false; // marcar antes del signOut para que onAuthStateChanged lo procese
   await signOut(auth);
   await signInAnonymously(auth);
   sessionId=null; groupData={}; state={};
@@ -1478,14 +1477,21 @@ function subscribeToSession(){
 async function loadTournament(sid){
   try {
     const snap=await getDoc(tourneyRef(sid));
-    if(!snap.exists()) return;
+    if(!snap.exists()){
+      // Torneo no existe — limpiar lastSession y mostrar setup
+      localStorage.removeItem('torneoPro_lastSession');
+      $('setup-screen').style.display='block';
+      return;
+    }
     const data=snap.data();
-    // Cargar también devices
     const devSnap=await getDoc(devicesRef(sid));
     const devData=devSnap.exists()?devSnap.data():{};
     await restoreTournament(sid,{...data,devices:devData.devices||[],blocked:devData.blocked||[]},true);
     $('tourneys-overlay').style.display='none';
-  } catch(e){ toast('⚠️ Error al cargar torneo'); }
+  } catch(e){
+    toast('⚠️ Error al cargar torneo');
+    $('setup-screen').style.display='block';
+  }
 }
 
 async function deleteTournament(sid, event){
@@ -2079,15 +2085,23 @@ const _fns = {
 Object.entries(_fns).forEach(([k,v]) => { if(v){ window[k]=v; window['_fn_'+k]=v; } });
 
 // ── Auth reactivo — al final para que todas las funciones estén definidas ──
-// onAuthStateChanged dispara al cargar (restaura sesión) y al login/logout
 if(!IS_DEVICE && !IS_DISPLAY && !IS_BRACKET && !IS_QUEUE){
+  let _authInitDone = false;
   onAuthStateChanged(auth, async user => {
     if(user && !user.isAnonymous){
+      // Sesión de admin — mostrar gestor
       isAdmin = true;
+      _authInitDone = true;
       showAdminView();
     } else {
+      if(_authInitDone && isAdmin){
+        // Ya estábamos como admin — ignorar cambios externos (otras pestañas)
+        // Solo reaccionar si fue un logout explícito (isAdmin se pone a false en adminLogout)
+        return;
+      }
       if(!user) await signInAnonymously(auth);
       isAdmin = false;
+      _authInitDone = true;
       showPublicView();
     }
   });
