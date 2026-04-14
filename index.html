@@ -335,43 +335,75 @@
   .ipad-next-teams { font-size: clamp(0.68rem,2.2vw,0.82rem); color: #888; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: clamp(90px,25vw,160px); text-align: right; }
   .ipad-qbadge { text-align: center; background: rgba(212,160,23,0.12); color: var(--gold); border: 1px solid rgba(212,160,23,0.35); border-radius: 6px; padding: 3px 10px; font-size: clamp(0.72rem,2.5vw,0.85rem); font-weight: 700; letter-spacing: .06em; text-transform: uppercase; margin-bottom: 6px; }
 
-  /* ── AUTH / ROLES ─────────────────────────────────── */
+  /* ── VISTA PÚBLICA REDISEÑADA ─────────────────────── */
   #public-view { display: none; flex-direction: column; min-height: 100vh; }
   #public-view.active { display: flex; }
-  #admin-btn { position: fixed; bottom: 1.2rem; right: 1.2rem; z-index: 200; background: transparent; border: 1px solid var(--border); color: var(--text-muted); border-radius: 20px; padding: 0.3rem 0.9rem; font-family: 'Barlow Condensed', sans-serif; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; cursor: pointer; opacity: 0.4; transition: all 0.2s; }
-  #admin-btn:hover { opacity: 1; border-color: var(--gold); color: var(--gold); }
 
-  /* Modal login */
-  #login-modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85); z-index: 800; align-items: center; justify-content: center; padding: 1rem; }
-  #login-modal.open { display: flex; }
-  .login-card { background: var(--bg2); border: 1px solid var(--border-strong); border-radius: var(--radius-lg); padding: 2rem; width: 100%; max-width: 360px; display: flex; flex-direction: column; gap: 1.2rem; }
-  .login-card h2 { font-family: 'Barlow Condensed', sans-serif; font-size: 1.6rem; font-weight: 800; text-transform: uppercase; color: var(--gold); }
-  .login-card input { background: var(--bg3); border: 1px solid var(--border-strong); border-radius: var(--radius); color: var(--text); font-family: 'Barlow', sans-serif; font-size: 0.95rem; padding: 0.65rem 0.9rem; width: 100%; outline: none; transition: border-color 0.15s; }
-  .login-card input:focus { border-color: var(--gold); }
-  .login-card input::placeholder { color: var(--text-muted); }
-  .login-error { color: #E24B4A; font-size: 0.82rem; font-family: 'Barlow Condensed', sans-serif; letter-spacing: 0.04em; min-height: 1em; }
-  .login-actions { display: flex; gap: 0.6rem; }
+  .pub-header { background: var(--bg2); border-bottom: 2px solid var(--gold); padding: 1rem 2rem; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
 
-  /* Vista pública — tabs */
-  .pub-tabs { display: flex; background: var(--bg2); border-bottom: 2px solid var(--border); flex-shrink: 0; }
-  .pub-tab { flex: 1; padding: 0.9rem; font-family: 'Barlow Condensed', sans-serif; font-size: 1rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; text-align: center; cursor: pointer; color: var(--text-muted); border-bottom: 2px solid transparent; margin-bottom: -2px; transition: all 0.15s; }
+  .pub-readonly-bar { background: rgba(212,160,23,0.08); border-bottom: 1px solid rgba(212,160,23,0.2); padding: 0.45rem 2rem; text-align: center; font-family: 'Barlow Condensed', sans-serif; font-size: 0.78rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--gold); display: flex; align-items: center; justify-content: center; gap: 0.5rem; }
+
+  .pub-body { flex: 1; display: flex; flex-direction: column; align-items: center; padding: 3rem 1.5rem; gap: 2rem; overflow-y: auto; }
+
+  .pub-hero { text-align: center; display: flex; flex-direction: column; align-items: center; gap: 0.6rem; }
+  .pub-hero-icon { font-size: 3.5rem; }
+  .pub-hero-title { font-family: 'Barlow Condensed', sans-serif; font-size: 3rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text); }
+  .pub-hero-sub { font-size: 0.9rem; color: var(--text-muted); max-width: 400px; line-height: 1.5; }
+
+  /* Tarjeta de torneo */
+  .pub-torneo-card { background: var(--bg2); border: 1px solid var(--border-strong); border-radius: var(--radius-lg); padding: 1.6rem; width: 100%; max-width: 480px; display: flex; flex-direction: column; gap: 1.2rem; animation: fadeIn 0.3s ease; }
+  .pub-card-header { display: flex; align-items: center; gap: 0.8rem; flex-wrap: wrap; }
+  .pub-card-title { font-family: 'Barlow Condensed', sans-serif; font-size: 1.6rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text); }
+  .pub-live-badge { font-family: 'Barlow Condensed', sans-serif; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; background: rgba(46,204,113,0.15); color: var(--win); border: 1px solid rgba(46,204,113,0.35); border-radius: 4px; padding: 0.18rem 0.55rem; display: flex; align-items: center; gap: 0.3rem; animation: dvPulse 2s ease-in-out infinite; }
+  .pub-phase-badges { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+  .pub-phase-badge { font-family: 'Barlow Condensed', sans-serif; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; padding: 0.2rem 0.6rem; border-radius: 4px; border: 1px solid; }
+  .pub-phase-badge.groups { color: var(--gold); border-color: rgba(212,160,23,0.4); background: rgba(212,160,23,0.08); }
+  .pub-phase-badge.knockout { color: var(--win); border-color: rgba(46,204,113,0.4); background: rgba(46,204,113,0.08); }
+  .pub-card-stats { display: flex; gap: 1.2rem; font-size: 0.82rem; color: var(--text-muted); flex-wrap: wrap; }
+  .pub-card-stat { display: flex; align-items: center; gap: 0.3rem; }
+  .pub-card-actions { display: flex; gap: 0.7rem; }
+  .pub-action-btn { flex: 1; padding: 0.75rem 1rem; border: none; border-radius: var(--radius); font-family: 'Barlow Condensed', sans-serif; font-size: 1rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; cursor: pointer; transition: all 0.15s; display: flex; align-items: center; justify-content: center; gap: 0.4rem; }
+  .pub-action-btn.standings { background: var(--bg3); color: var(--text); border: 1px solid var(--border-strong); }
+  .pub-action-btn.standings:hover { background: var(--gold); color: #111; border-color: var(--gold); }
+  .pub-action-btn.bracket { background: var(--gold); color: #111; }
+  .pub-action-btn.bracket:hover { background: var(--gold-light); }
+
+  /* Panel inline de clasificación/cola dentro de la vista pública */
+  .pub-inline-panel { width: 100%; max-width: 860px; display: flex; flex-direction: column; gap: 1rem; animation: fadeIn 0.2s ease; }
+  .pub-inline-header { display: flex; align-items: center; justify-content: space-between; }
+  .pub-inline-title { font-family: 'Barlow Condensed', sans-serif; font-size: 1.1rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; color: var(--gold); }
+  .pub-inline-close { background: transparent; border: 1px solid var(--border-strong); color: var(--text-muted); border-radius: var(--radius); padding: 0.2rem 0.6rem; font-size: 0.8rem; cursor: pointer; font-family: 'Barlow Condensed', sans-serif; font-weight: 700; }
+  .pub-inline-close:hover { border-color: var(--text); color: var(--text); }
+
+  .pub-no-torneo { text-align: center; color: var(--text-muted); font-family: 'Barlow Condensed', sans-serif; font-size: 1rem; letter-spacing: 0.06em; text-transform: uppercase; opacity: 0.5; padding: 2rem; }
+
+  /* Tabs dentro del inline panel */
+  .pub-tabs { display: flex; background: var(--bg2); border-bottom: 2px solid var(--border); flex-shrink: 0; border-radius: var(--radius) var(--radius) 0 0; overflow: hidden; }
+  .pub-tab { flex: 1; padding: 0.7rem; font-family: 'Barlow Condensed', sans-serif; font-size: 0.9rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; text-align: center; cursor: pointer; color: var(--text-muted); border-bottom: 2px solid transparent; margin-bottom: -2px; transition: all 0.15s; }
   .pub-tab.active { color: var(--gold); border-bottom-color: var(--gold); }
   .pub-content { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
   .pub-panel { display: none; flex: 1; overflow: auto; flex-direction: column; }
   .pub-panel.active { display: flex; }
 
-  /* Header admin con logout */
-  #admin-logout-btn { font-family: 'Barlow Condensed', sans-serif; font-size: 0.8rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; padding: 0.3rem 0.8rem; border-radius: var(--radius); border: 1px solid var(--border-strong); cursor: pointer; background: transparent; color: var(--text-muted); transition: all 0.15s; }
-  #admin-logout-btn:hover { border-color: #E24B4A; color: #E24B4A; }
-  #publish-btn { font-family: 'Barlow Condensed', sans-serif; font-size: 0.8rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; padding: 0.3rem 0.9rem; border-radius: var(--radius); border: 1px solid var(--border-strong); cursor: pointer; background: transparent; color: var(--text-muted); transition: all 0.15s; display: none; }
-  #publish-btn:hover { border-color: var(--win); color: var(--win); background: rgba(46,204,113,0.08); }
-  #publish-btn.published { border-color: var(--win); color: var(--win); background: rgba(46,204,113,0.1); }
-  #publish-btn.published:hover { border-color: #E24B4A; color: #E24B4A; background: rgba(226,75,74,0.08); }
+  /* ── LOGIN MODAL ESQUINA ──────────────────────────── */
+  #admin-btn { position: fixed; bottom: 1.2rem; right: 1.2rem; z-index: 200; background: transparent; border: 1px solid var(--border); color: var(--text-muted); border-radius: 20px; padding: 0.3rem 0.9rem; font-family: 'Barlow Condensed', sans-serif; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; cursor: pointer; opacity: 0.35; transition: all 0.2s; }
+  #admin-btn:hover { opacity: 1; border-color: var(--gold); color: var(--gold); }
+  #login-modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85); z-index: 800; align-items: center; justify-content: center; padding: 1rem; }
+  #login-modal.open { display: flex; animation: fadeIn 0.2s ease; }
+  .login-card { background: var(--bg2); border: 1px solid var(--border-strong); border-radius: var(--radius-lg); padding: 2rem; width: 100%; max-width: 340px; display: flex; flex-direction: column; gap: 1.2rem; }
+  .login-card h2 { font-family: 'Barlow Condensed', sans-serif; font-size: 1.5rem; font-weight: 800; text-transform: uppercase; color: var(--gold); }
+  .login-card input { background: var(--bg3); border: 1px solid var(--border-strong); border-radius: var(--radius); color: var(--text); font-family: 'Barlow', sans-serif; font-size: 0.95rem; padding: 0.65rem 0.9rem; width: 100%; outline: none; transition: border-color 0.15s; }
+  .login-card input:focus { border-color: var(--gold); }
+  .login-card input::placeholder { color: var(--text-muted); }
+  .login-error { color: #E24B4A; font-size: 0.82rem; font-family: 'Barlow Condensed', sans-serif; letter-spacing: 0.04em; min-height: 1em; }
+  .login-actions { display: flex; gap: 0.6rem; }
+  /* ocultar login-wrap del diseño anterior */
+  .login-wrap { display: none; }
+  .login-submit, .login-back, .login-fields, .login-logo { display: none; }
 
 </style>
 </head>
 <body>
-
 
 <header id="admin-header" style="display:none">
   <div class="logo">Torneo<span>Pro</span> <span style="font-size:0.7rem;color:var(--gold);background:rgba(212,160,23,0.12);border:1px solid rgba(212,160,23,0.3);border-radius:4px;padding:0.15rem 0.5rem;vertical-align:middle;letter-spacing:0.08em;">ADMIN</span></div>
@@ -382,27 +414,47 @@
   </div>
 </header>
 
-<!-- VISTA PÚBLICA (usuarios sin login) -->
+<!-- VISTA PÚBLICA -->
 <div id="public-view">
-  <div style="background:var(--bg2);border-bottom:2px solid var(--gold);padding:1rem 2rem;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
-    <div class="logo">Torneo<span>Pro</span></div>
-    <div id="pub-torney-name" style="font-family:'Barlow Condensed',sans-serif;font-size:1rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;">—</div>
+  <div class="pub-header">
+    <div class="logo pub-logo-trigger" id="pub-logo" title="">Torneo<span>Pro</span></div>
+    <div id="pub-torney-name" style="font-family:'Barlow Condensed',sans-serif;font-size:0.9rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;"></div>
   </div>
-  <div class="pub-tabs">
-    <div class="pub-tab active" onclick="switchPubTab('queue')">📋 Siguientes Partidos</div>
-    <div class="pub-tab" onclick="switchPubTab('standings')">🏆 Clasificación</div>
+  <div class="pub-readonly-bar">
+    👁 Modo visualización — Solo lectura
   </div>
-  <div class="pub-content">
-    <!-- Cola pública -->
-    <div class="pub-panel active" id="pub-panel-queue">
-      <div class="qv-body" id="pub-queue-body">
-        <div class="qv-empty">Sin partidos asignados</div>
+  <div class="pub-body">
+    <div class="pub-hero">
+      <div class="pub-hero-icon">🏆</div>
+      <div class="pub-hero-title">Torneos</div>
+      <div class="pub-hero-sub" id="pub-hero-sub">Selecciona un torneo para ver la clasificación o el cuadro eliminatorio en directo.</div>
+    </div>
+
+    <!-- Tarjeta del torneo activo -->
+    <div id="pub-torneo-card" style="display:none" class="pub-torneo-card">
+      <div class="pub-card-header">
+        <div class="pub-card-title" id="pub-card-title">—</div>
+        <div class="pub-live-badge">● En directo</div>
+      </div>
+      <div class="pub-phase-badges" id="pub-phase-badges"></div>
+      <div class="pub-card-stats" id="pub-card-stats"></div>
+      <div class="pub-card-actions">
+        <button class="pub-action-btn standings" onclick="showPubPanel('queue')">📋 Siguientes</button>
+        <button class="pub-action-btn standings" onclick="showPubPanel('standings')">📊 Clasificación</button>
+        <button class="pub-action-btn bracket" id="pub-bracket-btn" onclick="showPubPanel('bracket')" style="display:none">🏅 Cuadro</button>
       </div>
     </div>
-    <!-- Clasificación pública -->
-    <div class="pub-panel" id="pub-panel-standings">
-      <div class="dv-groups" id="pub-standings-body" style="overflow-y:auto;padding:1.5rem;"></div>
+
+    <!-- Panel inline (cola / clasificación / cuadro) -->
+    <div id="pub-inline-panel" class="pub-inline-panel" style="display:none">
+      <div class="pub-inline-header">
+        <div class="pub-inline-title" id="pub-inline-title">—</div>
+        <button class="pub-inline-close" onclick="closePubPanel()">✕ Cerrar</button>
+      </div>
+      <div id="pub-inline-content" style="background:var(--bg2);border:1px solid var(--border-strong);border-radius:var(--radius-lg);overflow:hidden;"></div>
     </div>
+
+    <div id="pub-no-torneo" class="pub-no-torneo" style="display:none">Sin torneo activo en este momento.</div>
   </div>
 </div>
 
@@ -413,7 +465,7 @@
 <div id="login-modal">
   <div class="login-card">
     <h2>Acceso Admin</h2>
-    <div style="display:flex;flex-direction:column;gap:0.6rem;">
+    <div style="display:flex;flex-direction:column;gap:0.7rem;">
       <input type="email" id="login-email" placeholder="Email" autocomplete="email">
       <input type="password" id="login-password" placeholder="Contraseña" autocomplete="current-password">
     </div>
@@ -658,7 +710,8 @@ const _wp = new Proxy({}, { get(_, k){ return (...a) => window[k]?.(...a); } });
  'applyScore','clearScore','removeDevice','generateDeviceQR','copyConnectURL','openConnectModal',
  'sendMatchToDevice','ipadToggleFS','ipadMod','ipadSave','ipadStart','renderPairingScreen',
  'closeTourneysOverlay','closeConnectOverlay','goBackToGroups',
- 'openLoginModal','closeLoginModal','doLogin','adminLogout','switchPubTab','togglePublish'
+ 'openLoginModal','closeLoginModal','doLogin','adminLogout','switchPubTab','togglePublish',
+ 'showPubPanel','closePubPanel'
 ].forEach(fn => window[fn] = (...a) => window['_fn_'+fn]?.(...a));
 window.$ = id => document.getElementById(id);
 </script>
@@ -681,38 +734,38 @@ const app = initializeApp(firebaseConfig);
 const db  = getFirestore(app);
 const auth = getAuth(app);
 
-// ── Auth: persistente por defecto en Firebase ────────
-// NO llamar signInAnonymously inmediatamente — esperar a ver si hay sesión guardada
+
+// ── Auth: persistente — esperar a Firebase antes de mostrar nada ──
 let isAdmin = false;
-let authReady = false;
 
-onAuthStateChanged(auth, async user => {
-  if(authReady) return; // solo ejecutar una vez al inicio
-  authReady = true;
+await new Promise(resolve => {
+  const unsub = onAuthStateChanged(auth, async user => {
+    unsub(); // desuscribirse tras el primer disparo
 
-  if(IS_DEVICE || IS_DISPLAY || IS_BRACKET || IS_QUEUE) return; // modos especiales, no tocar
+    if(IS_DEVICE || IS_DISPLAY || IS_BRACKET || IS_QUEUE){ resolve(); return; }
 
-  if(user && !user.isAnonymous){
-    // Sesión de admin guardada en el navegador — restaurar sin pedir login
-    isAdmin = true;
-    showAdminView();
-  } else {
-    // Sin sesión o anónima — asegurar auth anónima para Firestore y mostrar vista pública
-    if(!user) await signInAnonymously(auth);
-    isAdmin = false;
-    showPublicView();
-  }
+    if(user && !user.isAnonymous){
+      // Sesión de admin guardada — entrar directamente sin pedir login
+      isAdmin = true;
+      showAdminView();
+    } else {
+      // Sin sesión o anónima
+      if(!user) await signInAnonymously(auth);
+      isAdmin = false;
+      showPublicView();
+    }
+    resolve();
+  });
 });
+
 
 function showAdminView(){
   $('public-view').classList.remove('active');
   $('admin-btn').style.display = 'none';
   $('admin-header').style.display = 'flex';
   $('setup-screen').style.display = 'block';
-  // Restaurar última sesión
   const last = localStorage.getItem('torneoPro_lastSession');
   if(last) loadTournament(last).catch(()=>{});
-  // Comprobar si hay torneo publicado
   checkPublishState();
 }
 
@@ -774,7 +827,6 @@ function showPublicView(){
   });
   $('public-view').classList.add('active');
   $('admin-btn').style.display = 'block';
-  // Suscribirse al torneo activo (último guardado públicamente)
   subscribePublicView();
 }
 
@@ -784,9 +836,11 @@ window.closeLoginModal = () => $('login-modal').classList.remove('open');
 window.adminLogout = async () => {
   await signOut(auth);
   await signInAnonymously(auth);
-  // Limpiar estado
   sessionId=null; groupData={}; state={};
   ['group-screen','tournament-screen','pairing-screen'].forEach(id=>$(id).style.display='none');
+  $('admin-header').style.display = 'none';
+  $('setup-screen').style.display = 'none';
+  showPublicView();
   toast('👋 Sesión cerrada');
 };
 window.doLogin = async () => {
@@ -816,35 +870,128 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // ── Vista pública: suscripción al torneo activo ────────
 let pubUnsub = null;
+let pubTorneoData = null; // datos del torneo activo para renderizar paneles
+
 function subscribePublicView(){
-  // Leer el torneo activo desde Firestore — lo escribe el admin al guardar
   if(pubUnsub) pubUnsub();
   pubUnsub = onSnapshot(doc(db, 'config', 'activeTorneo'), snap => {
     const data = snap.data();
-    if(!data?.sessionId) {
-      $('pub-torney-name').textContent = '—';
-      $('pub-queue-body').innerHTML = '<div class="qv-empty">Sin torneo activo</div>';
-      $('pub-standings-body').innerHTML = '';
+    if(!data?.sessionId){
+      $('pub-torneo-card').style.display = 'none';
+      $('pub-no-torneo').style.display = 'block';
+      $('pub-hero-sub').textContent = 'No hay ningún torneo activo en este momento.';
       return;
     }
+    $('pub-no-torneo').style.display = 'none';
     const sid = data.sessionId;
-    // Suscribirse a cola y clasificación de ese torneo
+    // Cola
     onSnapshot(queueRef(sid), qSnap => {
       const qData = qSnap.data();
       if(!qData) return;
       $('pub-torney-name').textContent = qData.title || '';
-      renderPublicQueue(qData.items || []);
     });
+    // Torneo completo
     onSnapshot(tourneyRef(sid), tSnap => {
       const tData = tSnap.data();
       if(!tData) return;
-      if(tData.groupData?.groups) renderPublicStandings(tData.groupData);
+      pubTorneoData = tData;
+      renderPublicCard(tData);
     });
   });
 }
 
-function renderPublicQueue(items){
-  const body = $('pub-queue-body');
+function renderPublicCard(tData){
+  const gd = tData.groupData;
+  const st = tData.state;
+  if(!gd?.title) return;
+
+  $('pub-card-title').textContent = gd.title;
+  $('pub-torney-name').textContent = gd.title;
+
+  // Badges de fase
+  const badges = $('pub-phase-badges'); badges.innerHTML = '';
+  if(gd.groups){
+    const b1 = document.createElement('div'); b1.className='pub-phase-badge groups'; b1.textContent='Fase de Grupos';
+    badges.appendChild(b1);
+  }
+  if(st?.rounds){
+    const b2 = document.createElement('div'); b2.className='pub-phase-badge knockout'; b2.textContent='Eliminatoria';
+    badges.appendChild(b2);
+    $('pub-bracket-btn').style.display = 'flex';
+  } else {
+    $('pub-bracket-btn').style.display = 'none';
+  }
+
+  // Stats
+  const stats = $('pub-card-stats'); stats.innerHTML = '';
+  if(gd.groups){
+    const allM = gd.groups.flatMap(g=>g.matches);
+    const played = allM.filter(m=>m.played).length;
+    stats.innerHTML =
+      `<span class="pub-card-stat">👥 ${gd.groups.length} grupos</span>`+
+      `<span class="pub-card-stat">🎮 ${played}/${allM.length} partidos</span>`+
+      (st?.rounds ? `<span class="pub-card-stat">🏅 Cuadro: ${st.rounds.flat().filter(m=>m.winner).length}/${st.totalMatches||0}</span>` : '');
+  }
+
+  $('pub-torneo-card').style.display = 'flex';
+  $('pub-hero-sub').textContent = 'Selecciona una vista para seguir el torneo en directo.';
+
+  // Si hay panel abierto, refrescarlo
+  const panel = $('pub-inline-panel');
+  if(panel.style.display !== 'none'){
+    const currentTab = panel.dataset.tab;
+    if(currentTab) renderPubPanelContent(currentTab);
+  }
+}
+
+window.showPubPanel = (tab) => {
+  const panel = $('pub-inline-panel');
+  panel.style.display = 'flex';
+  panel.dataset.tab = tab;
+  const titles = { queue:'📋 Siguientes Partidos', standings:'📊 Clasificación', bracket:'🏅 Cuadro Eliminatorio' };
+  $('pub-inline-title').textContent = titles[tab] || '';
+  renderPubPanelContent(tab);
+  panel.scrollIntoView({ behavior:'smooth', block:'nearest' });
+};
+
+window.closePubPanel = () => {
+  $('pub-inline-panel').style.display = 'none';
+};
+
+function renderPubPanelContent(tab){
+  const cont = $('pub-inline-content'); cont.innerHTML = '';
+  if(tab === 'queue'){
+    const body = document.createElement('div'); body.className = 'qv-body'; body.style.cssText='min-height:120px;';
+    cont.appendChild(body);
+    const last = localStorage.getItem('torneoPro_lastSession');
+    if(!last) return;
+    onSnapshot(queueRef(last), snap => {
+      const data = snap.data();
+      renderPublicQueue(data?.items || [], body);
+    });
+  } else if(tab === 'standings' && pubTorneoData?.groupData){
+    const body = document.createElement('div'); body.className='dv-groups'; body.style.cssText='padding:1.2rem;overflow-y:auto;';
+    cont.appendChild(body);
+    renderPublicStandings(pubTorneoData.groupData, body);
+  } else if(tab === 'bracket' && pubTorneoData?.state?.rounds){
+    const wrap = document.createElement('div'); wrap.style.cssText='overflow:auto;padding:1.5rem;min-height:300px;';
+    cont.appendChild(wrap);
+    const inner = document.createElement('div'); inner.style.cssText='display:flex;gap:2rem;align-items:center;';
+    wrap.appendChild(inner);
+    const savedState = state;
+    state = pubTorneoData.state;
+    renderDual(inner);
+    state = savedState;
+    setTimeout(()=>{
+      const sc = Math.min((wrap.clientWidth-40)/(inner.scrollWidth||1), 1);
+      inner.style.transform = sc < 1 ? `scale(${sc})` : '';
+      inner.style.transformOrigin = 'top left';
+    }, 100);
+  }
+}
+
+function renderPublicQueue(items, body){
+  if(!body) body = $('pub-queue-body');
   const active = items.filter(it => it.status==='live' || it.status==='queued');
   if(!active.length){ body.innerHTML='<div class="qv-empty">Sin partidos asignados</div>'; return; }
   body.innerHTML='';
@@ -860,11 +1007,12 @@ function renderPublicQueue(items){
   });
 }
 
-function renderPublicStandings(data){
+function renderPublicStandings(data, body){
   if(!data?.groups) return;
-  const cont = $('pub-standings-body'); cont.innerHTML='';
+  if(!body) body = $('pub-standings-body');
+  body.innerHTML='';
   const n=data.groups.length, topCount=Math.ceil(n/2), botCount=Math.floor(n/2);
-  const cardW=`calc((100% - 1rem) / ${topCount})`;
+  const cardW=`calc((100% - 1rem) / ${Math.min(topCount,3)})`;
   function buildCard(g){
     const st=calcStandings(g);
     const rows=st.map((s,rank)=>{
@@ -875,9 +1023,9 @@ function renderPublicStandings(data){
     card.innerHTML=`<div class="dv-group-name">${g.name}</div><div class="dv-table-wrap"><table class="dv-table"><thead><tr><th style="width:2em">#</th><th class="th-name">Equipo</th><th>PJ</th><th>DG</th><th>Pts</th></tr></thead><tbody>${rows}</tbody></table></div>`;
     return card;
   }
-  const row1=document.createElement('div'); row1.className='dv-row';
-  data.groups.slice(0,topCount).forEach(g=>row1.appendChild(buildCard(g))); cont.appendChild(row1);
-  if(botCount>0){ const row2=document.createElement('div'); row2.className='dv-row'; data.groups.slice(topCount).forEach(g=>row2.appendChild(buildCard(g))); cont.appendChild(row2); }
+  const row1=document.createElement('div'); row1.className='dv-row'; row1.style.flexWrap='wrap';
+  data.groups.slice(0,topCount).forEach(g=>row1.appendChild(buildCard(g))); body.appendChild(row1);
+  if(botCount>0){ const row2=document.createElement('div'); row2.className='dv-row'; row2.style.flexWrap='wrap'; data.groups.slice(topCount).forEach(g=>row2.appendChild(buildCard(g))); body.appendChild(row2); }
 }
 
 window.switchPubTab = (tab) => {
@@ -1886,6 +2034,7 @@ const _fns = {
   openLoginModal: window.openLoginModal, closeLoginModal: window.closeLoginModal,
   doLogin: window.doLogin, adminLogout: window.adminLogout,
   switchPubTab: window.switchPubTab, togglePublish: window.togglePublish,
+  showPubPanel: window.showPubPanel, closePubPanel: window.closePubPanel,
 };
 Object.entries(_fns).forEach(([k,v]) => { if(v){ window[k]=v; window['_fn_'+k]=v; } });
 
