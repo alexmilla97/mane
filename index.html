@@ -746,8 +746,10 @@ function showAdminView(){
     $('setup-screen').style.display = 'none';
     loadTournament(last);
   } else {
-    // Sin torneo previo — mostrar setup solo la primera vez
-    $('setup-screen').style.display = 'block';
+    // Sin torneo previo — también ocultamos setup, mostramos mensaje en header
+    $('setup-screen').style.display = 'none';
+    // Mostrar un estado neutro: solo el header admin visible
+    // El admin puede crear torneo con el botón + Nuevo Torneo
   }
   checkPublishState();
 }
@@ -768,7 +770,12 @@ async function checkPublishState(){
 function updatePublishBtn(){
   const btns = [$('publish-btn'), $('publish-btn-bracket')].filter(Boolean);
   btns.forEach(btn => {
-    if(!sessionId){ btn.style.display='none'; return; }
+    // Mostrar solo si hay torneo activo
+    if(!sessionId){
+      btn.style.display = 'none';
+      btn.classList.remove('published');
+      return;
+    }
     btn.style.display = 'inline-flex';
     if(isPublished){
       btn.classList.add('published');
@@ -865,7 +872,9 @@ function subscribePublicView(){
   function renderCombinedQueue(){
     const body = $('pub-combined-queue-body'); if(!body) return;
     const queueMap = {};
+    // Solo incluir torneos que están publicados Y existen en Firestore
     Object.entries(pubQueues).forEach(([sid, {items, title}]) => {
+      if(!pubTorneosData[sid]) return; // torneo eliminado o no cargado aún
       queueMap[sid] = items.map(it => ({ ...it, torneoName: title }));
     });
     const hasActive = Object.values(queueMap).some(items =>
@@ -916,15 +925,22 @@ function subscribePublicView(){
       if(activeSubs[sid]) return; // ya suscrito
 
       const torneoUnsub = onSnapshot(tourneyRef(sid), tSnap => {
-        if(!ids.includes(sid)) return; // torneo ya no publicado, ignorar
+        if(!activeSubs[sid]) return; // ya cancelado
         const tData = tSnap.data();
-        if(!tData) return;
+        if(!tData){
+          // Torneo eliminado — limpiar datos
+          delete pubTorneosData[sid];
+          delete pubQueues[sid];
+          renderAllPublicCards(Object.keys(activeSubs));
+          renderCombinedQueue();
+          return;
+        }
         pubTorneosData[sid] = tData;
-        renderAllPublicCards(ids);
+        renderAllPublicCards(Object.keys(activeSubs));
       });
 
       const queueUnsub = onSnapshot(queueRef(sid), qSnap => {
-        if(!ids.includes(sid)) return; // torneo ya no publicado, ignorar
+        if(!activeSubs[sid]) return; // ya cancelado
         const qData = qSnap.data();
         pubQueues[sid] = { items: qData?.items || [], title: qData?.title || '' };
         renderCombinedQueue();
@@ -1452,8 +1468,8 @@ async function restoreTournament(sid, data, showToast){
   }
   subscribeToSession();
   updateDeviceUI();
-  checkPublishState(); // verificar si este torneo estaba publicado
-  updatePublishBtn(); // mostrar botón publicar
+  await checkPublishState(); // esperar Firestore antes de actualizar botón
+  updatePublishBtn();
   // Avisar si había dispositivos ocupados al restaurar
   const busyDevs = connectedDevices.filter(d => d.busy);
   if(busyDevs.length){
