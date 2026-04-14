@@ -738,26 +738,6 @@ const auth = getAuth(app);
 // ── Auth: persistente — esperar a Firebase antes de mostrar nada ──
 let isAdmin = false;
 
-await new Promise(resolve => {
-  const unsub = onAuthStateChanged(auth, async user => {
-    unsub(); // desuscribirse tras el primer disparo
-
-    if(IS_DEVICE || IS_DISPLAY || IS_BRACKET || IS_QUEUE){ resolve(); return; }
-
-    if(user && !user.isAnonymous){
-      // Sesión de admin guardada — entrar directamente sin pedir login
-      isAdmin = true;
-      showAdminView();
-    } else {
-      // Sin sesión o anónima
-      if(!user) await signInAnonymously(auth);
-      isAdmin = false;
-      showPublicView();
-    }
-    resolve();
-  });
-});
-
 
 function showAdminView(){
   $('public-view').classList.remove('active');
@@ -2037,6 +2017,21 @@ const _fns = {
   showPubPanel: window.showPubPanel, closePubPanel: window.closePubPanel,
 };
 Object.entries(_fns).forEach(([k,v]) => { if(v){ window[k]=v; window['_fn_'+k]=v; } });
+
+// ── Auth reactivo — al final para que todas las funciones estén definidas ──
+// onAuthStateChanged dispara al cargar (restaura sesión) y al login/logout
+if(!IS_DEVICE && !IS_DISPLAY && !IS_BRACKET && !IS_QUEUE){
+  onAuthStateChanged(auth, async user => {
+    if(user && !user.isAnonymous){
+      isAdmin = true;
+      showAdminView();
+    } else {
+      if(!user) await signInAnonymously(auth);
+      isAdmin = false;
+      showPublicView();
+    }
+  });
+}
 
 </script>
 
