@@ -1465,30 +1465,34 @@ function genSessionId(){ return 'trn-'+Math.random().toString(36).slice(2,14); }
 let _saveInFlight = false;
 let _savePending = false;
 
+async function _doSave(){
+  try {
+    await saveState(sessionId, groupData, state);
+    await saveDevicesMeta(sessionId, connectedDevices, blockedDevices);
+    if(sessionId && groupData.groups) await buildAndSaveQueue();
+    if(sessionId) localStorage.setItem('torneoPro_lastSession', sessionId);
+    updatePublishBtn();
+    updateDeviceUI();
+  } catch(e){ console.error('Save error', e); }
+}
+
 async function saveCurrentTournament(){
   if(!sessionId || !groupData.title) return;
   if(_saveInFlight){ _savePending = true; return; }
   _saveInFlight = true;
-  try {
-    await saveState(sessionId, groupData, state);
-    await saveDevicesMeta(sessionId, connectedDevices, blockedDevices);
-    await buildAndSaveQueue();
-    localStorage.setItem('torneoPro_lastSession', sessionId);
-    updatePublishBtn();
-  } catch(e){ console.error('Save error',e); }
-  finally {
-    _saveInFlight = false;
-    if(_savePending){ _savePending = false; saveCurrentTournament(); }
-  }
+  await _doSave();
+  _saveInFlight = false;
+  if(_savePending){ _savePending = false; saveCurrentTournament(); }
 }
 
 async function saveDevices(){
-  try {
-    await saveDevicesMeta(sessionId, connectedDevices, blockedDevices);
-    if(sessionId) await buildAndSaveQueue();
-    updateDeviceUI();
-    if(sessionId) renderGroups();
-  } catch(e){ console.error(e); }
+  // Mismo mutex que saveCurrentTournament para evitar escrituras simultáneas
+  if(_saveInFlight){ _savePending = true; return; }
+  _saveInFlight = true;
+  await _doSave();
+  _saveInFlight = false;
+  if(_savePending){ _savePending = false; saveCurrentTournament(); }
+  if(sessionId) renderGroups();
 }
 
 async function buildAndSaveQueue(){
@@ -1596,7 +1600,7 @@ function subscribeToSession(){
 
   // Scores entrantes desde dispositivos
   unsubscribeScores = onSnapshot(collection(db,'torneos',sessionId,'scores'), snap=>{
-    snap.docChanges().forEach(change=>{
+    snap.docChanges().forEach(async change=>{
       if(change.type!=='added') return;
       const d=change.doc.data();
       const match=groupData.groups?.[d.gi]?.matches?.[d.mi];
@@ -1613,8 +1617,11 @@ function subscribeToSession(){
         const nextIdx = dev.queue?.findIndex(q=>q.sid===sessionId);
         if(nextIdx !== undefined && nextIdx >= 0){
           const next = dev.queue.splice(nextIdx, 1)[0];
-          saveDevices(); _sendMatchNow(dev, next.gi, next.mi, null);
-        } else { saveDevices(); renderGroups(); }
+          await saveDevices(); // esperar a que la cola se actualice en Firestore
+          _sendMatchNow(dev, next.gi, next.mi, null);
+        } else {
+          await saveDevices();
+        }
       }
       deleteDoc(change.doc.ref).catch(()=>{});
     });
