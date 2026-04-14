@@ -741,15 +741,57 @@ function showAdminView(){
   $('public-view').classList.remove('active');
   $('admin-btn').style.display = 'none';
   $('admin-header').style.display = 'flex';
+
+  // Iniciar listener global de dispositivos si no está ya activo
+  if(!unsubscribeDevices){
+    unsubscribeDevices = onSnapshot(collection(db,'devices'), snap=>{
+      snap.docChanges().forEach(change=>{
+        const d=change.doc.data();
+        if(change.type==='removed'){
+          const clientId = d?.clientId || change.doc.id;
+          connectedDevices = connectedDevices.filter(x => x.clientId !== clientId);
+          updateDeviceUI();
+          return;
+        }
+        if(!d || d.blocked) return;
+        const existing=connectedDevices.find(x=>x.clientId===d.clientId);
+        if(existing){
+          existing.lastSeen=Date.now();
+          if(d.busy !== undefined){
+            const wasLocalBusy = existing.busy;
+            const isFirestoreBusy = !!d.busy;
+            if(isFirestoreBusy && d.busyTorneo && d.busyTorneo !== groupData.title){
+              existing.firestoreBusy = true;
+              existing.busyTorneo = d.busyTorneo;
+            } else if(!isFirestoreBusy){
+              existing.firestoreBusy = false;
+              existing.busyTorneo = null;
+              if(wasLocalBusy && !existing.currentMatch){
+                existing.busy = false;
+                saveDevices();
+              }
+            }
+          }
+        } else if(d.clientId){
+          connectedDevices.push({
+            clientId:d.clientId, name:d.name, lastSeen:Date.now(),
+            busy:false, queue:[], currentMatch:null
+          });
+          toast(`📱 ${d.name} conectado`);
+          const overlay=$('connect-overlay');
+          if(overlay?.classList.contains('open')) overlay.classList.remove('open');
+        }
+        updateDeviceUI();
+      });
+    });
+  }
+
   const last = localStorage.getItem('torneoPro_lastSession');
   if(last){
     $('setup-screen').style.display = 'none';
     loadTournament(last);
   } else {
-    // Sin torneo previo — también ocultamos setup, mostramos mensaje en header
     $('setup-screen').style.display = 'none';
-    // Mostrar un estado neutro: solo el header admin visible
-    // El admin puede crear torneo con el botón + Nuevo Torneo
   }
   checkPublishState();
 }
@@ -1161,9 +1203,10 @@ if(IS_DEVICE && DEVICE_ID){
   dot.classList.add('on'); st.textContent = 'Conectado';
 
   // Registrar presencia — limpiar flag blocked por si fue eliminado previamente
+  // NO limpiar currentMatch aquí — puede haber un partido en curso que restaurar
   await setDoc(doc(db,'devices',DEVICE_ID), {
     name: DEVICE_NAME, clientId: DEVICE_ID,
-    lastSeen: serverTimestamp(), status: 'idle', blocked: false
+    lastSeen: serverTimestamp(), blocked: false
   }, { merge: true });
 
   // Ping cada 30s
@@ -1174,6 +1217,15 @@ if(IS_DEVICE && DEVICE_ID){
   }, 30000);
 
   let curMatch = null, sc = {s1:0,s2:0}, timerInt = null, startTs = null, running = false;
+
+  // Restaurar partido en curso si existe en Firestore
+  try {
+    const devSnap = await getDoc(doc(db,'devices',DEVICE_ID));
+    const devData = devSnap.data();
+    if(devData?.currentMatch && devData.currentMatch.type === 'match'){
+      showMatch(devData.currentMatch);
+    }
+  } catch(e){}
 
   function fmtTime(ms){ const s=ms/1000|0,m=s/60|0,ss=s%60; return ('0'+m).slice(-2)+':'+('0'+ss).slice(-2); }
 
@@ -1251,7 +1303,8 @@ if(IS_DEVICE && DEVICE_ID){
         gi:done.gi, mi:done.mi, s1:sc.s1, s2:sc.s2,
         from:DEVICE_ID, elapsed:startTs?Date.now()-startTs:0, ts:serverTimestamp()
       });
-      await setDoc(doc(db,'devices',DEVICE_ID), { status:'idle' }, { merge: true });
+      // Limpiar partido activo de Firestore
+      await setDoc(doc(db,'devices',DEVICE_ID), { status:'idle', currentMatch: null, busy: false }, { merge: true });
       $('ipad-sent-msg').style.display='block';
       btn.style.display='none';
       setTimeout(()=>{
@@ -1270,12 +1323,11 @@ if(IS_DEVICE && DEVICE_ID){
 
   // Escuchar mensajes entrantes — subcolección inbox, no toca la presencia
   onSnapshot(collection(db,'devices',DEVICE_ID,'inbox'), snap => {
-    snap.docChanges().forEach(change => {
+    snap.docChanges().forEach(async change => {
       if(change.type !== 'added') return;
       const data = change.doc.data();
       const m = data.match;
       if(!m || m.target !== DEVICE_ID) return;
-      // Borrar el mensaje después de procesarlo
       deleteDoc(change.doc.ref).catch(()=>{});
       if(curMatch && m.type === 'queueUpdate'){
         const nb = document.querySelector('.ipad-next');
@@ -1286,7 +1338,11 @@ if(IS_DEVICE && DEVICE_ID){
         } else if(nb) nb.remove();
         return;
       }
-      if(m.type === 'match') showMatch(m);
+      if(m.type === 'match'){
+        // Guardar en Firestore para restaurar si recarga
+        await setDoc(doc(db,'devices',DEVICE_ID), { currentMatch: m, busy: true }, { merge: true }).catch(()=>{});
+        showMatch(m);
+      }
     });
   });
 
@@ -1319,14 +1375,21 @@ if((IS_DISPLAY||IS_BRACKET||IS_QUEUE) && (SESSION_ID||IS_QUEUE)){
     function renderQueueItems(allItems, title){
       if(sub) sub.textContent = title || '';
       const body=$('qv-body');
-      const active=allItems.filter(it=>it.status==='live'||it.status==='queued');
+      // Siempre ordenar: live primero, luego queued por assignedAt
+      const active = allItems
+        .filter(it => it.status==='live' || it.status==='queued')
+        .sort((a,b) => {
+          if(a.status !== b.status) return a.status==='live' ? -1 : 1;
+          return (a.assignedAt||0) - (b.assignedAt||0);
+        });
       if(!active.length){ body.innerHTML='<div class="qv-empty">Sin partidos asignados</div>'; return; }
       body.innerHTML='';
-      active.forEach((it,idx)=>{
+      let qIdx=0;
+      active.forEach(it=>{
         const isLive=it.status==='live';
+        if(!isLive) qIdx++;
         const div=document.createElement('div'); div.className='qv-item '+(isLive?'live':'queued');
-        const posLabel=isLive?'En juego':`#${idx+1-active.filter((x,i)=>i<idx&&x.status==='live').length}`;
-        div.innerHTML=`<div class="qv-indicator"><div class="qv-dot ${it.status}"></div><div class="qv-pos-num ${it.status}">${posLabel}</div></div>`+
+        div.innerHTML=`<div class="qv-indicator"><div class="qv-dot ${it.status}"></div><div class="qv-pos-num ${it.status}">${isLive?'En juego':'#'+qIdx}</div></div>`+
           `<div><div class="qv-teams">${it.t1}<span class="vs">vs</span>${it.t2}</div>`+
           `<div class="qv-group">${it.torneoName?`<span style="color:var(--gold);opacity:0.8">${it.torneoName}</span> · `:''}${it.group}</div></div>`+
           (it.devName?`<div class="qv-device"><div class="qv-device-name ${it.status}">📱 ${it.devName}</div><div class="qv-device-lbl">${isLive?'dispositivo':'siguiente en'}</div></div>`:'');
@@ -1348,7 +1411,6 @@ if((IS_DISPLAY||IS_BRACKET||IS_QUEUE) && (SESSION_ID||IS_QUEUE)){
         Object.entries(pubQueuesLocal).forEach(([sid,{items,title}])=>{
           items.forEach(it=>allItems.push({...it,torneoName:title}));
         });
-        allItems.sort((a,b)=>({live:0,queued:1,pending:2}[a.status]||2)-({live:0,queued:1,pending:2}[b.status]||2));
         renderQueueItems(allItems, 'Todos los torneos');
       }
       onSnapshot(doc(db,'config','publishedTorneos'), snap=>{
@@ -1436,11 +1498,11 @@ async function buildAndSaveQueue(){
   groupData.groups.forEach((g,gi)=>{
     g.matches.forEach((m,mi)=>{
       if(m.played) return;
-      const dev=connectedDevices.find(d=>d.busy&&d.currentMatch?.gi===gi&&d.currentMatch?.mi===mi);
+      const dev=connectedDevices.find(d=>d.busy&&d.currentMatch?.gi===gi&&d.currentMatch?.mi===mi&&d.currentMatch?.sid===sessionId);
       let qInfo=null;
       if(!dev){
         for(const d of connectedDevices){
-          const pos=d.queue?.findIndex(q=>q.gi===gi&&q.mi===mi);
+          const pos=d.queue?.findIndex(q=>q.gi===gi&&q.mi===mi&&q.sid===sessionId);
           if(pos!==undefined&&pos>=0){ qInfo={devName:d.name,pos:pos+1,total:d.queue.length,assignedAt:d.queue[pos].assignedAt||null}; break; }
         }
       }
@@ -1541,63 +1603,22 @@ function subscribeToSession(){
       const d=change.doc.data();
       const match=groupData.groups?.[d.gi]?.matches?.[d.mi];
       const dev=connectedDevices.find(x=>x.clientId===d.from);
-      // Marcar device libre
-      if(dev){ dev.busy=false; dev.currentMatch=null; }
-      // Limpiar busy en Firestore para que otros gestores lo vean
+      if(dev && dev.currentMatch?.sid === sessionId){
+        dev.busy=false; dev.currentMatch=null;
+      }
       if(d.from){ setDoc(doc(db,'devices',d.from), { busy:false, busyTorneo:null }, { merge:true }).catch(()=>{}); }
       if(match && !match.played){
         applyScore(d.gi, d.mi, +d.s1, +d.s2);
         toast(`📱 ${match.t1.name} ${d.s1}–${d.s2} ${match.t2.name}${dev?' · '+dev.name:''}`);
       }
       if(dev){
-        if(dev.queue?.length){ const next=dev.queue.shift(); saveDevices(); _sendMatchNow(dev,next.gi,next.mi,null); }
-        else { saveDevices(); renderGroups(); }
+        const nextIdx = dev.queue?.findIndex(q=>q.sid===sessionId);
+        if(nextIdx !== undefined && nextIdx >= 0){
+          const next = dev.queue.splice(nextIdx, 1)[0];
+          saveDevices(); _sendMatchNow(dev, next.gi, next.mi, null);
+        } else { saveDevices(); renderGroups(); }
       }
-      // Borrar el score doc para no procesarlo dos veces
       deleteDoc(change.doc.ref).catch(()=>{});
-    });
-  });
-
-  // Presencia de dispositivos — colección global, no ligada al torneo
-  unsubscribeDevices = onSnapshot(collection(db,'devices'), snap=>{
-    snap.docChanges().forEach(change=>{
-      const d=change.doc.data();
-      if(!d) return;
-      // Ignorar si está bloqueado en Firestore o en la lista local
-      if(d.blocked || blockedDevices.includes(d.clientId)) return;
-      if(change.type==='removed') return;
-      const existing=connectedDevices.find(x=>x.clientId===d.clientId);
-      if(existing){
-        existing.lastSeen=Date.now();
-        // Sincronizar busy desde Firestore — otro torneo puede haberlo marcado
-        if(d.busy !== undefined){
-          const wasLocalBusy = existing.busy;
-          const isFirestoreBusy = !!d.busy;
-          // Si Firestore dice busy pero es de OTRO torneo (busyTorneo != nuestro sessionId)
-          if(isFirestoreBusy && d.busyTorneo && d.busyTorneo !== groupData.title){
-            existing.firestoreBusy = true;
-            existing.busyTorneo = d.busyTorneo;
-          } else if(!isFirestoreBusy){
-            existing.firestoreBusy = false;
-            existing.busyTorneo = null;
-            // Solo resetear busy local si no tenemos currentMatch
-            if(wasLocalBusy && !existing.currentMatch){
-              existing.busy = false;
-              saveDevices();
-            }
-          }
-        }
-      } else if(d.clientId){
-        connectedDevices.push({
-          clientId:d.clientId, name:d.name, lastSeen:Date.now(),
-          busy:false, queue:[], currentMatch:null
-        });
-        toast(`📱 ${d.name} conectado`);
-        // Cerrar modal de conexión automáticamente
-        const overlay=$('connect-overlay');
-        if(overlay?.classList.contains('open')) overlay.classList.remove('open');
-      }
-      updateDeviceUI();
     });
   });
 }
@@ -1677,14 +1698,14 @@ function updateDeviceUI(){
 }
 
 async function removeDevice(clientId){
-  connectedDevices=connectedDevices.filter(d=>d.clientId!==clientId);
-  if(!blockedDevices.includes(clientId)) blockedDevices.push(clientId);
-  // Marcar en Firestore como bloqueado — así no vuelve a aparecer en ningún torneo
-  // hasta que el dispositivo haga ping de nuevo (lo que limpia el bloqueo)
+  connectedDevices = connectedDevices.filter(d => d.clientId !== clientId);
+  blockedDevices = blockedDevices.filter(id => id !== clientId); // no necesario guardar en blocked
+  // Borrar el documento completamente — sin rastro en Firestore
   try {
-    await setDoc(doc(db,'devices',clientId), { blocked: true }, { merge: true });
+    await deleteDoc(doc(db,'devices',clientId));
   } catch(e){}
-  saveDevices();
+  await saveDevices();
+  updateDeviceUI();
 }
 
 function renderDevicesList(){
@@ -1760,28 +1781,32 @@ async function _sendQueueUpdate(dev){
 async function sendMatchToDevice(dev, gi, mi, btn){
   if(!dev.queue) dev.queue=[];
 
-  // Verificar estado busy en Firestore en tiempo real (puede estar ocupado en otro torneo)
-  let firestoreBusy = dev.firestoreBusy || false;
-  let busyTorneoName = dev.busyTorneo || null;
-  try {
-    const snap = await getDoc(doc(db,'devices',dev.clientId));
-    const data = snap.data();
-    if(data?.busy){
-      firestoreBusy = true;
-      busyTorneoName = data.busyTorneo || null;
-      // Sincronizar estado local
-      if(!dev.busy){ dev.firestoreBusy = true; dev.busyTorneo = busyTorneoName; }
-    } else {
-      firestoreBusy = false;
-      dev.firestoreBusy = false;
-    }
-  } catch(e){}
+  // Verificar estado busy en Firestore (solo cuando viene del operador, no de la cola interna)
+  // La cola interna ya tiene dev.busy=false garantizado antes de llamar aquí
+  let firestoreBusy = false;
+  let busyTorneoName = null;
+  if(!btn && !dev.busy){
+    // Viene de cola interna — confiar en estado local, no releer Firestore
+    // (evitar race condition: Firestore puede aún mostrar busy:true recién escrito)
+  } else {
+    try {
+      const snap = await getDoc(doc(db,'devices',dev.clientId));
+      const data = snap.data();
+      if(data?.busy){
+        firestoreBusy = true;
+        busyTorneoName = data.busyTorneo || null;
+        if(!dev.busy){ dev.firestoreBusy = true; dev.busyTorneo = busyTorneoName; }
+      } else {
+        dev.firestoreBusy = false;
+      }
+    } catch(e){}
+  }
 
   const isBusy = dev.busy || firestoreBusy;
   if(isBusy){
-    const already=dev.queue.some(q=>q.gi===gi&&q.mi===mi);
+    const already=dev.queue.some(q=>q.gi===gi&&q.mi===mi&&q.sid===sessionId);
     if(already){ toast(`⚠️ Ya está en cola de ${dev.name}`); return; }
-    dev.queue.push({gi, mi, assignedAt: Date.now()});
+    dev.queue.push({gi, mi, sid: sessionId, assignedAt: Date.now()});
     const reason = firestoreBusy && !dev.busy
       ? `📋 ${dev.name} está en ${busyTorneoName||'otro torneo'} — partido en cola`
       : `📋 Partido en cola para ${dev.name}`;
@@ -1808,7 +1833,7 @@ async function _sendMatchNow(dev, gi, mi, btn){
   };
   try {
     await sendToDevice(sessionId, dev.clientId, { match:payload });
-    dev.busy=true; dev.currentMatch={gi, mi, assignedAt: Date.now()};
+    dev.busy=true; dev.currentMatch={gi, mi, sid: sessionId, assignedAt: Date.now()};
     // Marcar ocupado en Firestore para que otros gestores lo vean
     await setDoc(doc(db,'devices',dev.clientId), { busy:true, busyTorneo:groupData.title||sessionId }, { merge:true });
     if(activePanel?.gi===gi&&activePanel?.mi===mi){ closeScorePanel(gi); activePanel=null; }
@@ -1823,11 +1848,11 @@ async function _sendMatchNow(dev, gi, mi, btn){
   }
 }
 
-function isMatchLive(gi,mi){ return connectedDevices.some(d=>d.busy&&d.currentMatch?.gi===gi&&d.currentMatch?.mi===mi); }
-function getMatchDeviceName(gi,mi){ return connectedDevices.find(d=>d.busy&&d.currentMatch?.gi===gi&&d.currentMatch?.mi===mi)?.name||null; }
-function isMatchQueued(gi,mi){ return connectedDevices.some(d=>d.queue?.some(q=>q.gi===gi&&q.mi===mi)); }
+function isMatchLive(gi,mi){ return connectedDevices.some(d=>d.busy&&d.currentMatch?.gi===gi&&d.currentMatch?.mi===mi&&d.currentMatch?.sid===sessionId); }
+function getMatchDeviceName(gi,mi){ return connectedDevices.find(d=>d.busy&&d.currentMatch?.gi===gi&&d.currentMatch?.mi===mi&&d.currentMatch?.sid===sessionId)?.name||null; }
+function isMatchQueued(gi,mi){ return connectedDevices.some(d=>d.queue?.some(q=>q.gi===gi&&q.mi===mi&&q.sid===sessionId)); }
 function getMatchQueueInfo(gi,mi){
-  for(const d of connectedDevices){ const pos=d.queue?.findIndex(q=>q.gi===gi&&q.mi===mi); if(pos!==undefined&&pos>=0) return{name:d.name,pos:pos+1,total:d.queue.length}; }
+  for(const d of connectedDevices){ const pos=d.queue?.findIndex(q=>q.gi===gi&&q.mi===mi&&q.sid===sessionId); if(pos!==undefined&&pos>=0) return{name:d.name,pos:pos+1,total:d.queue.filter(q=>q.sid===sessionId).length,assignedAt:d.queue[pos].assignedAt||null}; }
   return null;
 }
 
@@ -1835,8 +1860,8 @@ function rebuildDeviceButtons(container,gi,mi){
   if(!connectedDevices.length){ container.innerHTML='<span class="send-to-empty">Sin dispositivos conectados</span>'; return; }
   container.innerHTML='';
   connectedDevices.forEach(dev=>{
-    const alreadyQueued=dev.queue?.some(q=>q.gi===gi&&q.mi===mi);
-    const isCurrent=dev.currentMatch?.gi===gi&&dev.currentMatch?.mi===mi;
+    const alreadyQueued=dev.queue?.some(q=>q.gi===gi&&q.mi===mi&&q.sid===sessionId);
+    const isCurrent=dev.currentMatch?.gi===gi&&dev.currentMatch?.mi===mi&&dev.currentMatch?.sid===sessionId;
     const otherTorneo = dev.firestoreBusy && !dev.busy;
     let label, extraClass;
     if(isCurrent){ label=`▶ ${dev.name}`; extraClass='sent'; }
@@ -1939,10 +1964,10 @@ function resetAll(){
     }
   }
   sessionId=null; groupData={}; state={};
-  connectedDevices=[]; blockedDevices=[];
+  // NO limpiar connectedDevices — los dispositivos son globales e independientes del torneo
   if(unsubscribeSession) unsubscribeSession();
-  if(unsubscribeDevices) unsubscribeDevices();
   if(unsubscribeScores) unsubscribeScores();
+  // Mantener unsubscribeDevices activo para seguir viendo dispositivos
   updatePublishBtn();
   ['group-screen','pairing-screen','tournament-screen'].forEach(id=>$(id).style.display='none');
   $('setup-screen').style.display='block';
