@@ -1180,7 +1180,14 @@ const queueRef    = sid => doc(db, 'torneos', sid, 'meta', 'queue');
 const globalDevicesRef = doc(db, 'config', 'devicesList'); // lista global de dispositivos
 
 async function saveState(sid, groupData, state){
-  await setDoc(tourneyRef(sid), { groupData, state, updatedAt: serverTimestamp() }, { merge: true });
+  // Serializar lRounds y gf como JSON string para evitar problemas
+  // con arrays anidados en Firestore (merge:true no reemplaza arrays correctamente)
+  const stateToSave = {
+    ...state,
+    lRounds: state.lRounds ? JSON.stringify(state.lRounds) : null,
+    gf: state.gf ? JSON.stringify(state.gf) : null,
+  };
+  await setDoc(tourneyRef(sid), { groupData, state: stateToSave, updatedAt: serverTimestamp() }, { merge: true });
 }
 async function saveDevicesMeta(sid, devices, blocked){
   // Guardar en global (todos los torneos comparten la misma lista)
@@ -1442,8 +1449,15 @@ if((IS_DISPLAY||IS_BRACKET||IS_QUEUE) && (SESSION_ID||IS_QUEUE)){
     onSnapshot(tourneyRef(SESSION_ID), snap=>{
       const data=snap.data();
       if(!data) return;
-      if(IS_BRACKET && data.state?.rounds) renderBracketDisplay(data.state);
-      else if(!IS_BRACKET && data.groupData?.groups) renderDisplayScreen(data.groupData);
+      if(IS_BRACKET && data.state?.rounds){
+        const rawState = data.state;
+        const parsedState = {
+          ...rawState,
+          lRounds: typeof rawState.lRounds === 'string' ? JSON.parse(rawState.lRounds) : (rawState.lRounds || null),
+          gf: typeof rawState.gf === 'string' ? JSON.parse(rawState.gf) : (rawState.gf || null),
+        };
+        renderBracketDisplay(parsedState);
+      } else if(!IS_BRACKET && data.groupData?.groups) renderDisplayScreen(data.groupData);
     });
     if(IS_BRACKET){
       document.addEventListener('fullscreenchange',()=>{ setTimeout(()=>syncBracketOverlay(),50); });
@@ -1552,7 +1566,13 @@ async function restoreTournament(sid, data, showToast){
 
   sessionId = sid;
   groupData = data.groupData || {};
-  state     = data.state || {};
+  // Deserializar lRounds y gf que se guardaron como JSON string
+  const rawState = data.state || {};
+  state = {
+    ...rawState,
+    lRounds: typeof rawState.lRounds === 'string' ? JSON.parse(rawState.lRounds) : (rawState.lRounds || null),
+    gf: typeof rawState.gf === 'string' ? JSON.parse(rawState.gf) : (rawState.gf || null),
+  };
   isPublished = false; // resetear hasta que checkPublishState confirme
   updatePublishBtn();
   // Restaurar estado completo de dispositivos (busy, queue, currentMatch)
@@ -1602,7 +1622,14 @@ function subscribeToSession(){
     // Si llegamos aquí es porque otro cliente (o recarga) escribió
     // Restaurar groupData y state sin redirigir
     if(data.groupData?.groups) groupData = data.groupData;
-    if(data.state) state = data.state;
+    if(data.state){
+      const rawState = data.state;
+      state = {
+        ...rawState,
+        lRounds: typeof rawState.lRounds === 'string' ? JSON.parse(rawState.lRounds) : (rawState.lRounds || null),
+        gf: typeof rawState.gf === 'string' ? JSON.parse(rawState.gf) : (rawState.gf || null),
+      };
+    }
     if(groupData.groups) renderGroups();
   });
 
