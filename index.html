@@ -759,53 +759,47 @@ function showAdminView(){
   // Iniciar listener global de dispositivos (cancelar anterior si existía)
   if(unsubscribeDevices){ unsubscribeDevices(); unsubscribeDevices=null; }
   unsubscribeDevices = onSnapshot(collection(db,'devices'), snap=>{
-      snap.docChanges().forEach(change=>{
-        const d=change.doc.data();
-        if(change.type==='removed'){
-          const clientId = d?.clientId || change.doc.id;
-          connectedDevices = connectedDevices.filter(x => x.clientId !== clientId);
-          updateDeviceUI();
-          return;
-        }
-        if(!d || d.blocked) return;
-        const existing=connectedDevices.find(x=>x.clientId===d.clientId);
-        if(existing){
-          existing.lastSeen=Date.now();
-          if(d.busy !== undefined){
-            const wasLocalBusy = existing.busy;
-            const isFirestoreBusy = !!d.busy;
-            if(isFirestoreBusy && d.busyTorneo && d.busyTorneo !== groupData.title){
-              existing.firestoreBusy = true;
-              existing.busyTorneo = d.busyTorneo;
-            } else if(!isFirestoreBusy){
-              existing.firestoreBusy = false;
-              existing.busyTorneo = null;
-              // Sincronizar currentMatch desde Firestore
-              existing.currentMatch = d.currentMatch || null;
-              if(wasLocalBusy && !d.busy){
-                existing.busy = false;
-                // Dispositivo quedó libre → intentar asignar siguiente partido
-                dispatchNextFromQueue();
-                saveDevices();
-              }
-            } else if(isFirestoreBusy){
-              existing.busy = true;
-              existing.currentMatch = d.currentMatch || existing.currentMatch;
-            }
-          }
-        } else if(d.clientId){
-          connectedDevices.push({
-            clientId:d.clientId, name:d.name, lastSeen:Date.now(),
-            busy: !!d.busy, currentMatch: d.currentMatch||null
-          });
-          toast(`📱 ${d.name} conectado`);
-          const overlay=$('connect-overlay');
-          if(overlay?.classList.contains('open')) overlay.classList.remove('open');
-          // Nuevo dispositivo libre → intentar asignarle partido de la cola
-          if(!d.busy) dispatchNextFromQueue();
-        }
+    snap.docChanges().forEach(change=>{
+      const d = change.doc.data();
+      const clientId = d?.clientId || change.doc.id;
+
+      if(change.type === 'removed'){
+        connectedDevices = connectedDevices.filter(x => x.clientId !== clientId);
         updateDeviceUI();
-      });
+        return;
+      }
+
+      if(!d || d.blocked) return;
+
+      const existing = connectedDevices.find(x => x.clientId === clientId);
+      if(existing){
+        // Solo actualizar lastSeen — NO tocar busy/currentMatch desde Firestore
+        // El gestor gestiona busy localmente para evitar conflictos
+        existing.lastSeen = Date.now();
+        existing.name = d.name || existing.name;
+        // Excepción: si Firestore dice idle y nosotros decimos libre también, ignorar
+        // Si Firestore dice busy y nosotros decimos libre → alguien más lo asignó
+        if(d.busy && !existing.busy){
+          existing.busy = true;
+          existing.currentMatch = d.currentMatch || null;
+          existing.busyTorneo = d.busyTorneo || null;
+          existing.firestoreBusy = (d.busyTorneo && d.busyTorneo !== groupData.title) || false;
+        }
+      } else {
+        // Dispositivo nuevo — añadir con su estado real de Firestore
+        connectedDevices.push({
+          clientId: d.clientId, name: d.name, lastSeen: Date.now(),
+          busy: !!d.busy, currentMatch: d.currentMatch || null,
+          firestoreBusy: false, busyTorneo: null
+        });
+        const overlay = $('connect-overlay');
+        if(overlay?.classList.contains('open')) overlay.classList.remove('open');
+        toast(`📱 ${d.name} conectado`);
+        // Si el nuevo dispositivo está libre, intentar asignarle partido
+        if(!d.busy) dispatchNextFromQueue();
+      }
+      updateDeviceUI();
+    });
   });
 
   const last = localStorage.getItem('torneoPro_lastSession');
@@ -1663,17 +1657,20 @@ function subscribeToSession(){
       if(change.type!=='added') return;
       const d=change.doc.data();
       const match=groupData.groups?.[d.gi]?.matches?.[d.mi];
-      const dev=connectedDevices.find(x=>x.clientId===d.from);
-      if(dev && dev.currentMatch?.sid === sessionId){
-        dev.busy=false; dev.currentMatch=null;
-      }
-      if(d.from){ setDoc(doc(db,'devices',d.from), { busy:false, busyTorneo:null, currentMatch:null }, { merge:true }).catch(()=>{}); }
+      const dev = connectedDevices.find(x => x.clientId === d.from);
+      // Liberar dispositivo localmente
+      if(dev){ dev.busy = false; dev.currentMatch = null; dev.firestoreBusy = false; }
+      // Limpiar en Firestore
+      if(d.from) setDoc(doc(db,'devices',d.from), { busy:false, busyTorneo:null, currentMatch:null }, { merge:true }).catch(()=>{});
+      // Aplicar resultado
       if(match && !match.played){
         applyScore(d.gi, d.mi, +d.s1, +d.s2);
         toast(`📱 ${match.t1.name} ${d.s1}–${d.s2} ${match.t2.name}${dev?' · '+dev.name:''}`);
-      }
-      if(dev){
+      } else {
         renderGroups();
+      }
+      // Despachar siguiente de la cola
+      if(dev){
         await dispatchNextFromQueue();
         await saveGlobalQueue();
         if(sessionId && groupData.groups) await buildAndSaveQueue();
@@ -1886,9 +1883,8 @@ async function addToGlobalQueue(gi, mi){
   if(isMatchQueued(gi,mi)){ toast('⚠️ Ya está en la cola'); return; }
   globalQueue.push({gi, mi, sid:sessionId, assignedAt:Date.now()});
   if(activePanel?.gi===gi&&activePanel?.mi===mi){ closeScorePanel(gi); activePanel=null; }
-  renderGroups();
-  await dispatchNextFromQueue();
-  // Guardar cola y actualizar vista pública
+  await dispatchNextFromQueue(); // puede quitar el item de la cola si hay dispositivo libre
+  renderGroups(); // renderizar con el estado final (live o queued)
   await saveGlobalQueue();
   if(sessionId && groupData.groups) await buildAndSaveQueue();
   updateDeviceUI();
