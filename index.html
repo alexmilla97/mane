@@ -1612,29 +1612,8 @@ async function restoreTournament(sid, data, showToast){
 }
 
 function subscribeToSession(){
-  // Listener del torneo — sincroniza estado si viene de otro origen (no nuestros propios writes)
-  let _lastWriteTs = Date.now(); // iniciar con ahora para ignorar el snapshot inicial
-  unsubscribeSession = onSnapshot(tourneyRef(sessionId), snap=>{
-    const data=snap.data();
-    if(!data) return;
-    const remoteTs = data.updatedAt?.toMillis?.() || 0;
-    if(remoteTs <= _lastWriteTs + 2000) return;
-    if(data.groupData?.groups) groupData = data.groupData;
-    if(data.state){
-      const rawState = data.state;
-      state = {
-        ...rawState,
-        lRounds: (() => { try { return typeof rawState.lRounds === 'string' ? JSON.parse(rawState.lRounds) : (rawState.lRounds || null); } catch(e){ return null; } })(),
-        gf: (() => { try { return typeof rawState.gf === 'string' ? JSON.parse(rawState.gf) : (rawState.gf || null); } catch(e){ return null; } })(),
-      };
-    }
-    // Renderizar la pantalla correcta según el estado actual
-    if(state.rounds && $('tournament-screen').style.display !== 'none'){
-      renderBracket(); updateProgress();
-    } else if(groupData.groups && $('group-screen').style.display !== 'none'){
-      renderGroups();
-    }
-  });
+  // El gestor admin es la fuente de verdad — no necesita escuchar sus propios cambios
+  // Solo escuchar scores entrantes desde dispositivos
 
   // Scores entrantes desde dispositivos
   unsubscribeScores = onSnapshot(collection(db,'torneos',sessionId,'scores'), snap=>{
@@ -2396,26 +2375,27 @@ function buildCard(match, ri, mi, isFinal=false){
     const isWin=match.winner&&team&&match.winner.name===team.name;
     const isLos=match.winner&&team&&match.winner.name!==team.name;
     slot.className='team-slot'+(isBye?' bye empty':'')+((!team)?' empty':'')+(isWin?' winner':'')+(isLos?' loser':'');
+    // Set innerHTML FIRST, then onclick (innerHTML wipes event listeners)
+    slot.innerHTML=`<span class="slot-seed">${team?'#'+team.seed:''}</span><span class="slot-name">${isBye?'BYE':(team?team.name:'Por decidir')}</span><span class="slot-win-icon">▲</span>`;
     if(!isBye&&team&&!IS_DISPLAY&&!IS_BRACKET){
-      // Capturar si es ganador AHORA para el reset, pero leer state fresco al hacer clic
-      const capturedIsWin = isWin;
+      const capturedTeamName = team?.name;
+      const capturedLri = lri;
       slot.onclick=(e)=>{
         e.stopPropagation();
         if(isGF){
           window.selectWinnerGF(si);
         } else if(isLower){
-          const cur = state.lRounds?.[lri]?.[mi];
+          const cur = state.lRounds?.[capturedLri]?.[mi];
           if(!cur) return;
-          if(!cur.winner) window.selectWinnerLower(lri, mi, si);
+          if(!cur.winner) window.selectWinnerLower(capturedLri, mi, si);
         } else {
           const cur = state.rounds?.[ri]?.[mi];
           if(!cur) return;
           if(!cur.winner) window.selectWinner(ri, mi, si);
-          else if(cur.winner?.name === team?.name) window.resetWinner(ri, mi);
+          else if(cur.winner?.name === capturedTeamName) window.resetWinner(ri, mi);
         }
       };
     }
-    slot.innerHTML=`<span class="slot-seed">${team?'#'+team.seed:''}</span><span class="slot-name">${isBye?'BYE':(team?team.name:'Por decidir')}</span><span class="slot-win-icon">▲</span>`;
     card.appendChild(slot);
   });
   return card;
