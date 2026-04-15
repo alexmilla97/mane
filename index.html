@@ -1671,9 +1671,11 @@ function subscribeToSession(){
       }
       // Dispositivo libre → coger siguiente de la cola global
       if(dev){
+        renderGroups(); // actualizar colores inmediatamente
         await dispatchNextFromQueue();
         await saveDevices();
-      }      deleteDoc(change.doc.ref).catch(()=>{});
+      }
+      deleteDoc(change.doc.ref).catch(()=>{});
     });
   });
 }
@@ -1824,6 +1826,8 @@ setInterval(()=>{
 // ── Envío a dispositivos ──────────────────────────────
 async function _sendMatchNow(dev, gi, mi, btn){
   const m=groupData.groups[gi]?.matches[mi]; if(!m) return;
+  // Marcar ocupado INMEDIATAMENTE para que el while loop no lo vuelva a asignar
+  dev.busy=true; dev.currentMatch={gi, mi, sid:sessionId, assignedAt:Date.now()};
   const queueRemaining = globalQueue.filter(q=>q.sid===sessionId).length;
   const nextInQueue = globalQueue.find(q=>q.sid===sessionId);
   let nextT1=null, nextT2=null;
@@ -1839,9 +1843,9 @@ async function _sendMatchNow(dev, gi, mi, btn){
     sessionId, torneoName:groupData.title
   };
   await sendToDevice(sessionId, dev.clientId, { match:payload });
-  dev.busy=true; dev.currentMatch={gi, mi, sid:sessionId, assignedAt:Date.now()};
   await setDoc(doc(db,'devices',dev.clientId), { busy:true, busyTorneo:groupData.title||sessionId }, { merge:true });
   if(activePanel?.gi===gi&&activePanel?.mi===mi){ closeScorePanel(gi); activePanel=null; }
+  renderGroups(); // actualizar color a live inmediatamente
   toast(`📱 ${m.t1.name} vs ${m.t2.name} → ${dev.name}`);
 }
 
@@ -1859,18 +1863,23 @@ async function addToGlobalQueue(gi, mi){
   if(isMatchQueued(gi,mi)){ toast('⚠️ Ya está en la cola'); return; }
   globalQueue.push({gi, mi, sid:sessionId, assignedAt:Date.now()});
   if(activePanel?.gi===gi&&activePanel?.mi===mi){ closeScorePanel(gi); activePanel=null; }
-  // Intentar asignar inmediatamente si hay dispositivo libre
+  renderGroups(); // actualizar colores inmediatamente
   await dispatchNextFromQueue();
   await saveDevices();
 }
 
 function removeFromGlobalQueue(gi, mi){
   const idx=globalQueue.findIndex(q=>q.gi===gi&&q.mi===mi&&q.sid===sessionId);
-  if(idx>=0){ globalQueue.splice(idx,1); toast('✕ Partido eliminado de la cola'); saveDevices(); }
+  if(idx>=0){
+    globalQueue.splice(idx,1);
+    toast('✕ Partido eliminado de la cola');
+    renderGroups(); // actualizar colores inmediatamente
+    saveDevices();
+  }
 }
 
 async function dispatchNextFromQueue(){
-  if(!sessionId) return;
+  if(!sessionId || !groupData.groups) return; // no hay torneo cargado
   while(true){
     let freeDev = connectedDevices.find(d=>!d.busy&&!d.firestoreBusy);
     if(!freeDev){
