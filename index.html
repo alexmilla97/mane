@@ -1760,10 +1760,16 @@ function updateDeviceUI(){
   const mini=$('ntfy-mini-text'); if(mini) mini.textContent=count===0?'0 disp.':`${count} disp.`;
   const dot2=$('ntfy-dot2'); if(dot2){ count>0?dot2.classList.add('on'):dot2.classList.remove('on'); }
   renderDevicesList();
-  // Refrescar paneles de score abiertos para actualizar botón de cola
+  // Refrescar solo el botón de cola en paneles abiertos
   document.querySelectorAll('.score-panel.open').forEach(p=>{
     const [,gi,mi]=(p.id||'').split('-');
-    if(gi!==undefined){ openScorePanel(+gi, +mi); }
+    if(gi===undefined) return;
+    const section = p.querySelector('.send-to-section');
+    if(section){
+      const newSection = document.createElement('div');
+      renderSendToSection(+gi, +mi, newSection);
+      section.replaceWith(newSection.firstChild || newSection);
+    }
   });
 }
 
