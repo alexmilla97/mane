@@ -787,7 +787,9 @@ function showAdminView(){
           existing.firestoreBusy = (d.busyTorneo && d.busyTorneo !== groupData.title) || false;
         }
       } else {
-        // Dispositivo nuevo — añadir con su estado real de Firestore
+        // Solo añadir dispositivos con ping reciente (últimos 2 minutos)
+        const lastSeenMs = d.lastSeen?.toMillis?.() || 0;
+        if((Date.now() - lastSeenMs) > 120000) return;
         connectedDevices.push({
           clientId: d.clientId, name: d.name, lastSeen: Date.now(),
           busy: !!d.busy, currentMatch: d.currentMatch || null,
@@ -796,7 +798,6 @@ function showAdminView(){
         const overlay = $('connect-overlay');
         if(overlay?.classList.contains('open')) overlay.classList.remove('open');
         toast(`📱 ${d.name} conectado`);
-        // Si el nuevo dispositivo está libre, intentar asignarle partido
         if(!d.busy) dispatchNextFromQueue();
       }
       updateDeviceUI();
@@ -1700,13 +1701,17 @@ async function loadTournament(sid){
     // Cargar estado real (busy/currentMatch) desde devices/{id}
     const devListSnap = await getDocs(collection(db,'devices'));
     const liveDevices = [];
+    const twoMinutesAgo = Date.now() - 120000;
     devListSnap.forEach(d=>{
       const dd=d.data();
-      if(!dd.blocked && dd.clientId) liveDevices.push({
-        clientId: dd.clientId, name: dd.name,
-        busy: !!dd.busy, currentMatch: dd.currentMatch||null,
-        lastSeen: Date.now()
-      });
+      if(!dd.blocked && dd.clientId){
+        const lastSeenMs = dd.lastSeen?.toMillis?.() || 0;
+        if(lastSeenMs > twoMinutesAgo) liveDevices.push({
+          clientId: dd.clientId, name: dd.name,
+          busy: !!dd.busy, currentMatch: dd.currentMatch||null,
+          lastSeen: Date.now()
+        });
+      }
     });
     await restoreTournament(sid,{...data, devices: liveDevices, blocked:devData.blocked||[]},true);
     $('tourneys-overlay').style.display='none';
