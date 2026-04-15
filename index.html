@@ -162,6 +162,14 @@
   .team-slot.empty { cursor: default; color: var(--text-muted); font-style: italic; }
   .team-slot.bye { background: rgba(255,255,255,0.02); }
   .final-match { border: 2px solid var(--gold); transform: scale(1.1); }
+  .bracket-section-label { font-family: 'Barlow Condensed', sans-serif; font-size: 0.75rem; font-weight: 800; letter-spacing: 0.18em; text-transform: uppercase; color: var(--text-muted); opacity: 0.5; text-align: center; padding: 0.4rem 1rem; border-radius: 4px; white-space: nowrap; }
+  .bracket-divider { width: 100%; height: 2px; background: linear-gradient(to right, transparent, var(--border-strong), transparent); margin: 1.5rem 0; flex-shrink: 0; }
+  .lower-bracket-wrap { display: flex; gap: 2rem; align-items: flex-start; }
+  .lower-round-col { display: flex; flex-direction: column; min-width: 200px; gap: 0.6rem; }
+  .lower-matches { display: flex; flex-direction: column; gap: 1rem; }
+  .grand-final-wrap { display: flex; flex-direction: column; align-items: center; gap: 0.5rem; }
+  .grand-final-label { font-family: 'Barlow Condensed', sans-serif; font-size: 0.85rem; font-weight: 800; color: var(--gold); letter-spacing: 0.12em; text-transform: uppercase; text-align: center; margin-bottom: 0.5rem; }
+  .bracket-full-wrap { display: flex; flex-direction: column; gap: 0; width: 100%; }
   .champion-banner { display: none; background: linear-gradient(to right, transparent, rgba(212,160,23,0.15), transparent); padding: 2rem; text-align: center; margin-bottom: 1rem; border-top: 1px solid var(--gold-dark); border-bottom: 1px solid var(--gold-dark); }
   .champion-banner.visible { display: block; animation: fadeIn 0.6s ease; }
   .champion-banner h3 { font-family: 'Barlow Condensed', sans-serif; font-size: 1.2rem; text-transform: uppercase; letter-spacing: 0.2em; color: var(--gold); margin-bottom: 0.5rem; }
@@ -2131,72 +2139,336 @@ function generateProfessionalNames(pairings){
   return names;
 }
 
-// ── Knockout ──────────────────────────────────────────
-function launchTournament(title,names){
-  state={title,numTeams:names.length,totalMatches:names.length-1,rounds:buildRounds(names)};
+// ── Knockout — Double Elimination ─────────────────────
+function launchTournament(title, names){
+  const rounds = buildUpperRounds(names);
+  const lRounds = buildLowerRounds(rounds);
+  const gf = { t1:null, t2:null, winner:null }; // Gran Final
+  const totalMatches = (rounds.flat().length) + (lRounds.flat().length) + 1;
+  state = { title, numTeams:names.length, totalMatches, rounds, lRounds, gf };
   $('display-title').textContent=title; $('fs-bar-title').textContent=title;
-  $('tournament-screen').style.display='block'; saveCurrentTournament(); renderBracket(); updateProgress(); flashHint();
+  $('tournament-screen').style.display='block';
+  saveCurrentTournament(); renderBracket(); updateProgress(); flashHint();
 }
-function buildRounds(names){
-  const objs=names.map((n,i)=>({name:n,seed:i+1})), rounds=[], first=[];
-  for(let i=0;i<objs.length;i+=2) first.push({t1:objs[i],t2:objs[i+1]||null,winner:null});
-  rounds.push(first);
-  for(let p=first.length;p>1;p=Math.ceil(p/2)) rounds.push(Array.from({length:Math.ceil(p/2)},()=>({t1:null,t2:null,winner:null})));
-  rounds[0].forEach((m,mi)=>{ if(!m.t2||m.t2.name==='BYE'){m.winner=m.t1;if(rounds[1])rounds[1][Math.floor(mi/2)][mi%2===0?'t1':'t2']=m.t1;}else if(m.t1.name==='BYE'){m.winner=m.t2;if(rounds[1])rounds[1][Math.floor(mi/2)][mi%2===0?'t1':'t2']=m.t2;} });
+
+function buildUpperRounds(names){
+  const objs = names.map((n,i) => ({name:n, seed:i+1}));
+  const first = [];
+  for(let i=0; i<objs.length; i+=2)
+    first.push({t1:objs[i], t2:objs[i+1]||null, winner:null, loser:null});
+  const rounds = [first];
+  for(let p=first.length; p>1; p=Math.ceil(p/2))
+    rounds.push(Array.from({length:Math.ceil(p/2)}, ()=>({t1:null,t2:null,winner:null,loser:null})));
+  // Auto-advance BYEs
+  rounds[0].forEach((m,mi)=>{
+    if(!m.t2||m.t2.name==='BYE'){ m.winner=m.t1; m.loser=m.t2; propagateUpper(rounds,0,mi,m.t1); }
+    else if(m.t1&&m.t1.name==='BYE'){ m.winner=m.t2; m.loser=m.t1; propagateUpper(rounds,0,mi,m.t2); }
+  });
   return rounds;
 }
-function roundLabel(total,ri){ return(['Final','Semifinal','Cuartos de Final','Octavos de Final'][total-1-ri]??`Ronda ${ri+1}`); }
-function renderBracket(){ const c=$('bracket-container'); c.innerHTML=''; if(state.numTeams===32) c.classList.add('size-32'); else c.classList.remove('size-32'); renderDual(c); setTimeout(syncBracketOverlay,100); if(isFsMode) requestAnimationFrame(scaleBracket); }
-function renderDual(c){
-  const {rounds}=state,total=rounds.length,halfR=total-1;
-  const root=document.createElement('div'); root.className='bracket-dual';
-  const left=document.createElement('div'); left.className='bracket-half-left';
-  for(let ri=0;ri<halfR;ri++){ const h=Math.ceil(rounds[ri].length/2); left.appendChild(makeCol(roundLabel(total,ri),rounds[ri].slice(0,h),ri,0,'left')); }
-  const center=document.createElement('div'); center.className='bracket-center';
-  const ch=document.createElement('div'); ch.className='round-header'; ch.textContent='⚽ FINAL ⚽'; center.appendChild(ch);
-  const ca=document.createElement('div'); ca.className='center-match-area';
-  const finalMatch=buildCard(rounds[total-1][0],total-1,0,true); finalMatch.id=`match-${total-1}-0`; ca.appendChild(finalMatch); center.appendChild(ca);
-  const right=document.createElement('div'); right.className='bracket-half-right';
-  for(let ri=0;ri<halfR;ri++){ const h=Math.ceil(rounds[ri].length/2); right.appendChild(makeCol(roundLabel(total,ri),rounds[ri].slice(h),ri,h,'right')); }
-  root.appendChild(left); root.appendChild(center); root.appendChild(right); c.appendChild(root);
-  const svg=document.createElementNS('http://www.w3.org/2000/svg','svg'); svg.setAttribute('class','bracket-svg'); svg.setAttribute('preserveAspectRatio','xMidYMid meet'); svg.id='bracket-svg'; c.appendChild(svg);
+
+function buildLowerRounds(upperRounds){
+  /*
+    Double elimination lower bracket structure:
+    - L odd rounds  (1,3,5...): lower survivors vs lower survivors → size halves
+    - L even rounds (2,4,6...): upper losers drop in vs lower survivors → same size as prev lower round
+
+    For upper with R rounds and n first-round matches:
+    Upper R1 → n losers → pair them → L-R1 has n/2 matches
+    Upper R2 → n/2 losers drop into L-R2 (n/2 matches, same as L-R1)
+    L-R3: n/4 matches (survivors only)
+    Upper R3 → n/4 losers drop into L-R4 (n/4 matches)
+    L-R5: n/8 matches
+    ...until 1 match remains → winner goes to Grand Final
+  */
+  const uR = upperRounds.length; // number of upper rounds
+  const n  = upperRounds[0].length; // matches in upper R1
+
+  const lRounds = [];
+  let size = Math.floor(n / 2); // L-R1 has n/2 matches
+
+  // L-R1: pair up the 2*size losers from upper R1
+  const lr1 = Array.from({length: size}, (_,i) => ({
+    t1: null, t2: null, winner: null, loser: null,
+    fromUpper: [i*2, i*2+1], // indices into upperRounds[0]
+    type: 'lower-only'
+  }));
+  lRounds.push(lr1);
+
+  // For each subsequent upper round (ur = 1..uR-1), add two lower rounds:
+  //   even: drop losers from upper round ur → size stays same as previous lower round
+  //   odd:  survivors only → size halves
+  for(let ur = 1; ur < uR; ur++){
+    const prevSize = lRounds[lRounds.length-1].length;
+
+    // Even lower round: upper losers drop in (one per lower match)
+    // upper round ur has uR/2^ur matches = prevSize matches (they align)
+    lRounds.push(Array.from({length: prevSize}, (_,i) => ({
+      t1: null, t2: null, winner: null, loser: null,
+      fromUpperRound: ur, fromUpperIdx: i,
+      type: 'drop-in'  // t1 = upper loser, t2 = prev lower winner (or vice versa, alternating)
+    })));
+
+    // Odd lower round: survivors only (unless we're at the last upper round)
+    if(ur < uR - 1){
+      const newSize = Math.ceil(prevSize / 2);
+      lRounds.push(Array.from({length: newSize}, () => ({
+        t1: null, t2: null, winner: null, loser: null,
+        type: 'lower-only'
+      })));
+    }
+  }
+
+  return lRounds;
 }
-function makeCol(label,matches,ri,startMi,side){
+
+function propagateUpper(rounds, ri, mi, winner){
+  if(ri+1 < rounds.length){
+    const nmi = Math.floor(mi/2);
+    rounds[ri+1][nmi][mi%2===0?'t1':'t2'] = winner;
+  }
+}
+
+function dropToLower(upperRound, upperMatchIdx, loser){
+  if(!state.lRounds?.length || !loser) return;
+
+  if(upperRound === 0){
+    // Upper R1 losers → L-R1, paired in order (0,1 → lm0; 2,3 → lm1...)
+    const lmi = Math.floor(upperMatchIdx / 2);
+    const slot = upperMatchIdx % 2 === 0 ? 't1' : 't2';
+    if(state.lRounds[0]?.[lmi]) state.lRounds[0][lmi][slot] = loser;
+  } else {
+    // Upper round ur > 0 → drop-in lower round at index ur*2 - 1
+    const lri = upperRound * 2 - 1;
+    if(lri < state.lRounds.length){
+      const dropRound = state.lRounds[lri];
+      // Alternate inversion each drop-in round to prevent rematches across rounds
+      // ur=1 (R2) → inverted, ur=2 (R3) → normal, ur=3 (R4) → inverted...
+      const shouldInvert = upperRound % 2 === 1;
+      const targetIdx = shouldInvert ? (totalMatches - 1) - upperMatchIdx : upperMatchIdx;
+      const m = dropRound[targetIdx];
+      if(m) m.t1 = loser;
+    }
+  }
+}
+
+function propagateLower(lri, mi, winner){
+  const nextLri = lri + 1;
+  if(nextLri < state.lRounds.length){
+    const nextRound = state.lRounds[nextLri];
+    if(nextRound[0]?.type === 'drop-in'){
+      // Winner goes to t2 of the matching drop-in match
+      if(nextRound[mi]) nextRound[mi].t2 = winner;
+    } else {
+      // lower-only: pair up winners
+      const nmi = Math.floor(mi / 2);
+      if(nextRound[nmi]) nextRound[nmi][mi%2===0?'t1':'t2'] = winner;
+    }
+  } else {
+    // Last lower round winner → Gran Final t2
+    state.gf.t2 = winner;
+  }
+}function renderBracket(){
+  const c=$('bracket-container'); c.innerHTML='';
+  if(state.numTeams===32) c.classList.add('size-32'); else c.classList.remove('size-32');
+  const wrap = document.createElement('div'); wrap.className='bracket-full-wrap';
+  // Upper bracket
+  const upperLabel = document.createElement('div'); upperLabel.className='bracket-section-label'; upperLabel.textContent='▲ Upper Bracket';
+  wrap.appendChild(upperLabel);
+  const upperWrap = document.createElement('div'); upperWrap.style.cssText='display:flex;gap:2rem;align-items:center;position:relative;';
+  renderUpperInto(upperWrap);
+  wrap.appendChild(upperWrap);
+  // Divider
+  const div1 = document.createElement('div'); div1.className='bracket-divider'; wrap.appendChild(div1);
+  // Lower bracket
+  const lowerLabel = document.createElement('div'); lowerLabel.className='bracket-section-label'; lowerLabel.textContent='▼ Lower Bracket';
+  wrap.appendChild(lowerLabel);
+  const lowerWrap = document.createElement('div'); lowerWrap.className='lower-bracket-wrap';
+  renderLowerInto(lowerWrap);
+  wrap.appendChild(lowerWrap);
+  // Grand Final
+  const div2 = document.createElement('div'); div2.className='bracket-divider'; wrap.appendChild(div2);
+  const gfWrap = document.createElement('div'); gfWrap.className='grand-final-wrap';
+  const gfLabel = document.createElement('div'); gfLabel.className='grand-final-label'; gfLabel.textContent='🏆 Gran Final';
+  gfWrap.appendChild(gfLabel);
+  const gfCard = buildCard(state.gf, 'gf', 0, true); gfCard.id='match-gf-0'; gfWrap.appendChild(gfCard);
+  wrap.appendChild(gfWrap);
+  c.appendChild(wrap);
+  const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
+  svg.setAttribute('class','bracket-svg'); svg.id='bracket-svg'; c.appendChild(svg);
+  setTimeout(syncBracketOverlay,100);
+  if(isFsMode) requestAnimationFrame(scaleBracket);
+}
+
+function renderUpperInto(container){
+  const {rounds} = state, total = rounds.length;
+  const halfR = total - 1;
+  const root = document.createElement('div'); root.className='bracket-dual';
+  const left = document.createElement('div'); left.className='bracket-half-left';
+  for(let ri=0; ri<halfR; ri++){
+    const h = Math.ceil(rounds[ri].length/2);
+    left.appendChild(makeCol(roundLabel(total,ri), rounds[ri].slice(0,h), ri, 0, 'left'));
+  }
+  const center = document.createElement('div'); center.className='bracket-center';
+  const ch = document.createElement('div'); ch.className='round-header'; ch.textContent='⚽ FINAL UPPER ⚽'; center.appendChild(ch);
+  const ca = document.createElement('div'); ca.className='center-match-area';
+  const finalMatch = buildCard(rounds[total-1][0], total-1, 0, false);
+  finalMatch.id=`match-${total-1}-0`; ca.appendChild(finalMatch); center.appendChild(ca);
+  const right = document.createElement('div'); right.className='bracket-half-right';
+  for(let ri=0; ri<halfR; ri++){
+    const h = Math.ceil(rounds[ri].length/2);
+    right.appendChild(makeCol(roundLabel(total,ri), rounds[ri].slice(h), ri, h, 'right'));
+  }
+  root.appendChild(left); root.appendChild(center); root.appendChild(right); container.appendChild(root);
+}
+
+function renderLowerInto(container){
+  const { lRounds } = state; if(!lRounds?.length) return;
+  lRounds.forEach((round, lr)=>{
+    const col = document.createElement('div'); col.className='lower-round-col';
+    const hdr = document.createElement('div'); hdr.className='round-header';
+    // Label based on type
+    const isDropIn = round[0]?.type === 'drop-in';
+    const uRound = isDropIn ? (round[0]?.fromUpperRound ?? 0) : null;
+    hdr.textContent = isDropIn
+      ? `Perdedores R${uRound + 1}`
+      : `Lower R${lr + 1}`;
+    col.appendChild(hdr);
+    const mc = document.createElement('div'); mc.className='lower-matches';
+    round.forEach((m, mi)=>{
+      const card = buildCard(m, `l${lr}`, mi, false);
+      card.id=`match-l${lr}-${mi}`; mc.appendChild(card);
+    });
+    col.appendChild(mc); container.appendChild(col);
+  });
+}
+
+function makeCol(label, matches, ri, startMi, side){
   const col=document.createElement('div'); col.className='round-col';
   const h=document.createElement('div'); h.className='round-header'; h.textContent=label; col.appendChild(h);
   const mc=document.createElement('div'); mc.className='match-col';
-  matches.forEach((m,li)=>{ const wr=document.createElement('div'); wr.className='match-wrapper'; const card=buildCard(m,ri,startMi+li); card.id=`match-${ri}-${startMi+li}`; wr.appendChild(card); const step=100/matches.length; wr.style.top=`${li*step+step/2}%`; mc.appendChild(wr); });
+  matches.forEach((m,li)=>{
+    const wr=document.createElement('div'); wr.className='match-wrapper';
+    const card=buildCard(m,ri,startMi+li); card.id=`match-${ri}-${startMi+li}`; wr.appendChild(card);
+    const step=100/matches.length; wr.style.top=`${li*step+step/2}%`; mc.appendChild(wr);
+  });
   col.appendChild(mc); return col;
 }
-function buildCard(match,ri,mi,isFinal=false){
+
+function buildCard(match, ri, mi, isFinal=false){
   const card=document.createElement('div'); card.className='match'+(isFinal?' final-match':'');
-  [match.t1,match.t2].forEach((team,si)=>{
-    const slot=document.createElement('div'), isBye=team&&team.name==='BYE', isWin=match.winner&&team&&match.winner.name===team.name, isLos=match.winner&&team&&match.winner.name!==team.name;
+  const isLower = typeof ri === 'string' && ri.startsWith('l');
+  const isGF = ri === 'gf';
+  [match.t1, match.t2].forEach((team, si)=>{
+    const slot=document.createElement('div');
+    const isBye=team&&team.name==='BYE';
+    const isWin=match.winner&&team&&match.winner.name===team.name;
+    const isLos=match.winner&&team&&match.winner.name!==team.name;
     slot.className='team-slot'+(isBye?' bye empty':'')+((!team)?' empty':'')+(isWin?' winner':'')+(isLos?' loser':'');
-    if(!isBye&&team&&!IS_DISPLAY&&!IS_BRACKET){ slot.onclick=(e)=>{ e.stopPropagation(); if(!match.winner) selectWinner(ri,mi,si); else if(isWin) resetWinner(ri,mi); }; }
+    if(!isBye&&team&&!IS_DISPLAY&&!IS_BRACKET){
+      slot.onclick=(e)=>{
+        e.stopPropagation();
+        if(isGF) selectWinnerGF(si);
+        else if(isLower) selectWinnerLower(parseInt(ri.slice(1)), mi, si);
+        else { if(!match.winner) selectWinner(ri,mi,si); else if(isWin) resetWinner(ri,mi); }
+      };
+    }
     slot.innerHTML=`<span class="slot-seed">${team?'#'+team.seed:''}</span><span class="slot-name">${isBye?'BYE':(team?team.name:'Por decidir')}</span><span class="slot-win-icon">▲</span>`;
     card.appendChild(slot);
   });
   return card;
 }
-function selectWinner(ri,mi,si){
-  const match=state.rounds[ri][mi];
-  if(match.winner){toast('Ya hay un ganador.');return;}
-  if(!match.t1||!match.t2){toast('Faltan equipos en este partido.');return;}
-  const winner=si===0?match.t1:match.t2; match.winner=winner;
-  if(ri+1<state.rounds.length){const nmi=Math.floor(mi/2);state.rounds[ri+1][nmi][mi%2===0?'t1':'t2']=winner;}
-  const last=state.rounds[state.rounds.length-1];
-  if(last.length===1&&last[0].winner){ const champ=last[0].winner; $('champion-name').textContent=champ.name; if(!isFsMode){$('champion-banner').classList.add('visible');$('champion-banner').scrollIntoView({behavior:'smooth',block:'center'});} toast(`🏆 ¡${champ.name} es el CAMPEÓN!`); }
-  else toast(`✓ ${winner.name} avanza`);
+
+function selectWinner(ri, mi, si){
+  const match = state.rounds[ri][mi];
+  if(match.winner){ toast('Ya hay un ganador.'); return; }
+  if(!match.t1||!match.t2){ toast('Faltan equipos en este partido.'); return; }
+  const winner = si===0 ? match.t1 : match.t2;
+  const loser  = si===0 ? match.t2 : match.t1;
+  match.winner = winner; match.loser = loser;
+  propagateUpper(state.rounds, ri, mi, winner);
+  // Check upper final → feeds Gran Final t1
+  const lastR = state.rounds[state.rounds.length-1];
+  if(lastR.length===1 && lastR[0].winner) state.gf.t1 = lastR[0].winner;
+  // Drop loser to lower bracket
+  dropToLower(ri, mi, loser);
+  toast(`✓ ${winner.name} avanza · ${loser.name} al lower`);
   saveCurrentTournament(); renderBracket(); updateProgress();
 }
-function resetWinner(ri,mi){
-  if(!confirm('¿Resetear este partido? Se borrarán los avances posteriores.')) return;
-  function clearFwd(r,m){ const match=state.rounds[r][m]; if(!match.winner) return; const old=match.winner; match.winner=null; if(r+1<state.rounds.length){const nm=state.rounds[r+1][Math.floor(m/2)]; if(nm.t1?.name===old.name) nm.t1=null; if(nm.t2?.name===old.name) nm.t2=null; clearFwd(r+1,Math.floor(m/2));} }
-  clearFwd(ri,mi); $('champion-banner').classList.remove('visible'); saveCurrentTournament(); renderBracket(); updateProgress(); toast('✓ Resultado reseteado');
+
+function selectWinnerLower(lri, mi, si){
+  const match = state.lRounds[lri][mi];
+  if(match.winner){ toast('Ya hay un ganador.'); return; }
+  if(!match.t1||!match.t2){ toast('Faltan equipos.'); return; }
+  const winner = si===0 ? match.t1 : match.t2;
+  const loser  = si===0 ? match.t2 : match.t1;
+  match.winner = winner; match.loser = loser;
+  propagateLower(lri, mi, winner);
+  toast(`✓ ${winner.name} avanza en lower`);
+  saveCurrentTournament(); renderBracket(); updateProgress();
 }
+
+function selectWinnerGF(si){
+  if(state.gf.winner){ toast('Ya hay un ganador.'); return; }
+  if(!state.gf.t1||!state.gf.t2){ toast('Faltan equipos para la Gran Final.'); return; }
+  const winner = si===0 ? state.gf.t1 : state.gf.t2;
+  state.gf.winner = winner;
+  $('champion-name').textContent = winner.name;
+  if(!isFsMode){ $('champion-banner').classList.add('visible'); $('champion-banner').scrollIntoView({behavior:'smooth',block:'center'}); }
+  toast(`🏆 ¡${winner.name} es el CAMPEÓN!`);
+  saveCurrentTournament(); renderBracket(); updateProgress();
+}
+
+function resetWinner(ri, mi){
+  if(!confirm('¿Resetear este partido? Se borrarán los avances posteriores.')) return;
+  function clearFwdUpper(r, m){
+    const match = state.rounds[r][m]; if(!match.winner) return;
+    const old = match.winner; const oldL = match.loser;
+    match.winner=null; match.loser=null;
+    if(r+1 < state.rounds.length){
+      const nm = state.rounds[r+1][Math.floor(m/2)];
+      if(nm.t1?.name===old.name) nm.t1=null;
+      if(nm.t2?.name===old.name) nm.t2=null;
+      clearFwdUpper(r+1, Math.floor(m/2));
+    }
+    // Clear from lower bracket
+    if(oldL) removeLower(r, m, oldL);
+    // Clear GF if came from upper final
+    const lastR = state.rounds[state.rounds.length-1];
+    if(state.gf.t1?.name === old.name) state.gf.t1=null;
+    state.gf.winner=null;
+  }
+  clearFwdUpper(ri, mi);
+  $('champion-banner').classList.remove('visible');
+  saveCurrentTournament(); renderBracket(); updateProgress(); toast('✓ Resultado reseteado');
+}
+
+function removeLower(upperRound, upperMatchIdx, team){
+  if(!state.lRounds?.length || !team) return;
+  if(upperRound === 0){
+    const lmi = Math.floor(upperMatchIdx / 2);
+    const m = state.lRounds[0]?.[lmi]; if(!m) return;
+    if(m.t1?.name===team.name) m.t1=null;
+    if(m.t2?.name===team.name) m.t2=null;
+    m.winner=null; m.loser=null;
+  } else {
+    const lri = upperRound * 2 - 1;
+    const dropRound = state.lRounds[lri]; if(!dropRound) return;
+    const shouldInvert = upperRound % 2 === 1;
+    const targetIdx = shouldInvert ? (dropRound.length - 1) - upperMatchIdx : upperMatchIdx;
+    const m = dropRound[targetIdx]; if(!m) return;
+    if(m.t1?.name===team.name) m.t1=null;
+    m.winner=null; m.loser=null;
+  }
+}
+
+function roundLabel(total, ri){ return(['Final','Semifinal','Cuartos de Final','Octavos de Final'][total-1-ri]??`Ronda ${ri+1}`); }
+
 function updateProgress(){
-  const played=state.rounds.flat().filter(m=>m.winner).length;
+  const uPlayed = state.rounds.flat().filter(m=>m.winner).length;
+  const lPlayed = (state.lRounds||[]).flat().filter(m=>m.winner).length;
+  const gfPlayed = state.gf?.winner ? 1 : 0;
+  const played = uPlayed + lPlayed + gfPlayed;
   $('progress-fill').style.width=Math.round(played/state.totalMatches*100)+'%';
   const txt=`${played} / ${state.totalMatches} partidos`;
   $('progress-text').textContent=$('fs-bar-progress').textContent=txt;
@@ -2233,11 +2505,24 @@ function renderBracketDisplay(data){
   if(!data?.rounds) return;
   $('dv-title').textContent=data.title||'—'; $('dv-badge-text').textContent='EN VIVO · Cuadro Eliminatorio';
   const cont=$('dv-groups'); cont.innerHTML=''; cont.style.overflow='auto'; cont.style.padding='0';
-  const scaler=document.createElement('div'); scaler.id='bracket-scaler-dv'; scaler.style.cssText='transition:transform 0.2s ease-out;transform-origin:center center;';
-  const bc=document.createElement('div'); bc.id='bracket-container-dv'; bc.style.cssText='display:flex;gap:2rem;align-items:center;padding:2rem;';
-  state=data; renderDual(bc); scaler.appendChild(bc); cont.appendChild(scaler);
-  setTimeout(()=>{ syncBracketOverlay(); const sc=Math.min((cont.clientWidth-40)/bc.scrollWidth,(cont.clientHeight-40)/bc.scrollHeight); scaler.style.width=bc.scrollWidth+'px'; scaler.style.height=bc.scrollHeight+'px'; scaler.style.transform=`scale(${sc})`; },100);
-  const played=data.rounds.flat().filter(m=>m.winner).length, total=data.totalMatches;
+  const scaler=document.createElement('div'); scaler.id='bracket-scaler-dv'; scaler.style.cssText='transition:transform 0.2s ease-out;transform-origin:top left;';
+  const bc=document.createElement('div'); bc.id='bracket-container-dv'; bc.style.cssText='display:flex;gap:2rem;align-items:center;padding:2rem;position:relative;';
+  // Temporarily set state to render
+  const savedState=state; state=data;
+  renderBracket(); // renders into #bracket-container
+  // Move rendered content to display container
+  const rendered=$('bracket-container'); if(rendered) bc.innerHTML=rendered.innerHTML;
+  state=savedState;
+  scaler.appendChild(bc); cont.appendChild(scaler);
+  setTimeout(()=>{
+    const sc=Math.min((cont.clientWidth-40)/(bc.scrollWidth||1),(cont.clientHeight-40)/(bc.scrollHeight||1),1);
+    scaler.style.width=bc.scrollWidth+'px'; scaler.style.height=bc.scrollHeight+'px';
+    scaler.style.transform=`scale(${sc})`;
+  },100);
+  const uPlayed=data.rounds.flat().filter(m=>m.winner).length;
+  const lPlayed=(data.lRounds||[]).flat().filter(m=>m.winner).length;
+  const gfPlayed=data.gf?.winner?1:0;
+  const played=uPlayed+lPlayed+gfPlayed, total=data.totalMatches;
   $('dv-progress-text').textContent=`${played} / ${total} partidos jugados`;
   $('dv-progress-fill').style.width=total?Math.round(played/total*100)+'%':'0%';
   window.addEventListener('resize',syncBracketOverlay);
