@@ -422,6 +422,7 @@
       <span class="ntfy-dot" id="ntfy-dot2"></span>
       <span id="ntfy-mini-text">0 disp.</span>
     </div>
+    <button class="btn btn-fs" id="btn-clear-devices" onclick="clearAllDevices()" style="border-color:#E24B4A;color:#E24B4A;">🗑️ Limpiar disp.</button>
     <button class="btn btn-fs" id="btn-manage-tourneys">📂 Mis Torneos</button>
     <button class="btn btn-fs" id="reset-btn">＋ Nuevo Torneo</button>
     <button class="btn btn-danger" id="admin-logout-btn" onclick="adminLogout()">Cerrar sesión</button>
@@ -712,7 +713,7 @@
 <!-- Proxy global para onclick inline — las funciones reales se definen en el módulo -->
 <script>
 ['loadTournament','deleteTournament','moveTeam','openScorePanel',
- 'applyScore','clearScore','removeDevice','generateDeviceQR','copyConnectURL','openConnectModal',
+ 'applyScore','clearScore','removeDevice','clearAllDevices','generateDeviceQR','copyConnectURL','openConnectModal',
  'addToGlobalQueue','removeFromGlobalQueue',
  'selectWinner','selectWinnerLower','selectWinnerGF','resetWinner',
  'ipadToggleFS','ipadMod','ipadSave','ipadStart','renderPairingScreen',
@@ -1777,6 +1778,23 @@ function updateDeviceUI(){
   });
 }
 
+async function clearAllDevices(){
+  if(!confirm('¿Eliminar todos los dispositivos conectados? Tendrán que volver a escanear el QR.')) return;
+  try {
+    // Borrar todos los documentos de la colección devices
+    const snap = await getDocs(collection(db,'devices'));
+    await Promise.all(snap.docs.map(d => deleteDoc(d.ref)));
+    // Limpiar también la cola global y estado local
+    connectedDevices = [];
+    globalQueue = [];
+    blockedDevices = [];
+    await saveDevices();
+    await saveGlobalQueue();
+    updateDeviceUI();
+    toast('🗑️ Todos los dispositivos eliminados');
+  } catch(e){ toast('⚠️ Error al limpiar dispositivos'); }
+}
+
 async function removeDevice(clientId){
   connectedDevices = connectedDevices.filter(d => d.clientId !== clientId);
   blockedDevices = blockedDevices.filter(id => id !== clientId); // no necesario guardar en blocked
@@ -2624,7 +2642,7 @@ const _fns = {
   loadTournament, deleteTournament, moveTeam,
   openScorePanel, modSc: window.modSc, closeScorePanel: window.closeScorePanel,
   applyScore, clearScore,
-  removeDevice, generateDeviceQR, copyConnectURL, openConnectModal,
+  removeDevice, clearAllDevices, generateDeviceQR, copyConnectURL, openConnectModal,
   addToGlobalQueue, removeFromGlobalQueue,
   selectWinner, selectWinnerLower, selectWinnerGF, resetWinner,
   ipadToggleFS, ipadMod: window.ipadMod, ipadSave: window.ipadSave, ipadStart: window.ipadStart,
