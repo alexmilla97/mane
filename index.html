@@ -709,7 +709,8 @@
 <script>
 ['loadTournament','deleteTournament','moveTeam','openScorePanel',
  'applyScore','clearScore','removeDevice','generateDeviceQR','copyConnectURL','openConnectModal',
- 'sendMatchToDevice','ipadToggleFS','ipadMod','ipadSave','ipadStart','renderPairingScreen',
+ 'sendMatchToDevice','selectWinner','selectWinnerLower','selectWinnerGF','resetWinner',
+ 'ipadToggleFS','ipadMod','ipadSave','ipadStart','renderPairingScreen',
  'closeTourneysOverlay','closeConnectOverlay','goBackToGroups',
  'openLoginModal','closeLoginModal','doLogin','adminLogout','switchPubTab','togglePublish',
  'showPubPanel','closePubPanel'
@@ -1453,8 +1454,8 @@ if((IS_DISPLAY||IS_BRACKET||IS_QUEUE) && (SESSION_ID||IS_QUEUE)){
         const rawState = data.state;
         const parsedState = {
           ...rawState,
-          lRounds: typeof rawState.lRounds === 'string' ? JSON.parse(rawState.lRounds) : (rawState.lRounds || null),
-          gf: typeof rawState.gf === 'string' ? JSON.parse(rawState.gf) : (rawState.gf || null),
+          lRounds: (() => { try { return typeof rawState.lRounds === 'string' ? JSON.parse(rawState.lRounds) : (rawState.lRounds || null); } catch(e){ return null; } })(),
+          gf: (() => { try { return typeof rawState.gf === 'string' ? JSON.parse(rawState.gf) : (rawState.gf || null); } catch(e){ return null; } })(),
         };
         renderBracketDisplay(parsedState);
       } else if(!IS_BRACKET && data.groupData?.groups) renderDisplayScreen(data.groupData);
@@ -1570,8 +1571,8 @@ async function restoreTournament(sid, data, showToast){
   const rawState = data.state || {};
   state = {
     ...rawState,
-    lRounds: typeof rawState.lRounds === 'string' ? JSON.parse(rawState.lRounds) : (rawState.lRounds || null),
-    gf: typeof rawState.gf === 'string' ? JSON.parse(rawState.gf) : (rawState.gf || null),
+    lRounds: (() => { try { return (() => { try { return typeof rawState.lRounds === 'string' ? JSON.parse(rawState.lRounds) : (rawState.lRounds || null); } catch(e){ return null; } })(); } catch(e){ return null; } })(),
+    gf: (() => { try { return (() => { try { return typeof rawState.gf === 'string' ? JSON.parse(rawState.gf) : (rawState.gf || null); } catch(e){ return null; } })(); } catch(e){ return null; } })(),
   };
   isPublished = false; // resetear hasta que checkPublishState confirme
   updatePublishBtn();
@@ -1626,8 +1627,8 @@ function subscribeToSession(){
       const rawState = data.state;
       state = {
         ...rawState,
-        lRounds: typeof rawState.lRounds === 'string' ? JSON.parse(rawState.lRounds) : (rawState.lRounds || null),
-        gf: typeof rawState.gf === 'string' ? JSON.parse(rawState.gf) : (rawState.gf || null),
+        lRounds: (() => { try { return typeof rawState.lRounds === 'string' ? JSON.parse(rawState.lRounds) : (rawState.lRounds || null); } catch(e){ return null; } })(),
+        gf: (() => { try { return typeof rawState.gf === 'string' ? JSON.parse(rawState.gf) : (rawState.gf || null); } catch(e){ return null; } })(),
       };
     }
     if(groupData.groups) renderGroups();
@@ -2395,9 +2396,9 @@ function buildCard(match, ri, mi, isFinal=false){
     if(!isBye&&team&&!IS_DISPLAY&&!IS_BRACKET){
       slot.onclick=(e)=>{
         e.stopPropagation();
-        if(isGF) selectWinnerGF(si);
-        else if(isLower) selectWinnerLower(parseInt(ri.slice(1)), mi, si);
-        else { if(!match.winner) selectWinner(ri,mi,si); else if(isWin) resetWinner(ri,mi); }
+        if(isGF) window.selectWinnerGF(si);
+        else if(isLower) window.selectWinnerLower(parseInt(ri.slice(1)), mi, si);
+        else { if(!match.winner) window.selectWinner(ri,mi,si); else if(isWin) window.resetWinner(ri,mi); }
       };
     }
     slot.innerHTML=`<span class="slot-seed">${team?'#'+team.seed:''}</span><span class="slot-name">${isBye?'BYE':(team?team.name:'Por decidir')}</span><span class="slot-win-icon">▲</span>`;
@@ -2593,6 +2594,7 @@ const _fns = {
   applyScore, clearScore,
   removeDevice, generateDeviceQR, copyConnectURL, openConnectModal,
   sendMatchToDevice, rebuildDeviceButtons,
+  selectWinner, selectWinnerLower, selectWinnerGF, resetWinner,
   ipadToggleFS, ipadMod: window.ipadMod, ipadSave: window.ipadSave, ipadStart: window.ipadStart,
   renderPairingScreen,
   closeTourneysOverlay: () => $('tourneys-overlay').style.display='none',
