@@ -1225,9 +1225,9 @@ function parseState(data){
   };
 }
 async function saveDevicesMeta(sid, devices, blocked){
-  // Guardar en global (todos los torneos comparten la misma lista)
-  // globalQueue se guarda junto con los dispositivos
-  await setDoc(globalDevicesRef, { devices, blocked, globalQueue, updatedAt: serverTimestamp() });
+  // Solo guardar metadatos de la lista — busy y currentMatch viven en devices/{id}
+  const devList = devices.map(d => ({ clientId: d.clientId, name: d.name }));
+  await setDoc(globalDevicesRef, { devices: devList, blocked, globalQueue, updatedAt: serverTimestamp() });
 }
 async function saveQueueMeta(sid, items, title){
   // Serializar items como JSON string para evitar problemas con Firestore
@@ -1560,7 +1560,6 @@ async function saveDevices(){
     await saveDevicesMeta(sessionId, connectedDevices, blockedDevices);
     if(sessionId && groupData.groups) await buildAndSaveQueue();
     updateDeviceUI();
-    if(sessionId) renderGroups();
   } catch(e){ console.error('saveDevices error', e); }
   _saveDevInFlight = false;
   if(_saveDevPending){ _saveDevPending = false; saveDevices(); }
@@ -1689,11 +1688,22 @@ async function loadTournament(sid){
       return;
     }
     const data=snap.data();
-    // Cargar dispositivos desde la lista global
+    // Cargar lista de dispositivos y cola global
     const devSnap=await getDoc(globalDevicesRef);
     const devData=devSnap.exists()?devSnap.data():{};
-    globalQueue = (devData.globalQueue||[]).filter(q=>q.sid===sessionId); // solo los de este torneo
-    await restoreTournament(sid,{...data,devices:devData.devices||[],blocked:devData.blocked||[]},true);
+    globalQueue = (devData.globalQueue||[]).filter(q=>q.sid===sessionId);
+    // Cargar estado real (busy/currentMatch) desde devices/{id}
+    const devListSnap = await getDocs(collection(db,'devices'));
+    const liveDevices = [];
+    devListSnap.forEach(d=>{
+      const dd=d.data();
+      if(!dd.blocked && dd.clientId) liveDevices.push({
+        clientId: dd.clientId, name: dd.name,
+        busy: !!dd.busy, currentMatch: dd.currentMatch||null,
+        lastSeen: Date.now()
+      });
+    });
+    await restoreTournament(sid,{...data, devices: liveDevices, blocked:devData.blocked||[]},true);
     $('tourneys-overlay').style.display='none';
   } catch(e){
     toast('⚠️ Error al cargar torneo');
