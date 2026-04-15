@@ -1181,14 +1181,13 @@ const queueRef    = sid => doc(db, 'torneos', sid, 'meta', 'queue');
 const globalDevicesRef = doc(db, 'config', 'devicesList'); // lista global de dispositivos
 
 async function saveState(sid, groupData, state){
-  // Serializar lRounds y gf como JSON string para evitar problemas
-  // con arrays anidados en Firestore (merge:true no reemplaza arrays correctamente)
   const stateToSave = {
     ...state,
     lRounds: state.lRounds ? JSON.stringify(state.lRounds) : null,
     gf: state.gf ? JSON.stringify(state.gf) : null,
   };
-  await setDoc(tourneyRef(sid), { groupData, state: stateToSave, updatedAt: serverTimestamp() }, { merge: true });
+  // Sin merge — reemplaza el documento completo para evitar campos obsoletos
+  await setDoc(tourneyRef(sid), { groupData, state: stateToSave, updatedAt: serverTimestamp() });
 }
 async function saveDevicesMeta(sid, devices, blocked){
   // Guardar en global (todos los torneos comparten la misma lista)
@@ -1588,12 +1587,14 @@ async function restoreTournament(sid, data, showToast){
   blockedDevices = data.blocked || [];
 
   if(state.rounds){
+    console.log('restoreTournament: showing tournament-screen, lRounds:', state.lRounds?.length, 'gf:', !!state.gf);
     $('display-title').textContent=groupData.title;
     $('fs-bar-title').textContent=groupData.title;
     ['setup-screen','group-screen','pairing-screen'].forEach(id=>$(id).style.display='none');
     $('tournament-screen').style.display='block';
     renderBracket(); updateProgress();
   } else {
+    console.log('restoreTournament: showing group-screen');
     $('gs-title').textContent=groupData.title;
     ['setup-screen','pairing-screen','tournament-screen'].forEach(id=>$(id).style.display='none');
     $('group-screen').style.display='block';
@@ -2375,26 +2376,27 @@ function buildCard(match, ri, mi, isFinal=false){
     const isWin=match.winner&&team&&match.winner.name===team.name;
     const isLos=match.winner&&team&&match.winner.name!==team.name;
     slot.className='team-slot'+(isBye?' bye empty':'')+((!team)?' empty':'')+(isWin?' winner':'')+(isLos?' loser':'');
-    // Set innerHTML FIRST, then onclick (innerHTML wipes event listeners)
     slot.innerHTML=`<span class="slot-seed">${team?'#'+team.seed:''}</span><span class="slot-name">${isBye?'BYE':(team?team.name:'Por decidir')}</span><span class="slot-win-icon">▲</span>`;
     if(!isBye&&team&&!IS_DISPLAY&&!IS_BRACKET){
-      const capturedTeamName = team?.name;
-      const capturedLri = lri;
-      slot.onclick=(e)=>{
+      const _ri=ri, _mi=mi, _si=si, _lri=lri, _teamName=team?.name;
+      slot.addEventListener('click', (e)=>{
         e.stopPropagation();
+        console.log('slot click', {isGF, isLower, _ri, _mi, _si, _lri, _teamName, stateRounds: !!state.rounds, stateLRounds: !!state.lRounds});
         if(isGF){
-          window.selectWinnerGF(si);
+          window.selectWinnerGF(_si);
         } else if(isLower){
-          const cur = state.lRounds?.[capturedLri]?.[mi];
+          const cur = state.lRounds?.[_lri]?.[_mi];
+          console.log('lower cur', cur);
           if(!cur) return;
-          if(!cur.winner) window.selectWinnerLower(capturedLri, mi, si);
+          if(!cur.winner) window.selectWinnerLower(_lri, _mi, _si);
         } else {
-          const cur = state.rounds?.[ri]?.[mi];
+          const cur = state.rounds?.[_ri]?.[_mi];
+          console.log('upper cur', cur);
           if(!cur) return;
-          if(!cur.winner) window.selectWinner(ri, mi, si);
-          else if(cur.winner?.name === capturedTeamName) window.resetWinner(ri, mi);
+          if(!cur.winner) window.selectWinner(_ri, _mi, _si);
+          else if(cur.winner?.name === _teamName) window.resetWinner(_ri, _mi);
         }
-      };
+      });
     }
     card.appendChild(slot);
   });
