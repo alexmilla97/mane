@@ -780,22 +780,29 @@ function showAdminView(){
             } else if(!isFirestoreBusy){
               existing.firestoreBusy = false;
               existing.busyTorneo = null;
-              if(wasLocalBusy && !existing.currentMatch){
+              // Sincronizar currentMatch desde Firestore
+              existing.currentMatch = d.currentMatch || null;
+              if(wasLocalBusy && !d.busy){
                 existing.busy = false;
+                // Dispositivo quedó libre → intentar asignar siguiente partido
+                dispatchNextFromQueue();
                 saveDevices();
               }
+            } else if(isFirestoreBusy){
+              existing.busy = true;
+              existing.currentMatch = d.currentMatch || existing.currentMatch;
             }
           }
         } else if(d.clientId){
           connectedDevices.push({
             clientId:d.clientId, name:d.name, lastSeen:Date.now(),
-            busy:false, currentMatch:null
+            busy: !!d.busy, currentMatch: d.currentMatch||null
           });
           toast(`📱 ${d.name} conectado`);
           const overlay=$('connect-overlay');
           if(overlay?.classList.contains('open')) overlay.classList.remove('open');
           // Nuevo dispositivo libre → intentar asignarle partido de la cola
-          dispatchNextFromQueue();
+          if(!d.busy) dispatchNextFromQueue();
         }
         updateDeviceUI();
       });
@@ -1252,13 +1259,29 @@ if(IS_DEVICE && DEVICE_ID){
   const dot = $('ipad-ntfy-dot'), st = $('ipad-status-text');
   st.textContent = 'Conectando…';
 
+  let curMatch = null, sc = {s1:0,s2:0}, timerInt = null, startTs = null, running = false;
+
   try {
-    // Registrar presencia — limpiar flag blocked por si fue eliminado previamente
+    // Leer estado anterior primero
+    const devSnap = await getDoc(doc(db,'devices',DEVICE_ID));
+    const devData = devSnap.data();
+    const hasActiveMatch = devData?.currentMatch && devData.currentMatch.type === 'match';
+
+    // Registrar presencia con estado correcto
     await setDoc(doc(db,'devices',DEVICE_ID), {
       name: DEVICE_NAME, clientId: DEVICE_ID,
-      lastSeen: serverTimestamp(), blocked: false, status: 'idle'
+      lastSeen: serverTimestamp(), blocked: false,
+      busy: hasActiveMatch ? true : false,
+      status: hasActiveMatch ? 'busy' : 'idle',
+      currentMatch: hasActiveMatch ? devData.currentMatch : null,
     }, { merge: true });
+
     dot.classList.add('on'); st.textContent = 'Conectado';
+
+    // Restaurar partido si estaba en curso
+    if(hasActiveMatch){
+      showMatch(devData.currentMatch);
+    }
   } catch(e){
     st.textContent = 'Error de conexión';
     console.error('Device registration error', e);
@@ -1270,17 +1293,6 @@ if(IS_DEVICE && DEVICE_ID){
       await setDoc(doc(db,'devices',DEVICE_ID), { lastSeen: serverTimestamp() }, { merge: true });
     } catch(e){}
   }, 30000);
-
-  let curMatch = null, sc = {s1:0,s2:0}, timerInt = null, startTs = null, running = false;
-
-  // Restaurar partido en curso si existe en Firestore
-  try {
-    const devSnap = await getDoc(doc(db,'devices',DEVICE_ID));
-    const devData = devSnap.data();
-    if(devData?.currentMatch && devData.currentMatch.type === 'match'){
-      showMatch(devData.currentMatch);
-    }
-  } catch(e){}
 
   function fmtTime(ms){ const s=ms/1000|0,m=s/60|0,ss=s%60; return ('0'+m).slice(-2)+':'+('0'+ss).slice(-2); }
 
