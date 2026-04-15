@@ -1613,15 +1613,12 @@ async function restoreTournament(sid, data, showToast){
 
 function subscribeToSession(){
   // Listener del torneo — sincroniza estado si viene de otro origen (no nuestros propios writes)
-  let _lastWriteTs = 0;
+  let _lastWriteTs = Date.now(); // iniciar con ahora para ignorar el snapshot inicial
   unsubscribeSession = onSnapshot(tourneyRef(sessionId), snap=>{
     const data=snap.data();
     if(!data) return;
-    // Ignorar cambios que acabamos de escribir nosotros (dentro de 2s)
     const remoteTs = data.updatedAt?.toMillis?.() || 0;
     if(remoteTs <= _lastWriteTs + 2000) return;
-    // Si llegamos aquí es porque otro cliente (o recarga) escribió
-    // Restaurar groupData y state sin redirigir
     if(data.groupData?.groups) groupData = data.groupData;
     if(data.state){
       const rawState = data.state;
@@ -1631,7 +1628,12 @@ function subscribeToSession(){
         gf: (() => { try { return typeof rawState.gf === 'string' ? JSON.parse(rawState.gf) : (rawState.gf || null); } catch(e){ return null; } })(),
       };
     }
-    if(groupData.groups) renderGroups();
+    // Renderizar la pantalla correcta según el estado actual
+    if(state.rounds && $('tournament-screen').style.display !== 'none'){
+      renderBracket(); updateProgress();
+    } else if(groupData.groups && $('group-screen').style.display !== 'none'){
+      renderGroups();
+    }
   });
 
   // Scores entrantes desde dispositivos
@@ -2387,6 +2389,7 @@ function buildCard(match, ri, mi, isFinal=false){
   const card=document.createElement('div'); card.className='match'+(isFinal?' final-match':'');
   const isLower = typeof ri === 'string' && ri.startsWith('l');
   const isGF = ri === 'gf';
+  const lri = isLower ? parseInt(ri.slice(1)) : null;
   [match.t1, match.t2].forEach((team, si)=>{
     const slot=document.createElement('div');
     const isBye=team&&team.name==='BYE';
@@ -2394,11 +2397,22 @@ function buildCard(match, ri, mi, isFinal=false){
     const isLos=match.winner&&team&&match.winner.name!==team.name;
     slot.className='team-slot'+(isBye?' bye empty':'')+((!team)?' empty':'')+(isWin?' winner':'')+(isLos?' loser':'');
     if(!isBye&&team&&!IS_DISPLAY&&!IS_BRACKET){
+      // Capturar si es ganador AHORA para el reset, pero leer state fresco al hacer clic
+      const capturedIsWin = isWin;
       slot.onclick=(e)=>{
         e.stopPropagation();
-        if(isGF) window.selectWinnerGF(si);
-        else if(isLower) window.selectWinnerLower(parseInt(ri.slice(1)), mi, si);
-        else { if(!match.winner) window.selectWinner(ri,mi,si); else if(isWin) window.resetWinner(ri,mi); }
+        if(isGF){
+          window.selectWinnerGF(si);
+        } else if(isLower){
+          const cur = state.lRounds?.[lri]?.[mi];
+          if(!cur) return;
+          if(!cur.winner) window.selectWinnerLower(lri, mi, si);
+        } else {
+          const cur = state.rounds?.[ri]?.[mi];
+          if(!cur) return;
+          if(!cur.winner) window.selectWinner(ri, mi, si);
+          else if(cur.winner?.name === team?.name) window.resetWinner(ri, mi);
+        }
       };
     }
     slot.innerHTML=`<span class="slot-seed">${team?'#'+team.seed:''}</span><span class="slot-name">${isBye?'BYE':(team?team.name:'Por decidir')}</span><span class="slot-win-icon">▲</span>`;
