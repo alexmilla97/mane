@@ -709,7 +709,8 @@
 <script>
 ['loadTournament','deleteTournament','moveTeam','openScorePanel',
  'applyScore','clearScore','removeDevice','generateDeviceQR','copyConnectURL','openConnectModal',
- 'sendMatchToDevice','selectWinner','selectWinnerLower','selectWinnerGF','resetWinner',
+ 'addToGlobalQueue','removeFromGlobalQueue',
+ 'selectWinner','selectWinnerLower','selectWinnerGF','resetWinner',
  'ipadToggleFS','ipadMod','ipadSave','ipadStart','renderPairingScreen',
  'closeTourneysOverlay','closeConnectOverlay','goBackToGroups',
  'openLoginModal','closeLoginModal','doLogin','adminLogout','switchPubTab','togglePublish',
@@ -789,6 +790,8 @@ function showAdminView(){
           toast(`📱 ${d.name} conectado`);
           const overlay=$('connect-overlay');
           if(overlay?.classList.contains('open')) overlay.classList.remove('open');
+          // Nuevo dispositivo libre → intentar asignarle partido de la cola
+          dispatchNextFromQueue();
         }
         updateDeviceUI();
       });
@@ -1212,7 +1215,8 @@ function parseState(data){
 }
 async function saveDevicesMeta(sid, devices, blocked){
   // Guardar en global (todos los torneos comparten la misma lista)
-  await setDoc(globalDevicesRef, { devices, blocked, updatedAt: serverTimestamp() });
+  // globalQueue se guarda junto con los dispositivos
+  await setDoc(globalDevicesRef, { devices, blocked, globalQueue, updatedAt: serverTimestamp() });
 }
 async function saveQueueMeta(sid, items, title){
   await setDoc(queueRef(sid), { items, title, updatedAt: serverTimestamp() });
@@ -1494,6 +1498,7 @@ let bracketSize=4, numGroups=2;
 let groupData={}, state={}, sessionId=null;
 let isFsMode=false, activePanel=null;
 let connectedDevices=[], blockedDevices=[];
+let globalQueue = []; // cola FIFO global de partidos pendientes {gi, mi, sid, assignedAt}
 let unsubscribeSession=null, unsubscribeDevices=null, unsubscribeScores=null;
 
 // ── Session ID ────────────────────────────────────────
@@ -1539,27 +1544,23 @@ async function buildAndSaveQueue(){
   groupData.groups.forEach((g,gi)=>{
     g.matches.forEach((m,mi)=>{
       if(m.played) return;
+      // live: dispositivo actualmente jugando este partido
       const dev=connectedDevices.find(d=>d.busy&&d.currentMatch?.gi===gi&&d.currentMatch?.mi===mi&&d.currentMatch?.sid===sessionId);
-      let qInfo=null;
-      if(!dev){
-        for(const d of connectedDevices){
-          const pos=d.queue?.findIndex(q=>q.gi===gi&&q.mi===mi&&q.sid===sessionId);
-          if(pos!==undefined&&pos>=0){ qInfo={devName:d.name,pos:pos+1,total:d.queue.length,assignedAt:d.queue[pos].assignedAt||null}; break; }
-        }
-      }
-      items.push({ gi,mi,t1:m.t1.name,t2:m.t2.name,group:g.name,
-        torneoName:groupData.title,
-        status:dev?'live':qInfo?'queued':'pending',
-        devName:dev?dev.name:qInfo?.devName||null,
-        queuePos:qInfo?.pos||null, queueTotal:qInfo?.total||null,
-        assignedAt: dev?.currentMatch?.assignedAt || qInfo?.assignedAt || null });
+      // queued: está en la cola global
+      const qPos = globalQueue.findIndex(q=>q.gi===gi&&q.mi===mi&&q.sid===sessionId);
+      const inQueue = qPos >= 0;
+      items.push({ gi, mi, t1:m.t1.name, t2:m.t2.name, group:g.name,
+        torneoName: groupData.title,
+        status: dev ? 'live' : inQueue ? 'queued' : 'pending',
+        devName: dev ? dev.name : null,
+        queuePos: inQueue ? qPos+1 : null,
+        assignedAt: dev?.currentMatch?.assignedAt || (inQueue ? globalQueue[qPos].assignedAt : null) });
     });
   });
-  // Ordenar: live primero, luego queued por orden de asignación, pending al final
   items.sort((a,b)=>{
-    const rank = {live:0, queued:1, pending:2};
-    if(rank[a.status] !== rank[b.status]) return rank[a.status] - rank[b.status];
-    if(a.status === 'queued') return (a.assignedAt||0) - (b.assignedAt||0);
+    const rank={live:0,queued:1,pending:2};
+    if(rank[a.status]!==rank[b.status]) return rank[a.status]-rank[b.status];
+    if(a.status==='queued') return (a.assignedAt||0)-(b.assignedAt||0);
     return 0;
   });
   await saveQueueMeta(sessionId, items, groupData.title);
@@ -1636,20 +1637,15 @@ function subscribeToSession(){
       if(dev && dev.currentMatch?.sid === sessionId){
         dev.busy=false; dev.currentMatch=null;
       }
-      if(d.from){ setDoc(doc(db,'devices',d.from), { busy:false, busyTorneo:null }, { merge:true }).catch(()=>{}); }
+      if(d.from){ setDoc(doc(db,'devices',d.from), { busy:false, busyTorneo:null, currentMatch:null }, { merge:true }).catch(()=>{}); }
       if(match && !match.played){
         applyScore(d.gi, d.mi, +d.s1, +d.s2);
         toast(`📱 ${match.t1.name} ${d.s1}–${d.s2} ${match.t2.name}${dev?' · '+dev.name:''}`);
       }
+      // Dispositivo libre → coger siguiente de la cola global
       if(dev){
-        const nextIdx = dev.queue?.findIndex(q=>q.sid===sessionId);
-        if(nextIdx !== undefined && nextIdx >= 0){
-          const next = dev.queue.splice(nextIdx, 1)[0];
-          await saveDevices(); // esperar a que la cola se actualice en Firestore
-          _sendMatchNow(dev, next.gi, next.mi, null);
-        } else {
-          await saveDevices();
-        }
+        await dispatchNextFromQueue();
+        await saveDevices();
       }
       deleteDoc(change.doc.ref).catch(()=>{});
     });
@@ -1668,6 +1664,7 @@ async function loadTournament(sid){
     // Cargar dispositivos desde la lista global
     const devSnap=await getDoc(globalDevicesRef);
     const devData=devSnap.exists()?devSnap.data():{};
+    globalQueue = (devData.globalQueue||[]).filter(q=>q.sid===sessionId); // solo los de este torneo
     await restoreTournament(sid,{...data,devices:devData.devices||[],blocked:devData.blocked||[]},true);
     $('tourneys-overlay').style.display='none';
   } catch(e){
@@ -1725,9 +1722,10 @@ function updateDeviceUI(){
   const mini=$('ntfy-mini-text'); if(mini) mini.textContent=count===0?'0 disp.':`${count} disp.`;
   const dot2=$('ntfy-dot2'); if(dot2){ count>0?dot2.classList.add('on'):dot2.classList.remove('on'); }
   renderDevicesList();
+  // Refrescar paneles de score abiertos para actualizar botón de cola
   document.querySelectorAll('.score-panel.open').forEach(p=>{
     const [,gi,mi]=(p.id||'').split('-');
-    if(gi!==undefined){ const ds=p.querySelector('.send-to-devices'); if(ds) rebuildDeviceButtons(ds,+gi,+mi); }
+    if(gi!==undefined){ openScorePanel(+gi, +mi); }
   });
 }
 
@@ -1884,10 +1882,38 @@ async function _sendMatchNow(dev, gi, mi, btn){
 
 function isMatchLive(gi,mi){ return connectedDevices.some(d=>d.busy&&d.currentMatch?.gi===gi&&d.currentMatch?.mi===mi&&d.currentMatch?.sid===sessionId); }
 function getMatchDeviceName(gi,mi){ return connectedDevices.find(d=>d.busy&&d.currentMatch?.gi===gi&&d.currentMatch?.mi===mi&&d.currentMatch?.sid===sessionId)?.name||null; }
-function isMatchQueued(gi,mi){ return connectedDevices.some(d=>d.queue?.some(q=>q.gi===gi&&q.mi===mi&&q.sid===sessionId)); }
+function isMatchQueued(gi,mi){ return globalQueue.some(q=>q.gi===gi&&q.mi===mi&&q.sid===sessionId); }
 function getMatchQueueInfo(gi,mi){
-  for(const d of connectedDevices){ const pos=d.queue?.findIndex(q=>q.gi===gi&&q.mi===mi&&q.sid===sessionId); if(pos!==undefined&&pos>=0) return{name:d.name,pos:pos+1,total:d.queue.filter(q=>q.sid===sessionId).length,assignedAt:d.queue[pos].assignedAt||null}; }
-  return null;
+  const pos=globalQueue.findIndex(q=>q.gi===gi&&q.mi===mi&&q.sid===sessionId);
+  if(pos<0) return null;
+  return {pos:pos+1, total:globalQueue.filter(q=>q.sid===sessionId).length};
+}
+
+function addToGlobalQueue(gi, mi){
+  if(isMatchLive(gi,mi)){ toast('⚠️ Este partido ya está en juego'); return; }
+  if(isMatchQueued(gi,mi)){ toast('⚠️ Ya está en la cola'); return; }
+  globalQueue.push({gi, mi, sid:sessionId, assignedAt:Date.now()});
+  toast('📋 Partido añadido a la cola');
+  if(activePanel?.gi===gi&&activePanel?.mi===mi){ closeScorePanel(gi); activePanel=null; }
+  // Intentar asignarlo a un dispositivo libre inmediatamente
+  dispatchNextFromQueue();
+  saveDevices();
+}
+
+function removeFromGlobalQueue(gi, mi){
+  const idx=globalQueue.findIndex(q=>q.gi===gi&&q.mi===mi&&q.sid===sessionId);
+  if(idx>=0){ globalQueue.splice(idx,1); toast('✕ Partido eliminado de la cola'); saveDevices(); }
+}
+
+async function dispatchNextFromQueue(){
+  // Buscar primer dispositivo libre
+  const freeDev = connectedDevices.find(d=>!d.busy&&!d.firestoreBusy);
+  if(!freeDev) return; // ningún dispositivo libre
+  // Buscar primer partido en cola de este torneo
+  const nextIdx = globalQueue.findIndex(q=>q.sid===sessionId);
+  if(nextIdx<0) return; // cola vacía para este torneo
+  const next = globalQueue.splice(nextIdx,1)[0];
+  await _sendMatchNow(freeDev, next.gi, next.mi, null);
 }
 
 function rebuildDeviceButtons(container,gi,mi){
@@ -1909,13 +1935,23 @@ function rebuildDeviceButtons(container,gi,mi){
   });
 }
 
-function renderSendToSection(gi,mi,container){
+function renderSendToSection(gi, mi, container){
   const section=document.createElement('div'); section.className='send-to-section';
-  const lbl=document.createElement('div'); lbl.className='send-to-lbl'; lbl.textContent='Enviar a';
-  section.appendChild(lbl);
-  const devList=document.createElement('div'); devList.className='send-to-devices'; devList.id=`send-devices-${gi}-${mi}`;
-  rebuildDeviceButtons(devList,gi,mi);
-  section.appendChild(devList);
+  const inQueue = globalQueue.some(q=>q.gi===gi&&q.mi===mi&&q.sid===sessionId);
+  const isLive = isMatchLive(gi, mi);
+  const btn = document.createElement('button');
+  if(isLive){
+    btn.className='send-to-btn sent'; btn.textContent='▶ En juego';
+    btn.disabled=true;
+  } else if(inQueue){
+    const pos = globalQueue.findIndex(q=>q.gi===gi&&q.mi===mi&&q.sid===sessionId)+1;
+    btn.className='send-to-btn queued'; btn.textContent=`📋 En cola #${pos}`;
+    btn.onclick=()=>{ removeFromGlobalQueue(gi,mi); };
+  } else {
+    btn.className='send-to-btn'; btn.textContent='➕ Añadir a cola';
+    btn.onclick=()=>{ addToGlobalQueue(gi,mi); };
+  }
+  section.appendChild(btn);
   container.appendChild(section);
 }
 
@@ -1998,6 +2034,7 @@ function resetAll(){
     }
   }
   sessionId=null; groupData={}; state={};
+  globalQueue=[];
   // NO limpiar connectedDevices — los dispositivos son globales e independientes del torneo
   if(unsubscribeSession) unsubscribeSession();
   if(unsubscribeScores) unsubscribeScores();
@@ -2600,7 +2637,7 @@ const _fns = {
   openScorePanel, modSc: window.modSc, closeScorePanel: window.closeScorePanel,
   applyScore, clearScore,
   removeDevice, generateDeviceQR, copyConnectURL, openConnectModal,
-  sendMatchToDevice, rebuildDeviceButtons,
+  addToGlobalQueue, removeFromGlobalQueue,
   selectWinner, selectWinnerLower, selectWinnerGF, resetWinner,
   ipadToggleFS, ipadMod: window.ipadMod, ipadSave: window.ipadSave, ipadStart: window.ipadStart,
   renderPairingScreen,
