@@ -599,6 +599,10 @@
   <div class="bracket-outer" id="bracket-outer">
     <div id="bracket-scaler"><div id="bracket-container"></div></div>
   </div>
+  <div class="group-footer">
+    <div></div>
+    <button class="btn" id="btn-back-to-groups" onclick="goBackToGroupsFromBracket()" style="background:var(--bg3);border-color:var(--border-strong);color:var(--text-muted);">← Volver a Grupos</button>
+  </div>
 </div>
 
 <!-- MODO VISUALIZACIÓN -->
@@ -712,7 +716,7 @@
  'addToGlobalQueue','removeFromGlobalQueue',
  'selectWinner','selectWinnerLower','selectWinnerGF','resetWinner',
  'ipadToggleFS','ipadMod','ipadSave','ipadStart','renderPairingScreen',
- 'closeTourneysOverlay','closeConnectOverlay','goBackToGroups',
+ 'closeTourneysOverlay','closeConnectOverlay','goBackToGroups','goBackToGroupsFromBracket',
  'openLoginModal','closeLoginModal','doLogin','adminLogout','switchPubTab','togglePublish',
  'showPubPanel','closePubPanel'
 ].forEach(fn => window[fn] = (...a) => window['_fn_'+fn]?.(...a));
@@ -1646,8 +1650,7 @@ function subscribeToSession(){
       if(dev){
         await dispatchNextFromQueue();
         await saveDevices();
-      }
-      deleteDoc(change.doc.ref).catch(()=>{});
+      }      deleteDoc(change.doc.ref).catch(()=>{});
     });
   });
 }
@@ -1853,9 +1856,13 @@ async function sendMatchToDevice(dev, gi, mi, btn){
 
 async function _sendMatchNow(dev, gi, mi, btn){
   const m=groupData.groups[gi]?.matches[mi]; if(!m) return;
-  const queueRemaining=dev.queue?.length||0;
-  let nextT1=null,nextT2=null;
-  if(queueRemaining>0){ const nxt=dev.queue[0]; const nm=groupData.groups[nxt.gi]?.matches[nxt.mi]; if(nm){nextT1=nm.t1.name;nextT2=nm.t2.name;} }
+  const queueRemaining = globalQueue.filter(q=>q.sid===sessionId).length;
+  const nextInQueue = globalQueue.find(q=>q.sid===sessionId);
+  let nextT1=null, nextT2=null;
+  if(nextInQueue){
+    const nm=groupData.groups[nextInQueue.gi]?.matches[nextInQueue.mi];
+    if(nm){ nextT1=nm.t1.name; nextT2=nm.t2.name; }
+  }
   const payload={
     type:'match', gi, mi, t1:m.t1.name, t2:m.t2.name,
     group:groupData.groups[gi].name,
@@ -1863,21 +1870,11 @@ async function _sendMatchNow(dev, gi, mi, btn){
     queueRemaining, nextT1, nextT2,
     sessionId, torneoName:groupData.title
   };
-  try {
-    await sendToDevice(sessionId, dev.clientId, { match:payload });
-    dev.busy=true; dev.currentMatch={gi, mi, sid: sessionId, assignedAt: Date.now()};
-    // Marcar ocupado en Firestore para que otros gestores lo vean
-    await setDoc(doc(db,'devices',dev.clientId), { busy:true, busyTorneo:groupData.title||sessionId }, { merge:true });
-    if(activePanel?.gi===gi&&activePanel?.mi===mi){ closeScorePanel(gi); activePanel=null; }
-    await saveDevices();
-    if(btn){ btn.classList.add('sent'); btn.innerHTML=`▶ ${dev.name}`; }
-    toast(`📱 Partido iniciado en ${dev.name}`);
-  } catch(e){
-    dev.queue=dev.queue||[];
-    dev.queue.unshift({gi,mi});
-    await saveDevices();
-    toast('⚠️ Error al enviar — partido devuelto a la cola');
-  }
+  await sendToDevice(sessionId, dev.clientId, { match:payload });
+  dev.busy=true; dev.currentMatch={gi, mi, sid:sessionId, assignedAt:Date.now()};
+  await setDoc(doc(db,'devices',dev.clientId), { busy:true, busyTorneo:groupData.title||sessionId }, { merge:true });
+  if(activePanel?.gi===gi&&activePanel?.mi===mi){ closeScorePanel(gi); activePanel=null; }
+  toast(`📱 ${m.t1.name} vs ${m.t2.name} → ${dev.name}`);
 }
 
 function isMatchLive(gi,mi){ return connectedDevices.some(d=>d.busy&&d.currentMatch?.gi===gi&&d.currentMatch?.mi===mi&&d.currentMatch?.sid===sessionId); }
@@ -1889,15 +1886,14 @@ function getMatchQueueInfo(gi,mi){
   return {pos:pos+1, total:globalQueue.filter(q=>q.sid===sessionId).length};
 }
 
-function addToGlobalQueue(gi, mi){
+async function addToGlobalQueue(gi, mi){
   if(isMatchLive(gi,mi)){ toast('⚠️ Este partido ya está en juego'); return; }
   if(isMatchQueued(gi,mi)){ toast('⚠️ Ya está en la cola'); return; }
   globalQueue.push({gi, mi, sid:sessionId, assignedAt:Date.now()});
-  toast('📋 Partido añadido a la cola');
   if(activePanel?.gi===gi&&activePanel?.mi===mi){ closeScorePanel(gi); activePanel=null; }
-  // Intentar asignarlo a un dispositivo libre inmediatamente
-  dispatchNextFromQueue();
-  saveDevices();
+  // Intentar asignar inmediatamente si hay dispositivo libre
+  await dispatchNextFromQueue();
+  await saveDevices();
 }
 
 function removeFromGlobalQueue(gi, mi){
@@ -1906,14 +1902,22 @@ function removeFromGlobalQueue(gi, mi){
 }
 
 async function dispatchNextFromQueue(){
-  // Buscar primer dispositivo libre
-  const freeDev = connectedDevices.find(d=>!d.busy&&!d.firestoreBusy);
-  if(!freeDev) return; // ningún dispositivo libre
-  // Buscar primer partido en cola de este torneo
-  const nextIdx = globalQueue.findIndex(q=>q.sid===sessionId);
-  if(nextIdx<0) return; // cola vacía para este torneo
-  const next = globalQueue.splice(nextIdx,1)[0];
-  await _sendMatchNow(freeDev, next.gi, next.mi, null);
+  // Despachar tantos partidos como dispositivos libres haya
+  while(true){
+    const freeDev = connectedDevices.find(d=>!d.busy&&!d.firestoreBusy);
+    if(!freeDev) break;
+    const nextIdx = globalQueue.findIndex(q=>q.sid===sessionId);
+    if(nextIdx<0) break;
+    const next = globalQueue.splice(nextIdx,1)[0];
+    try {
+      await _sendMatchNow(freeDev, next.gi, next.mi, null);
+    } catch(e){
+      // Si falla, devolver a la cola
+      globalQueue.splice(nextIdx, 0, next);
+      console.error('dispatchNextFromQueue error', e);
+      break;
+    }
+  }
 }
 
 function rebuildDeviceButtons(container,gi,mi){
@@ -2644,6 +2648,13 @@ const _fns = {
   closeTourneysOverlay: () => $('tourneys-overlay').style.display='none',
   closeConnectOverlay:  () => $('connect-overlay').classList.remove('open'),
   goBackToGroups: () => { $('pairing-screen').style.display='none'; $('group-screen').style.display='block'; },
+  goBackToGroupsFromBracket: () => {
+    if(!confirm('¿Volver a la fase de grupos? El cuadro eliminatorio se mantendrá guardado.')) return;
+    $('tournament-screen').style.display='none';
+    $('gs-title').textContent=groupData.title;
+    $('group-screen').style.display='block';
+    renderGroups();
+  },
   openLoginModal: window.openLoginModal, closeLoginModal: window.closeLoginModal,
   doLogin: window.doLogin, adminLogout: window.adminLogout,
   switchPubTab: window.switchPubTab, togglePublish: window.togglePublish,
