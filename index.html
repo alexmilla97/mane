@@ -1612,11 +1612,17 @@ async function restoreTournament(sid, data, showToast){
   state      = parseState(data);
   isPublished = false;
   updatePublishBtn();
-  // Restaurar dispositivos — busy/currentMatch vienen de devices/{id} (ya leídos en loadTournament)
-  connectedDevices = (data.devices||[]).map(d=>({
-    clientId:d.clientId, name:d.name, lastSeen:Date.now(),
-    busy:!!d.busy, currentMatch:d.currentMatch||null
-  }));
+  // Actualizar lista de dispositivos — preservar busy/currentMatch que ya tenemos en memoria
+  // Solo añadir dispositivos nuevos que no conocemos aún
+  const incomingDevices = (data.devices||[]);
+  incomingDevices.forEach(d=>{
+    const existing = connectedDevices.find(x=>x.clientId===d.clientId);
+    if(!existing){
+      connectedDevices.push({clientId:d.clientId, name:d.name, lastSeen:Date.now(), busy:!!d.busy, currentMatch:d.currentMatch||null});
+    }
+    // Si ya existe, NO tocar busy/currentMatch — el estado en memoria es el más fresco
+  });
+  // Eliminar dispositivos que ya no están activos (no en la lista ni en memoria reciente)
   blockedDevices = data.blocked||[];
   if(state.rounds){
     console.log('restoreTournament: showing tournament-screen');
