@@ -779,20 +779,8 @@ function showAdminView(){
           // Firestore dice ocupado, nosotros libres → otro gestor asignó
           existing.busy = true;
           existing.currentMatch = d.currentMatch||null;
-        } else if(!d.busy && existing.busy){
-          // Firestore dice libre — dispositivo terminó un partido
-          const matchSid = existing.currentMatch?.sid;
-          existing.busy = false;
-          existing.currentMatch = null;
-          if(matchSid !== sessionId){
-            // Partido de otro torneo — despachar siguiente de la cola global
-            dispatchNextFromQueue().then(()=>{
-              renderGroups();
-              saveGlobalQueue(); buildAndSaveQueue(); updateDeviceUI();
-            });
-          }
-          // Si era del torneo activo, subscribeToSession ya lo gestiona
         }
+        // NO liberar desde el listener de presencia — el handler global de scores lo gestiona
       } else {
         // Dispositivo nuevo — solo aceptar si tiene ping reciente (no fantasmas viejos)
         // 'added' = recién escrito en Firestore (aceptar siempre)
@@ -1378,8 +1366,9 @@ if(IS_DEVICE && DEVICE_ID){
     const done=curMatch; curMatch=null;
     const sid=done.sessionId; // cada partido lleva el sessionId de su torneo
     try {
-      await setDoc(doc(db,'torneos',sid,'scores',`${done.gi}_${done.mi}`),{
-        gi:done.gi, mi:done.mi, s1:sc.s1, s2:sc.s2,
+      await setDoc(doc(db,'scores',String(done.matchId||`${done.sessionId}_${done.gi}_${done.mi}`)),{
+        matchId:done.matchId, sid:done.sessionId, gi:done.gi, mi:done.mi,
+        s1:sc.s1, s2:sc.s2,
         from:DEVICE_ID, elapsed:startTs?Date.now()-startTs:0, ts:serverTimestamp()
       });
       // Limpiar partido activo de Firestore
@@ -1651,21 +1640,23 @@ async function restoreTournament(sid, data, showToast){
 }
 
 function subscribeToSession(){
-  unsubscribeScores = onSnapshot(collection(db,'torneos',sessionId,'scores'), snap=>{
+  // Escuchar colección global scores/ — un score tiene {matchId, sid, gi, mi, s1, s2, from}
+  // Al ser global, funciona aunque el gestor cambie de torneo durante el partido
+  if(unsubscribeScores) unsubscribeScores();
+  unsubscribeScores = onSnapshot(collection(db,'scores'), snap=>{
     snap.docChanges().forEach(async change=>{
       if(change.type!=='added') return;
       const d=change.doc.data();
+      // Solo procesar scores del torneo activo en este gestor
+      if(d.sid !== sessionId) return;
       const match=groupData.groups?.[d.gi]?.matches?.[d.mi];
-      // Liberar dispositivo
       const dev=connectedDevices.find(x=>x.clientId===d.from);
       if(dev){ dev.busy=false; dev.currentMatch=null; }
       if(d.from) setDoc(doc(db,'devices',d.from),{busy:false,currentMatch:null},{merge:true}).catch(()=>{});
-      // Aplicar resultado
       if(match&&!match.played){
         applyScore(d.gi,d.mi,+d.s1,+d.s2);
         toast(`📱 ${match.t1.name} ${d.s1}–${d.s2} ${match.t2.name}${dev?' · '+dev.name:''}`);
       } else { renderGroups(); }
-      // Despachar siguiente
       await dispatchNextFromQueue();
       await saveGlobalQueue();
       await buildAndSaveQueue();
@@ -1674,6 +1665,7 @@ function subscribeToSession(){
     });
   });
 }
+
 
 async function renderTourneysList(){
   const list = $('tourneys-list'); if(!list) return;
@@ -1839,15 +1831,25 @@ function openConnectModal(){
 // COLA GLOBAL — ENVÍO A DISPOSITIVOS
 // ════════════════════════════════════════════════════════════════
 
+// Obtener y reservar el siguiente matchId global
+async function getNextMatchId(){
+  const ref = doc(db,'config','matchCounter');
+  const snap = await getDoc(ref);
+  const current = snap.exists() ? (snap.data().next||1) : 1;
+  await setDoc(ref, { next: current+1 }, { merge:true });
+  return current;
+}
+
 // Enviar partido a dispositivo — marca busy localmente y en Firestore
 async function _sendMatchNow(dev, qItem){
   const {gi, mi, sid, t1, t2, group, torneoName} = qItem;
-  // Marcar ocupado ANTES de cualquier await — evita doble asignación en el while
-  dev.busy=true; dev.currentMatch={gi,mi,sid,assignedAt:Date.now()};
-  const payload={type:'match',gi,mi,t1,t2,group,target:dev.clientId,startAt:Date.now(),sessionId:sid,torneoName};
+  // Obtener ID único global para este partido
+  const matchId = await getNextMatchId();
+  // Marcar ocupado ANTES de cualquier await adicional
+  dev.busy=true; dev.currentMatch={gi,mi,sid,matchId,assignedAt:Date.now()};
+  const payload={type:'match',gi,mi,t1,t2,group,target:dev.clientId,startAt:Date.now(),sessionId:sid,torneoName,matchId};
   await sendToDevice(sid, dev.clientId, {match:payload});
   await setDoc(doc(db,'devices',dev.clientId),{busy:true,currentMatch:payload},{merge:true});
-  // Actualizar UI solo si es el torneo activo
   if(sid===sessionId){ if(activePanel?.gi===gi&&activePanel?.mi===mi){closeScorePanel(gi);activePanel=null;} renderGroups(); }
   toast(`📱 ${t1} vs ${t2} → ${dev.name}`);
 }
