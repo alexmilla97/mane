@@ -1705,10 +1705,12 @@ async function deleteTournament(sid, event){
 
 async function loadTournament(sid){
   try{
+    // Guardar la cola actual antes de cambiar de torneo
+    if(globalQueue.length) await saveGlobalQueue();
     const snap=await getDoc(tourneyRef(sid));
     if(!snap.exists()){ localStorage.removeItem('torneoPro_lastSession'); toast('⚠️ Torneo no encontrado'); return; }
     const data=snap.data();
-    // Cargar cola global completa (todos los torneos)
+    // Cargar cola global desde Firestore (incluye items de todos los torneos)
     const qSnap=await getDoc(doc(db,'config','globalQueue'));
     globalQueue = qSnap.exists()?(qSnap.data().queue||[]):[];
     // Cargar estado real de dispositivos desde devices/{id}
@@ -1790,15 +1792,19 @@ function generateDeviceQR(){
   const wrap=$('connect-qr-wrap'); wrap.innerHTML='';
   if(window.QRCode){ new QRCode(wrap,{text:url,width:200,height:200}); }
   else { wrap.innerHTML=`<a href="${url}" target="_blank" style="word-break:break-all;font-size:0.75rem">${url}</a>`; }
-  $('connect-qr-url').textContent=url; $('connect-qr-url').style.display='block';
+  // Mostrar URL y botón copiar
+  const urlRow=$('connect-url-row'); const urlBox=$('connect-url-box');
+  if(urlRow&&urlBox){ urlBox.textContent=url; urlRow.style.display='flex'; }
 }
 
 function copyConnectURL(){
-  const name=$('connect-device-name').value.trim()||`Dispositivo ${connectedDevices.length+1}`;
-  const existing=connectedDevices.find(d=>d.name===name);
-  const deviceId=existing?existing.clientId:('dev-'+Math.random().toString(36).slice(2,10));
-  const url=`${location.origin}${location.pathname}?device=${encodeURIComponent(name)}&id=${deviceId}`;
-  navigator.clipboard.writeText(url).then(()=>toast('✓ URL copiada')).catch(()=>toast('⚠️ No se pudo copiar'));
+  const urlBox=$('connect-url-box');
+  const url=urlBox?.textContent||'';
+  if(!url) return;
+  navigator.clipboard.writeText(url).then(()=>toast('✓ URL copiada')).catch(()=>{
+    // Fallback para móvil
+    const ta=document.createElement('textarea'); ta.value=url; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); toast('✓ URL copiada');
+  });
 }
 
 function openConnectModal(){
