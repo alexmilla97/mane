@@ -776,17 +776,14 @@ function showAdminView(){
         existing.name = d.name||existing.name;
 
         if(d.busy && !existing.busy){
-          // Firestore dice ocupado, nosotros libres → otro gestor asignó
           existing.busy = true;
           existing.currentMatch = d.currentMatch||null;
         } else if(!d.busy && existing.busy){
-          // Firestore dice libre — el dispositivo se reconectó sin partido activo
-          // (recarga, crash, etc.) → liberar y despachar siguiente
+          // Dispositivo se liberó (recarga, score enviado, crash)
           existing.busy = false;
           existing.currentMatch = null;
-          // Dar 2s para que el dispositivo se suscriba al inbox antes de despachar
+          // Dispatch es idempotente — si score handler ya lo hará, este queda pending y no duplica
           setTimeout(async ()=>{
-            if(_dispatching){ setTimeout(dispatchNextFromQueue, 1000); return; }
             await dispatchNextFromQueue();
             if(sessionId && groupData.groups){ await buildAndSaveQueue(); updateDeviceUI(); }
           }, 2000);
@@ -805,7 +802,6 @@ function showAdminView(){
         toast(`📱 ${d.name} conectado`);
         if(!d.busy){
           setTimeout(async ()=>{
-            if(_dispatching){ setTimeout(dispatchNextFromQueue, 1000); return; }
             await dispatchNextFromQueue();
             if(sessionId && groupData.groups){ await buildAndSaveQueue(); updateDeviceUI(); }
           }, 2000);
@@ -1636,25 +1632,26 @@ async function _sendMatchNow(dev, qItem){
 
 // Despachar usando globalQueue local
 let _dispatching = false;
+let _dispatchPending = false;
 async function dispatchNextFromQueue(){
-  if(_dispatching) return;
+  if(_dispatching){ _dispatchPending = true; return; }
   _dispatching = true;
   try{
-    while(true){
-      const free = connectedDevices.find(d=>!d.busy);
-      if(!free || !globalQueue.length) break;
-      // Sacar item del array local
-      const item = globalQueue.shift();
-      // Guardar en Firestore INMEDIATAMENTE (con await) antes de enviar
-      // Así el listener recibirá la cola ya sin el item
-      await saveGlobalQueue();
-      try{ await _sendMatchNow(free, item); }
-      catch(e){
-        globalQueue.unshift(item);
+    do{
+      _dispatchPending = false;
+      while(true){
+        const free = connectedDevices.find(d=>!d.busy);
+        if(!free || !globalQueue.length) break;
+        const item = globalQueue.shift();
         await saveGlobalQueue();
-        break;
+        try{ await _sendMatchNow(free, item); }
+        catch(e){
+          globalQueue.unshift(item);
+          await saveGlobalQueue();
+          break;
+        }
       }
-    }
+    } while(_dispatchPending); // re-ejecutar si alguien llamó durante el dispatch
   }finally{
     _dispatching = false;
   }
