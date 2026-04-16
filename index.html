@@ -795,18 +795,27 @@ function showAdminView(){
         });
         $('connect-overlay')?.classList.remove('open');
         toast(`📱 ${d.name} conectado`);
-        // Esperar 2s antes de despachar — el dispositivo necesita tiempo para suscribirse al inbox
-        if(!d.busy) setTimeout(()=>dispatchNextFromQueue(), 2000);
+        // Despachar tras 2s para dar tiempo al dispositivo de suscribirse al inbox
+        if(!d.busy){
+          setTimeout(async ()=>{
+            // Si hay dispatch en curso, esperar un poco más
+            if(_dispatching){ setTimeout(dispatchNextFromQueue, 1000); return; }
+            await dispatchNextFromQueue();
+            if(globalQueue.length) await saveGlobalQueue();
+            if(sessionId && groupData.groups){ await buildAndSaveQueue(); updateDeviceUI(); }
+          }, 2000);
+        }
       }
       updateDeviceUI();
     });
   });
 
-  // Listener de cola global — sincroniza globalQueue local con Firestore en tiempo real
+  // Listener de cola global — sincroniza globalQueue local con Firestore
+  // Solo actualiza si no estamos en medio de un dispatch (evita restaurar items ya despachados)
   onSnapshot(QUEUE_REF(), snap=>{
     if(!snap.exists()) return;
-    const newQueue = snap.data().queue||[];
-    globalQueue = newQueue;
+    if(_dispatching) return; // ignorar durante dispatch — la cola local es correcta
+    globalQueue = snap.data().queue||[];
     if(sessionId && groupData.groups){ renderGroups(); updateDeviceUI(); }
   });
 
@@ -1612,22 +1621,29 @@ async function _sendMatchNow(dev, qItem){
   }
 }
 
-// Despachar usando globalQueue local (el listener lo mantiene sincronizado)
+// Despachar usando globalQueue local
+let _dispatching = false;
 async function dispatchNextFromQueue(){
-  while(true){
-    const free = connectedDevices.find(d=>!d.busy);
-    if(!free || !globalQueue.length) break;
-    // Sacar el primer item de la cola local
-    const item = globalQueue.shift();
-    // Guardar cola en Firestore (sin await — no bloquear el dispatch)
-    saveGlobalQueue().catch(()=>{});
-    try{ await _sendMatchNow(free, item); }
-    catch(e){
-      // Devolver al frente de la cola si falla
-      globalQueue.unshift(item);
-      saveGlobalQueue().catch(()=>{});
-      break;
+  if(_dispatching) return;
+  _dispatching = true;
+  try{
+    while(true){
+      const free = connectedDevices.find(d=>!d.busy);
+      if(!free || !globalQueue.length) break;
+      // Sacar item del array local
+      const item = globalQueue.shift();
+      // Guardar en Firestore INMEDIATAMENTE (con await) antes de enviar
+      // Así el listener recibirá la cola ya sin el item
+      await saveGlobalQueue();
+      try{ await _sendMatchNow(free, item); }
+      catch(e){
+        globalQueue.unshift(item);
+        await saveGlobalQueue();
+        break;
+      }
     }
+  }finally{
+    _dispatching = false;
   }
 }
 
