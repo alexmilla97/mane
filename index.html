@@ -780,16 +780,18 @@ function showAdminView(){
           existing.busy = true;
           existing.currentMatch = d.currentMatch||null;
         } else if(!d.busy && existing.busy){
-          // Firestore dice libre, nosotros ocupados → terminó partido de otro torneo
-          const isOtherTorneo = existing.currentMatch?.sid !== sessionId;
-          if(isOtherTorneo){
-            existing.busy = false;
-            existing.currentMatch = null;
+          // Firestore dice libre — dispositivo terminó un partido
+          const matchSid = existing.currentMatch?.sid;
+          existing.busy = false;
+          existing.currentMatch = null;
+          if(matchSid !== sessionId){
+            // Partido de otro torneo — despachar siguiente de la cola global
             dispatchNextFromQueue().then(()=>{
-              renderGroups(); // verde si se despachó partido del torneo activo
+              renderGroups();
               saveGlobalQueue(); buildAndSaveQueue(); updateDeviceUI();
             });
           }
+          // Si era del torneo activo, subscribeToSession ya lo gestiona
         }
       } else {
         // Dispositivo nuevo — solo aceptar si tiene ping reciente (no fantasmas viejos)
