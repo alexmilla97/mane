@@ -726,7 +726,7 @@ window.$ = id => document.getElementById(id);
 </script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
-import { getFirestore, doc, setDoc, getDoc, onSnapshot, collection, getDocs, deleteDoc, serverTimestamp, addDoc }
+import { getFirestore, doc, setDoc, getDoc, onSnapshot, collection, getDocs, deleteDoc, serverTimestamp, addDoc, runTransaction, arrayRemove }
   from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { getAuth, signInAnonymously, signInWithEmailAndPassword, signOut, onAuthStateChanged, setPersistence, browserLocalPersistence } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
 
@@ -1544,12 +1544,67 @@ async function saveCurrentTournament(){
 }
 
 // ── Persistencia de cola global ───────────────────────
-// Firestore: config/globalQueue { queue: [...] }
-// Siempre guarda la cola COMPLETA (todos los torneos)
+// Cada item tiene assignedAt como ID único de ordenación
+// Usamos transacciones para evitar que dos gestores despeachen el mismo partido
+const QUEUE_REF = () => doc(db,'config','globalQueue');
+
 async function saveGlobalQueue(){
+  try{ await setDoc(QUEUE_REF(), { queue: globalQueue, updatedAt: serverTimestamp() }); }
+  catch(e){ console.error('saveGlobalQueue',e); }
+}
+
+// Coger el primer item de la cola de forma atómica (transacción)
+// Devuelve el item cogido o null si la cola está vacía
+async function atomicShiftQueue(){
   try{
-    await setDoc(doc(db,'config','globalQueue'), { queue: globalQueue, updatedAt: serverTimestamp() });
-  }catch(e){ console.error('saveGlobalQueue',e); }
+    let taken = null;
+    await runTransaction(db, async tx=>{
+      const snap = await tx.get(QUEUE_REF());
+      const queue = snap.exists() ? (snap.data().queue||[]) : [];
+      if(!queue.length) return;
+      taken = queue[0];
+      tx.set(QUEUE_REF(), { queue: queue.slice(1), updatedAt: serverTimestamp() });
+    });
+    if(taken){
+      // Sincronizar globalQueue local con Firestore
+      const idx = globalQueue.findIndex(q=>q.assignedAt===taken.assignedAt&&q.sid===taken.sid&&q.gi===taken.gi&&q.mi===taken.mi);
+      if(idx>=0) globalQueue.splice(idx,1);
+    }
+    return taken;
+  }catch(e){ console.error('atomicShiftQueue',e); return null; }
+}
+
+// Añadir item a la cola de forma atómica
+async function atomicPushQueue(item){
+  try{
+    await runTransaction(db, async tx=>{
+      const snap = await tx.get(QUEUE_REF());
+      const queue = snap.exists() ? (snap.data().queue||[]) : [];
+      queue.push(item);
+      tx.set(QUEUE_REF(), { queue, updatedAt: serverTimestamp() });
+    });
+    globalQueue.push(item); // sincronizar local
+  }catch(e){ console.error('atomicPushQueue',e); throw e; }
+}
+
+// Quitar item específico de la cola de forma atómica
+async function atomicRemoveFromQueue(gi, mi, sid){
+  try{
+    let removed = null;
+    await runTransaction(db, async tx=>{
+      const snap = await tx.get(QUEUE_REF());
+      const queue = snap.exists() ? (snap.data().queue||[]) : [];
+      const idx = queue.findIndex(q=>q.gi===gi&&q.mi===mi&&q.sid===sid);
+      if(idx<0) return;
+      removed = queue.splice(idx,1)[0];
+      tx.set(QUEUE_REF(), { queue, updatedAt: serverTimestamp() });
+    });
+    if(removed){
+      const idx = globalQueue.findIndex(q=>q.gi===gi&&q.mi===mi&&q.sid===sid);
+      if(idx>=0) globalQueue.splice(idx,1);
+    }
+    return removed;
+  }catch(e){ console.error('atomicRemoveFromQueue',e); return null; }
 }
 
 // ── Persistencia de lista de dispositivos ─────────────
@@ -1659,7 +1714,6 @@ function subscribeToSession(){
       }
       // Despachar siguiente siempre — el dispositivo ya está libre
       await dispatchNextFromQueue();
-      await saveGlobalQueue();
       await buildAndSaveQueue();
       updateDeviceUI();
       deleteDoc(change.doc.ref).catch(()=>{});
@@ -1855,14 +1909,20 @@ async function _sendMatchNow(dev, qItem){
   toast(`📱 ${t1} vs ${t2} → ${dev.name}`);
 }
 
-// Despachar partidos de la cola a dispositivos libres (FIFO global)
+// Despachar partidos de la cola a dispositivos libres (FIFO global, atómico)
 async function dispatchNextFromQueue(){
   while(true){
     const free=connectedDevices.find(d=>!d.busy);
-    if(!free||!globalQueue.length) break;
-    const item=globalQueue.shift(); // FIFO — siempre el primero
+    if(!free) break;
+    // Coger el primer item de forma atómica — evita doble-dispatch entre gestores
+    const item = await atomicShiftQueue();
+    if(!item) break;
     try{ await _sendMatchNow(free,item); }
-    catch(e){ globalQueue.unshift(item); console.error('dispatch error',e); break; }
+    catch(e){
+      // Devolver a la cola si falla el envío
+      await atomicPushQueue(item);
+      console.error('dispatch error',e); break;
+    }
   }
 }
 
@@ -1886,22 +1946,20 @@ async function addToGlobalQueue(gi,mi){
   if(isMatchLive(gi,mi)){ toast('⚠️ Este partido ya está en juego'); return; }
   if(isMatchQueued(gi,mi)){ toast('⚠️ Ya está en la cola'); return; }
   const m=groupData.groups?.[gi]?.matches?.[mi]; if(!m) return;
-  globalQueue.push({gi,mi,sid:sessionId,t1:m.t1.name,t2:m.t2.name,group:groupData.groups[gi].name,torneoName:groupData.title,assignedAt:Date.now()});
+  const item={gi,mi,sid:sessionId,t1:m.t1.name,t2:m.t2.name,group:groupData.groups[gi].name,torneoName:groupData.title,assignedAt:Date.now()};
   if(activePanel?.gi===gi&&activePanel?.mi===mi){closeScorePanel(gi);activePanel=null;}
-  await dispatchNextFromQueue(); // despacha si hay dispositivo libre
+  await atomicPushQueue(item);
+  await dispatchNextFromQueue();
   renderGroups();
-  await saveGlobalQueue();
   await buildAndSaveQueue();
   updateDeviceUI();
 }
 
 async function removeFromGlobalQueue(gi,mi){
-  const idx=globalQueue.findIndex(q=>q.gi===gi&&q.mi===mi&&q.sid===sessionId);
-  if(idx<0) return;
-  globalQueue.splice(idx,1);
+  const removed = await atomicRemoveFromQueue(gi,mi,sessionId);
+  if(!removed) return;
   toast('✕ Partido eliminado de la cola');
   renderGroups();
-  await saveGlobalQueue();
   await buildAndSaveQueue();
   updateDeviceUI();
 }
