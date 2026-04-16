@@ -757,46 +757,44 @@ function showAdminView(){
   $('admin-btn').style.display = 'none';
   $('admin-header').style.display = 'flex';
 
-  // Iniciar listener global de dispositivos (cancelar anterior si existía)
+  // Listener de presencia de dispositivos
   if(unsubscribeDevices){ unsubscribeDevices(); unsubscribeDevices=null; }
   unsubscribeDevices = onSnapshot(collection(db,'devices'), snap=>{
     snap.docChanges().forEach(change=>{
       const d = change.doc.data();
       const clientId = d?.clientId || change.doc.id;
 
-      if(change.type === 'removed'){
-        connectedDevices = connectedDevices.filter(x => x.clientId !== clientId);
-        updateDeviceUI();
-        return;
+      if(change.type==='removed'){
+        connectedDevices = connectedDevices.filter(x=>x.clientId!==clientId);
+        updateDeviceUI(); return;
       }
+      if(!d||d.blocked||!d.clientId) return;
 
-      if(!d || d.blocked || !d.clientId) return;
-
-      const existing = connectedDevices.find(x => x.clientId === clientId);
+      const existing = connectedDevices.find(x=>x.clientId===clientId);
       if(existing){
+        // Dispositivo conocido — actualizar ping
         existing.lastSeen = Date.now();
-        existing.name = d.name || existing.name;
-        // Solo sincronizar busy desde Firestore si Firestore dice ocupado y nosotros no
+        existing.name = d.name||existing.name;
+        // Si Firestore dice busy=true y nosotros creemos libre → aceptar (otro gestor asignó)
         if(d.busy && !existing.busy){
           existing.busy = true;
-          existing.currentMatch = d.currentMatch || null;
-          existing.busyTorneo = d.busyTorneo || null;
+          existing.currentMatch = d.currentMatch||null;
         }
-        // Si Firestore dice libre y nosotros decimos ocupado → confiar en local (puede ser race)
+        // NUNCA pasar de busy=true a busy=false desde el listener
+        // Solo el score handler libera dispositivos
       } else {
-        // Nuevo dispositivo — filtrar por tiempo solo en 'modified' (pings periódicos)
-        // Para 'added' siempre aceptar — el dispositivo acaba de conectarse
-        if(change.type === 'modified'){
-          const lastSeenMs = d.lastSeen?.toMillis?.() || 0;
-          if((Date.now() - lastSeenMs) > 120000) return; // ping muy antiguo, ignorar
+        // Dispositivo nuevo — solo aceptar si tiene ping reciente (no fantasmas viejos)
+        // 'added' = recién escrito en Firestore (aceptar siempre)
+        // 'modified' = ping periódico (filtrar si es muy antiguo)
+        if(change.type==='modified'){
+          const ts = d.lastSeen?.toMillis?.() || 0;
+          if(Date.now()-ts > 120000) return;
         }
         connectedDevices.push({
-          clientId: d.clientId, name: d.name, lastSeen: Date.now(),
-          busy: !!d.busy, currentMatch: d.currentMatch || null,
-          firestoreBusy: false, busyTorneo: d.busyTorneo || null
+          clientId:d.clientId, name:d.name, lastSeen:Date.now(),
+          busy:!!d.busy, currentMatch:d.currentMatch||null
         });
-        const overlay = $('connect-overlay');
-        if(overlay?.classList.contains('open')) overlay.classList.remove('open');
+        $('connect-overlay')?.classList.remove('open');
         toast(`📱 ${d.name} conectado`);
         if(!d.busy) dispatchNextFromQueue();
       }
@@ -1220,15 +1218,6 @@ function parseState(data){
     gf: (() => { try { return typeof rawState.gf === 'string' ? JSON.parse(rawState.gf) : (rawState.gf || null); } catch(e){ return null; } })(),
   };
 }
-async function saveDevicesMeta(sid, devices, blocked){
-  // Solo lista de dispositivos y blocked — la cola vive en su propio documento
-  const devList = devices.map(d => ({ clientId: d.clientId, name: d.name }));
-  await setDoc(globalDevicesRef, { devices: devList, blocked, updatedAt: serverTimestamp() });
-}
-async function saveGlobalQueue(){
-  // La cola global vive en config/globalQueue — separada de los dispositivos
-  await setDoc(doc(db,'config','globalQueue'), { queue: globalQueue, updatedAt: serverTimestamp() });
-}
 async function saveQueueMeta(sid, items, title){
   await setDoc(queueRef(sid), { itemsJson: JSON.stringify(items), title, updatedAt: serverTimestamp() });
 }
@@ -1239,7 +1228,6 @@ function parseQueueData(qData){
   return { items, title: qData.title||'' };
 }
 async function sendToDevice(sid, deviceId, payload){
-  // Mensajes van a subcolección inbox — no toca el documento de presencia
   await addDoc(collection(db, 'devices', deviceId, 'inbox'), { ...payload, ts: serverTimestamp() });
 }
 
@@ -1512,107 +1500,117 @@ if((IS_DISPLAY||IS_BRACKET||IS_QUEUE) && (SESSION_ID||IS_QUEUE)){
 let bracketSize=4, numGroups=2;
 let groupData={}, state={}, sessionId=null;
 let isFsMode=false, activePanel=null;
-let connectedDevices=[], blockedDevices=[];
-let globalQueue = []; // cola FIFO global de partidos pendientes {gi, mi, sid, assignedAt}
+// ════════════════════════════════════════════════════════════════
+// ESTADO GLOBAL DE DISPOSITIVOS Y COLA
+// ════════════════════════════════════════════════════════════════
+//
+// connectedDevices: [{clientId, name, lastSeen, busy, currentMatch}]
+//   - busy: bool — gestionado solo por el gestor admin (nunca desde Firestore listener)
+//   - currentMatch: {gi, mi, sid, assignedAt} o null
+//
+// globalQueue: [{gi, mi, sid, t1, t2, group, torneoName, assignedAt}]
+//   - Cola FIFO global. Un item por partido. Cualquier torneo puede añadir.
+//   - Persiste en Firestore: config/globalQueue {queue:[...]}
+//
+// Reglas:
+//   1. busy=true solo lo pone _sendMatchNow (cuando envía un partido)
+//   2. busy=false solo lo pone el score handler (cuando recibe resultado)
+//   3. El listener de presencia NUNCA modifica busy — solo añade/elimina dispositivos
+//   4. La cola no está ligada a ningún torneo — despacha en orden FIFO global
+// ════════════════════════════════════════════════════════════════
+
+let connectedDevices = [];  // dispositivos conocidos por el gestor
+let blockedDevices   = [];  // IDs bloqueados
+let globalQueue      = [];  // cola FIFO global [{gi,mi,sid,t1,t2,group,torneoName,assignedAt}]
 let unsubscribeSession=null, unsubscribeDevices=null, unsubscribeScores=null;
 
 // ── Session ID ────────────────────────────────────────
 function genSessionId(){ return 'trn-'+Math.random().toString(36).slice(2,14); }
 
-// ── Persistencia en Firestore ─────────────────────────
-let _saveInFlight = false;
-let _savePending = false;
-
+// ── Persistencia de torneos ───────────────────────────
+let _saveInFlight=false, _savePending=false;
 async function saveCurrentTournament(){
-  if(!sessionId || !groupData.title) return;
-  if(_saveInFlight){ _savePending = true; return; }
-  _saveInFlight = true;
-  try {
+  if(!sessionId||!groupData.title) return;
+  if(_saveInFlight){ _savePending=true; return; }
+  _saveInFlight=true;
+  try{
     await saveState(sessionId, groupData, state);
     if(sessionId) localStorage.setItem('torneoPro_lastSession', sessionId);
     updatePublishBtn();
-  } catch(e){ console.error('saveCurrentTournament error', e); }
-  _saveInFlight = false;
-  if(_savePending){ _savePending = false; saveCurrentTournament(); }
+  }catch(e){ console.error('saveCurrentTournament',e); }
+  _saveInFlight=false;
+  if(_savePending){ _savePending=false; saveCurrentTournament(); }
 }
 
-// saveDevices: guarda dispositivos + globalQueue + cola pública — independiente del torneo
-let _saveDevInFlight = false;
-let _saveDevPending = false;
-
-async function saveDevices(){
-  if(_saveDevInFlight){ _saveDevPending = true; return; }
-  _saveDevInFlight = true;
-  try {
-    await saveDevicesMeta(sessionId, connectedDevices, blockedDevices);
-    await saveGlobalQueue();
-    if(sessionId && groupData.groups) await buildAndSaveQueue();
-    updateDeviceUI();
-  } catch(e){ console.error('saveDevices error', e); }
-  _saveDevInFlight = false;
-  if(_saveDevPending){ _saveDevPending = false; saveDevices(); }
+// ── Persistencia de cola global ───────────────────────
+// Firestore: config/globalQueue { queue: [...] }
+// Siempre guarda la cola COMPLETA (todos los torneos)
+async function saveGlobalQueue(){
+  try{
+    await setDoc(doc(db,'config','globalQueue'), { queue: globalQueue, updatedAt: serverTimestamp() });
+  }catch(e){ console.error('saveGlobalQueue',e); }
 }
 
+// ── Persistencia de lista de dispositivos ─────────────
+// Firestore: config/devicesList { devices:[{clientId,name}], blocked:[] }
+// Solo guarda metadatos — busy/currentMatch viven exclusivamente en devices/{id}
+async function saveDevicesMeta(){
+  try{
+    const devList = connectedDevices.map(d=>({clientId:d.clientId, name:d.name}));
+    await setDoc(doc(db,'config','devicesList'), { devices:devList, blocked:blockedDevices, updatedAt:serverTimestamp() });
+  }catch(e){ console.error('saveDevicesMeta',e); }
+}
+
+// ── Cola pública visible (torneos/{sid}/meta/queue) ───
+// Solo para la vista pública — no afecta al funcionamiento interno
 async function buildAndSaveQueue(){
-  if(!sessionId || !groupData.groups) return;
+  if(!sessionId||!groupData.groups) return;
   const items=[];
   groupData.groups.forEach((g,gi)=>{
     g.matches.forEach((m,mi)=>{
       if(m.played) return;
-      // live: dispositivo actualmente jugando este partido
-      const dev=connectedDevices.find(d=>d.busy&&d.currentMatch?.gi===gi&&d.currentMatch?.mi===mi&&d.currentMatch?.sid===sessionId);
-      // queued: está en la cola global
+      const dev  = connectedDevices.find(d=>d.busy&&d.currentMatch?.gi===gi&&d.currentMatch?.mi===mi&&d.currentMatch?.sid===sessionId);
       const qPos = globalQueue.findIndex(q=>q.gi===gi&&q.mi===mi&&q.sid===sessionId);
-      const inQueue = qPos >= 0;
-      items.push({ gi, mi, t1:m.t1.name, t2:m.t2.name, group:g.name,
-        torneoName: groupData.title,
-        status: dev ? 'live' : inQueue ? 'queued' : 'pending',
-        devName: dev ? dev.name : null,
-        queuePos: inQueue ? qPos+1 : null,
-        assignedAt: dev?.currentMatch?.assignedAt || (inQueue ? globalQueue[qPos].assignedAt : null) });
+      items.push({
+        gi, mi, t1:m.t1.name, t2:m.t2.name, group:g.name, torneoName:groupData.title,
+        status: dev?'live':qPos>=0?'queued':'pending',
+        devName: dev?dev.name:null,
+        queuePos: qPos>=0?qPos+1:null,
+        assignedAt: dev?.currentMatch?.assignedAt||(qPos>=0?globalQueue[qPos].assignedAt:null)
+      });
     });
   });
   items.sort((a,b)=>{
-    const rank={live:0,queued:1,pending:2};
-    if(rank[a.status]!==rank[b.status]) return rank[a.status]-rank[b.status];
-    if(a.status==='queued') return (a.assignedAt||0)-(b.assignedAt||0);
-    return 0;
+    const r={live:0,queued:1,pending:2};
+    if(r[a.status]!==r[b.status]) return r[a.status]-r[b.status];
+    return (a.assignedAt||0)-(b.assignedAt||0);
   });
-  await saveQueueMeta(sessionId, items, groupData.title);
+  try{ await saveQueueMeta(sessionId, items, groupData.title); }catch(e){}
 }
 
-// ── Cargar torneos guardados ──────────────────────────
+// ════════════════════════════════════════════════════════════════
+// CARGA DE TORNEOS
+// ════════════════════════════════════════════════════════════════
 async function getAllTournaments(){
-  try {
-    const snap = await getDocs(collection(db,'torneos'));
-    const result={};
-    snap.forEach(d=>{ result[d.id]=d.data(); });
-    return result;
-  } catch(e){ return {}; }
+  try{ const snap=await getDocs(collection(db,'torneos')); const r={}; snap.forEach(d=>r[d.id]=d.data()); return r; }catch(e){ return {}; }
 }
 
 async function restoreTournament(sid, data, showToast){
-  // Limpiar listeners del torneo anterior (no el de dispositivos — es global)
   if(unsubscribeSession) unsubscribeSession();
-  if(unsubscribeScores) unsubscribeScores();
-
-  sessionId = sid;
-  groupData = parseGroupData(data);
-  state = parseState(data);
-  isPublished = false; // resetear hasta que checkPublishState confirme
+  if(unsubscribeScores)  unsubscribeScores();
+  sessionId  = sid;
+  groupData  = parseGroupData(data);
+  state      = parseState(data);
+  isPublished = false;
   updatePublishBtn();
-  // Restaurar estado completo de dispositivos (busy, queue, currentMatch)
-  connectedDevices = (data.devices || []).map(d => ({
-    clientId: d.clientId,
-    name: d.name,
-    lastSeen: Date.now(),
-    busy: d.busy || false,
-    currentMatch: d.currentMatch || null,
+  // Restaurar dispositivos — busy/currentMatch vienen de devices/{id} (ya leídos en loadTournament)
+  connectedDevices = (data.devices||[]).map(d=>({
+    clientId:d.clientId, name:d.name, lastSeen:Date.now(),
+    busy:!!d.busy, currentMatch:d.currentMatch||null
   }));
-  blockedDevices = data.blocked || [];
-
+  blockedDevices = data.blocked||[];
   if(state.rounds){
-    console.log('restoreTournament: showing tournament-screen, lRounds:', state.lRounds?.length, 'gf:', !!state.gf);
+    console.log('restoreTournament: showing tournament-screen');
     $('display-title').textContent=groupData.title;
     $('fs-bar-title').textContent=groupData.title;
     ['setup-screen','group-screen','pairing-screen'].forEach(id=>$(id).style.display='none');
@@ -1627,177 +1625,101 @@ async function restoreTournament(sid, data, showToast){
   }
   subscribeToSession();
   updateDeviceUI();
-  await checkPublishState(); // esperar Firestore antes de actualizar botón
+  await checkPublishState();
   updatePublishBtn();
-  // Avisar si había dispositivos ocupados al restaurar
-  const busyDevs = connectedDevices.filter(d => d.busy);
-  if(busyDevs.length){
-    setTimeout(()=> toast(`⚠️ ${busyDevs.map(d=>d.name).join(', ')} tenía${busyDevs.length>1?'n':''} partido en curso — verifica el resultado`), 1000);
-  }
+  const busyDevs=connectedDevices.filter(d=>d.busy);
+  if(busyDevs.length) setTimeout(()=>toast(`⚠️ ${busyDevs.map(d=>d.name).join(', ')} tenía${busyDevs.length>1?'n':''} partido en curso`),1000);
   if(showToast) toast(`📂 Torneo "${groupData.title}" cargado`);
 }
 
 function subscribeToSession(){
-  // El gestor admin es la fuente de verdad — no necesita escuchar sus propios cambios
-  // Solo escuchar scores entrantes desde dispositivos
-
-  // Scores entrantes desde dispositivos
   unsubscribeScores = onSnapshot(collection(db,'torneos',sessionId,'scores'), snap=>{
     snap.docChanges().forEach(async change=>{
       if(change.type!=='added') return;
       const d=change.doc.data();
       const match=groupData.groups?.[d.gi]?.matches?.[d.mi];
-      const dev = connectedDevices.find(x => x.clientId === d.from);
-      // Liberar dispositivo localmente
-      if(dev){ dev.busy = false; dev.currentMatch = null; dev.firestoreBusy = false; }
-      // Limpiar en Firestore
-      if(d.from) setDoc(doc(db,'devices',d.from), { busy:false, busyTorneo:null, currentMatch:null }, { merge:true }).catch(()=>{});
+      // Liberar dispositivo
+      const dev=connectedDevices.find(x=>x.clientId===d.from);
+      if(dev){ dev.busy=false; dev.currentMatch=null; }
+      if(d.from) setDoc(doc(db,'devices',d.from),{busy:false,currentMatch:null},{merge:true}).catch(()=>{});
       // Aplicar resultado
-      if(match && !match.played){
-        applyScore(d.gi, d.mi, +d.s1, +d.s2);
+      if(match&&!match.played){
+        applyScore(d.gi,d.mi,+d.s1,+d.s2);
         toast(`📱 ${match.t1.name} ${d.s1}–${d.s2} ${match.t2.name}${dev?' · '+dev.name:''}`);
-      } else {
-        renderGroups();
-      }
-      // Despachar siguiente de la cola
-      if(dev){
-        await dispatchNextFromQueue();
-        await saveGlobalQueue();
-        if(sessionId && groupData.groups) await buildAndSaveQueue();
-        updateDeviceUI();
-      }
+      } else { renderGroups(); }
+      // Despachar siguiente
+      await dispatchNextFromQueue();
+      await saveGlobalQueue();
+      await buildAndSaveQueue();
+      updateDeviceUI();
       deleteDoc(change.doc.ref).catch(()=>{});
     });
   });
 }
 
 async function loadTournament(sid){
-  try {
+  try{
     const snap=await getDoc(tourneyRef(sid));
-    if(!snap.exists()){
-      localStorage.removeItem('torneoPro_lastSession');
-      toast('⚠️ Torneo no encontrado');
-      return;
-    }
+    if(!snap.exists()){ localStorage.removeItem('torneoPro_lastSession'); toast('⚠️ Torneo no encontrado'); return; }
     const data=snap.data();
-    // Cargar lista de dispositivos
-    const devSnap=await getDoc(globalDevicesRef);
-    const devData=devSnap.exists()?devSnap.data():{};
     // Cargar cola global completa (todos los torneos)
     const qSnap=await getDoc(doc(db,'config','globalQueue'));
-    globalQueue = qSnap.exists() ? (qSnap.data().queue||[]) : [];
-    // Cargar estado real (busy/currentMatch) desde devices/{id}
-    const devListSnap = await getDocs(collection(db,'devices'));
-    const liveDevices = [];
-    const fiveMinutesAgo = Date.now() - 300000;
-    devListSnap.forEach(d=>{
+    globalQueue = qSnap.exists()?(qSnap.data().queue||[]):[];
+    // Cargar estado real de dispositivos desde devices/{id}
+    const fiveMin=Date.now()-300000;
+    const devSnap=await getDocs(collection(db,'devices'));
+    const liveDevices=[];
+    devSnap.forEach(d=>{
       const dd=d.data();
-      if(!dd.blocked && dd.clientId){
-        const lastSeenMs = dd.lastSeen?.toMillis?.() || dd.lastSeen || 0;
-        // Incluir si tiene ping reciente O si está marcado busy (puede tener partido en curso)
-        if(lastSeenMs > fiveMinutesAgo || dd.busy) liveDevices.push({
-          clientId: dd.clientId, name: dd.name,
-          busy: !!dd.busy, currentMatch: dd.currentMatch||null,
-          lastSeen: Date.now(), firestoreBusy: false, busyTorneo: dd.busyTorneo||null
+      if(!dd.blocked&&dd.clientId){
+        const ts=dd.lastSeen?.toMillis?.()||0;
+        if(ts>fiveMin||dd.busy) liveDevices.push({
+          clientId:dd.clientId, name:dd.name, lastSeen:Date.now(),
+          busy:!!dd.busy, currentMatch:dd.currentMatch||null
         });
       }
     });
-    await restoreTournament(sid,{...data, devices: liveDevices, blocked:devData.blocked||[]},true);
+    // Cargar blocked desde config/devicesList
+    const dlSnap=await getDoc(doc(db,'config','devicesList'));
+    const blocked=dlSnap.exists()?(dlSnap.data().blocked||[]):[];
+    await restoreTournament(sid,{...data,devices:liveDevices,blocked},true);
     $('tourneys-overlay').style.display='none';
-  } catch(e){
-    toast('⚠️ Error al cargar torneo');
-  }
+  }catch(e){ toast('⚠️ Error al cargar torneo'); console.error(e); }
 }
 
-async function deleteTournament(sid, event){
-  if(event) event.stopPropagation();
-  if(!confirm('¿Eliminar este torneo?')) return;
-  try {
-    // Quitar de torneos publicados si estaba
-    const pubSnap = await getDoc(doc(db, 'config', 'publishedTorneos'));
-    const ids = (pubSnap.data()?.sessionIds || []).filter(id => id !== sid);
-    await setDoc(doc(db, 'config', 'publishedTorneos'), { sessionIds: ids, updatedAt: serverTimestamp() });
-    // Limpiar la cola del torneo para que no aparezca en la vista pública
-    await saveQueueMeta(sid, [], '');
-    // Borrar el torneo
-    await deleteDoc(tourneyRef(sid));
-    if(sid === sessionId){
-      sessionId = null; isPublished = false; updatePublishBtn();
-      localStorage.removeItem('torneoPro_lastSession');
-    }
-    renderTourneysList();
-    toast('🗑️ Torneo eliminado');
-  } catch(e){ toast('⚠️ Error al eliminar'); }
-}
-
-async function renderTourneysList(){
-  const list=$('tourneys-list');
-  list.innerHTML='<div style="text-align:center;color:var(--text-muted);padding:1rem">Cargando…</div>';
-  const all=await getAllTournaments();
-  const entries=Object.entries(all);
-  if(!entries.length){
-    list.innerHTML='<div style="text-align:center;padding:2rem;color:var(--text-muted)">No hay torneos guardados.</div>';
-    return;
-  }
-  list.innerHTML=entries.map(([sid,data])=>{
-    const gd = parseGroupData(data);
-    const title=gd?.title||sid;
-    const isKO = data.stateJson ? data.stateJson.includes('"rounds"') : data.state?.rounds;
-    return `<div class="tourney-item" onclick="loadTournament('${sid}')">
-      <div><div style="font-weight:700;color:var(--text)">${title}</div>
-      <div style="font-size:0.75rem;color:var(--text-muted)">${isKO?'Fase Eliminatoria':'Fase de Grupos'}</div></div>
-      <button class="btn btn-danger" style="padding:0.3rem 0.6rem" onclick="deleteTournament('${sid}',event)">Eliminar</button>
-    </div>`;
-  }).join('');
-}
-
-$('btn-manage-tourneys').onclick=()=>{ renderTourneysList(); $('tourneys-overlay').style.display='flex'; };
-
-// ── Dispositivos ──────────────────────────────────────
+// ════════════════════════════════════════════════════════════════
+// DISPOSITIVOS — UI
+// ════════════════════════════════════════════════════════════════
 function updateDeviceUI(){
   const count=connectedDevices.length;
   const mini=$('ntfy-mini-text'); if(mini) mini.textContent=count===0?'0 disp.':`${count} disp.`;
   const dot2=$('ntfy-dot2'); if(dot2){ count>0?dot2.classList.add('on'):dot2.classList.remove('on'); }
   renderDevicesList();
-  // Refrescar solo el botón de cola en paneles abiertos
+  // Refrescar botón de cola en paneles abiertos (id = sp-{gi})
   document.querySelectorAll('.score-panel.open').forEach(p=>{
-    const [,gi,mi]=(p.id||'').split('-');
-    if(gi===undefined) return;
-    const section = p.querySelector('.send-to-section');
-    if(section){
-      const newSection = document.createElement('div');
-      renderSendToSection(+gi, +mi, newSection);
-      section.replaceWith(newSection.firstChild || newSection);
-    }
+    if(!activePanel) return;
+    const gi = activePanel.gi, mi = activePanel.mi;
+    if(`sp-${gi}` !== p.id) return;
+    const sec=p.querySelector('.send-to-section');
+    if(sec){ const tmp=document.createElement('div'); renderSendToSection(gi,mi,tmp); sec.replaceWith(tmp.firstElementChild||tmp); }
   });
 }
 
 async function clearAllDevices(){
-  if(!confirm('¿Eliminar todos los dispositivos conectados? Tendrán que volver a escanear el QR.')) return;
-  try {
-    // Borrar todos los documentos de la colección devices
-    const snap = await getDocs(collection(db,'devices'));
-    await Promise.all(snap.docs.map(d => deleteDoc(d.ref)));
-    // Limpiar también la cola global y estado local
-    connectedDevices = [];
-    globalQueue = [];
-    blockedDevices = [];
-    await saveDevices();
-    await saveGlobalQueue();
-    updateDeviceUI();
-    toast('🗑️ Todos los dispositivos eliminados');
-  } catch(e){ toast('⚠️ Error al limpiar dispositivos'); }
+  if(!confirm('¿Eliminar todos los dispositivos? Tendrán que volver a escanear el QR.')) return;
+  try{
+    const snap=await getDocs(collection(db,'devices'));
+    await Promise.all(snap.docs.map(d=>deleteDoc(d.ref)));
+    connectedDevices=[]; blockedDevices=[]; globalQueue=[];
+    await saveGlobalQueue(); await saveDevicesMeta();
+    updateDeviceUI(); toast('🗑️ Todos los dispositivos eliminados');
+  }catch(e){ toast('⚠️ Error al limpiar'); }
 }
 
 async function removeDevice(clientId){
-  connectedDevices = connectedDevices.filter(d => d.clientId !== clientId);
-  blockedDevices = blockedDevices.filter(id => id !== clientId); // no necesario guardar en blocked
-  // Borrar el documento completamente — sin rastro en Firestore
-  try {
-    await deleteDoc(doc(db,'devices',clientId));
-  } catch(e){}
-  await saveDevices();
-  updateDeviceUI();
+  connectedDevices=connectedDevices.filter(d=>d.clientId!==clientId);
+  try{ await deleteDoc(doc(db,'devices',clientId)); }catch(e){}
+  await saveDevicesMeta(); updateDeviceUI();
 }
 
 function renderDevicesList(){
@@ -1806,157 +1728,128 @@ function renderDevicesList(){
   list.innerHTML='';
   connectedDevices.forEach(dev=>{
     const ago=Math.round((Date.now()-dev.lastSeen)/1000);
-    const otherTorneo=dev.firestoreBusy&&!dev.busy;
-    const statusTxt=otherTorneo
-      ? `⏳ En partido · ${dev.busyTorneo||'otro torneo'}`
-      : dev.busy?'⏳ En partido':(ago<5?'✓ Libre':`hace ${ago}s`);
-    const statusColor=dev.busy||otherTorneo?'var(--gold)':'var(--win)';
-    const item=document.createElement('div'); item.className='connect-device-item';
-    item.innerHTML=`<span class="connect-device-dot"></span><span class="connect-device-name">📱 ${dev.name}</span>`+
-      `<span class="connect-device-ago" style="color:${statusColor}">${statusTxt}</span>`+
-      `<button onclick="removeDevice('${dev.clientId}')" style="margin-left:auto;background:transparent;border:1px solid #E24B4A;color:#E24B4A;border-radius:4px;padding:0.15rem 0.5rem;font-size:0.72rem;cursor:pointer;font-family:'Barlow Condensed',sans-serif;font-weight:700;flex-shrink:0;">✕ Quitar</button>`;
-    list.appendChild(item);
+    const statusTxt=dev.busy?'⏳ En partido':(ago<10?'✓ Libre':`hace ${ago}s`);
+    const statusColor=dev.busy?'var(--gold)':'var(--win)';
+    const row=document.createElement('div'); row.className='connect-device-row';
+    row.innerHTML=`<div><div class="dev-name">${dev.name}</div><div class="dev-status" style="color:${statusColor}">${statusTxt}</div></div><button class="btn btn-danger" style="padding:0.2rem 0.5rem;font-size:0.75rem" onclick="removeDevice('${dev.clientId}')">✕</button>`;
+    list.appendChild(row);
   });
 }
 
 function generateDeviceQR(){
-  if(!sessionId){ toast('⚠️ Crea o carga un torneo primero'); return; }
-  const name=$('connect-device-name').value.trim()||'Dispositivo';
+  const name=$('connect-device-name').value.trim()||`Dispositivo ${connectedDevices.length+1}`;
   const existing=connectedDevices.find(d=>d.name===name);
   const deviceId=existing?existing.clientId:('dev-'+Math.random().toString(36).slice(2,10));
-  // URL sin session — el dispositivo es global y puede recibir de cualquier torneo
   const url=`${location.origin}${location.pathname}?device=${encodeURIComponent(name)}&id=${deviceId}`;
   const wrap=$('connect-qr-wrap'); wrap.innerHTML='';
-  try {
-    new QRCode(wrap,{ text:url, width:200, height:200, colorDark:'#000000', colorLight:'#ffffff', correctLevel:QRCode.CorrectLevel.L });
-  } catch(e){ wrap.innerHTML='<div style="color:#888;font-size:0.8rem;text-align:center;padding:1rem">⚠️ Error al generar QR</div>'; }
-  $('connect-url-box').textContent=url;
-  $('connect-url-row').style.display='flex';
+  if(window.QRCode){ new QRCode(wrap,{text:url,width:200,height:200}); }
+  else { wrap.innerHTML=`<a href="${url}" target="_blank" style="word-break:break-all;font-size:0.75rem">${url}</a>`; }
+  $('connect-qr-url').textContent=url; $('connect-qr-url').style.display='block';
 }
 
 function copyConnectURL(){
-  const url=$('connect-url-box').textContent;
-  if(!url) return;
-  (navigator.clipboard?.writeText(url)??Promise.reject())
-    .catch(()=>{ const ta=Object.assign(document.createElement('textarea'),{value:url}); document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); })
-    .then(()=>toast('✓ URL copiada'));
+  const name=$('connect-device-name').value.trim()||`Dispositivo ${connectedDevices.length+1}`;
+  const existing=connectedDevices.find(d=>d.name===name);
+  const deviceId=existing?existing.clientId:('dev-'+Math.random().toString(36).slice(2,10));
+  const url=`${location.origin}${location.pathname}?device=${encodeURIComponent(name)}&id=${deviceId}`;
+  navigator.clipboard.writeText(url).then(()=>toast('✓ URL copiada')).catch(()=>toast('⚠️ No se pudo copiar'));
 }
 
 function openConnectModal(){
   $('connect-overlay').classList.add('open');
   renderDevicesList();
   if(!$('connect-device-name').value){ $('connect-device-name').value=`Dispositivo ${connectedDevices.length+1}`; }
-}
-$('btn-connect-device').addEventListener('click', openConnectModal);
-
-// Limpieza dispositivos inactivos (nunca los ocupados)
-setInterval(()=>{
+  // Limpiar dispositivos inactivos (no busy, sin ping en 3 minutos)
   const before=connectedDevices.length;
-  // Mantener dispositivos ocupados siempre; limpiar los inactivos tras 3 minutos
   connectedDevices=connectedDevices.filter(d=>d.busy||(Date.now()-d.lastSeen<180000));
-  if(connectedDevices.length!==before){ saveDevices(); }
-},30000);
-// ── Envío a dispositivos ──────────────────────────────────────────────
+  if(connectedDevices.length!==before){ saveDevicesMeta(); }
+}
+
+// ════════════════════════════════════════════════════════════════
+// COLA GLOBAL — ENVÍO A DISPOSITIVOS
+// ════════════════════════════════════════════════════════════════
+
+// Enviar partido a dispositivo — marca busy localmente y en Firestore
 async function _sendMatchNow(dev, qItem){
-  // qItem tiene todos los datos — no depende del torneo activo
-  const { gi, mi, sid, t1, t2, group, torneoName } = qItem;
-  // Marcar ocupado localmente ANTES de cualquier await (evita doble asignación)
-  dev.busy = true;
-  dev.currentMatch = { gi, mi, sid, assignedAt: Date.now() };
-  const payload = {
-    type:'match', gi, mi, t1, t2, group,
-    target: dev.clientId, startAt: Date.now(),
-    sessionId: sid, torneoName
-  };
-  await sendToDevice(sid, dev.clientId, { match: payload });
-  await setDoc(doc(db,'devices',dev.clientId), { busy:true, busyTorneo:torneoName||sid }, { merge:true });
-  // Solo actualizar UI del torneo activo
-  if(sid === sessionId){
-    if(activePanel?.gi===gi && activePanel?.mi===mi){ closeScorePanel(gi); activePanel=null; }
-    renderGroups();
-  }
+  const {gi, mi, sid, t1, t2, group, torneoName} = qItem;
+  // Marcar ocupado ANTES de cualquier await — evita doble asignación en el while
+  dev.busy=true; dev.currentMatch={gi,mi,sid,assignedAt:Date.now()};
+  const payload={type:'match',gi,mi,t1,t2,group,target:dev.clientId,startAt:Date.now(),sessionId:sid,torneoName};
+  await sendToDevice(sid, dev.clientId, {match:payload});
+  await setDoc(doc(db,'devices',dev.clientId),{busy:true,currentMatch:payload},{merge:true});
+  // Actualizar UI solo si es el torneo activo
+  if(sid===sessionId){ if(activePanel?.gi===gi&&activePanel?.mi===mi){closeScorePanel(gi);activePanel=null;} renderGroups(); }
   toast(`📱 ${t1} vs ${t2} → ${dev.name}`);
 }
 
+// Despachar partidos de la cola a dispositivos libres (FIFO global)
 async function dispatchNextFromQueue(){
-  // Cola global FIFO — despacha a dispositivos libres de cualquier torneo
   while(true){
-    const freeDev = connectedDevices.find(d => !d.busy && !d.firestoreBusy);
-    if(!freeDev || !globalQueue.length) break;
-    const next = globalQueue.splice(0, 1)[0];
-    try {
-      await _sendMatchNow(freeDev, next);
-    } catch(e){
-      globalQueue.unshift(next); // devolver al frente si falla
-      console.error('dispatchNextFromQueue error', e);
-      break;
-    }
+    const free=connectedDevices.find(d=>!d.busy);
+    if(!free||!globalQueue.length) break;
+    const item=globalQueue.shift(); // FIFO — siempre el primero
+    try{ await _sendMatchNow(free,item); }
+    catch(e){ globalQueue.unshift(item); console.error('dispatch error',e); break; }
   }
 }
 
-// ── Cola global ───────────────────────────────────────────────────────
-function isMatchLive(gi, mi){
-  return connectedDevices.some(d =>
-    d.busy && d.currentMatch?.gi===gi && d.currentMatch?.mi===mi && d.currentMatch?.sid===sessionId
-  );
+// ── Estado de cola para un partido ───────────────────
+function isMatchLive(gi,mi){
+  return connectedDevices.some(d=>d.busy&&d.currentMatch?.gi===gi&&d.currentMatch?.mi===mi&&d.currentMatch?.sid===sessionId);
 }
-function isMatchQueued(gi, mi){
-  return globalQueue.some(q => q.gi===gi && q.mi===mi && q.sid===sessionId);
+function getMatchDeviceName(gi,mi){
+  return connectedDevices.find(d=>d.busy&&d.currentMatch?.gi===gi&&d.currentMatch?.mi===mi&&d.currentMatch?.sid===sessionId)?.name||null;
 }
-function getMatchQueueInfo(gi, mi){
-  const pos = globalQueue.findIndex(q => q.gi===gi && q.mi===mi && q.sid===sessionId);
-  if(pos < 0) return null;
-  return { pos: pos+1, total: globalQueue.length };
+function isMatchQueued(gi,mi){
+  return globalQueue.some(q=>q.gi===gi&&q.mi===mi&&q.sid===sessionId);
+}
+function getMatchQueuePos(gi,mi){
+  const pos=globalQueue.findIndex(q=>q.gi===gi&&q.mi===mi&&q.sid===sessionId);
+  return pos>=0?pos+1:null;
 }
 
-async function addToGlobalQueue(gi, mi){
-  if(isMatchLive(gi, mi)){ toast('⚠️ Este partido ya está en juego'); return; }
-  if(isMatchQueued(gi, mi)){ toast('⚠️ Ya está en la cola'); return; }
-  const m = groupData.groups?.[gi]?.matches?.[mi]; if(!m) return;
-  // Guardar todos los datos del partido en el item para dispatch multi-torneo
-  globalQueue.push({
-    gi, mi, sid: sessionId,
-    t1: m.t1.name, t2: m.t2.name,
-    group: groupData.groups[gi].name,
-    torneoName: groupData.title,
-    assignedAt: Date.now()
-  });
-  if(activePanel?.gi===gi && activePanel?.mi===mi){ closeScorePanel(gi); activePanel=null; }
-  await dispatchNextFromQueue(); // si hay dispositivo libre, despacha inmediatamente
-  renderGroups();               // mostrar estado final (live o queued)
+// ── Añadir / quitar de la cola ────────────────────────
+async function addToGlobalQueue(gi,mi){
+  if(isMatchLive(gi,mi)){ toast('⚠️ Este partido ya está en juego'); return; }
+  if(isMatchQueued(gi,mi)){ toast('⚠️ Ya está en la cola'); return; }
+  const m=groupData.groups?.[gi]?.matches?.[mi]; if(!m) return;
+  globalQueue.push({gi,mi,sid:sessionId,t1:m.t1.name,t2:m.t2.name,group:groupData.groups[gi].name,torneoName:groupData.title,assignedAt:Date.now()});
+  if(activePanel?.gi===gi&&activePanel?.mi===mi){closeScorePanel(gi);activePanel=null;}
+  await dispatchNextFromQueue(); // despacha si hay dispositivo libre
+  renderGroups();
   await saveGlobalQueue();
-  if(sessionId && groupData.groups) await buildAndSaveQueue();
+  await buildAndSaveQueue();
   updateDeviceUI();
 }
 
-async function removeFromGlobalQueue(gi, mi){
-  const idx = globalQueue.findIndex(q => q.gi===gi && q.mi===mi && q.sid===sessionId);
-  if(idx < 0) return;
-  globalQueue.splice(idx, 1);
+async function removeFromGlobalQueue(gi,mi){
+  const idx=globalQueue.findIndex(q=>q.gi===gi&&q.mi===mi&&q.sid===sessionId);
+  if(idx<0) return;
+  globalQueue.splice(idx,1);
   toast('✕ Partido eliminado de la cola');
   renderGroups();
   await saveGlobalQueue();
-  if(sessionId && groupData.groups) await buildAndSaveQueue();
+  await buildAndSaveQueue();
   updateDeviceUI();
 }
 
-function renderSendToSection(gi, mi, container){
-  const section = document.createElement('div'); section.className='send-to-section';
-  const isLive = isMatchLive(gi, mi);
-  const inQueue = isMatchQueued(gi, mi);
-  const btn = document.createElement('button');
-  if(isLive){
+// ── Botón de cola en el panel de score ───────────────
+function renderSendToSection(gi,mi,container){
+  const section=document.createElement('div'); section.className='send-to-section';
+  const live=isMatchLive(gi,mi);
+  const queued=isMatchQueued(gi,mi);
+  const pos=queued?getMatchQueuePos(gi,mi):null;
+  const btn=document.createElement('button');
+  if(live){
     btn.className='send-to-btn sent'; btn.textContent='▶ En juego'; btn.disabled=true;
-  } else if(inQueue){
-    const pos = globalQueue.findIndex(q => q.gi===gi && q.mi===mi && q.sid===sessionId)+1;
+  } else if(queued){
     btn.className='send-to-btn queued'; btn.textContent=`📋 En cola #${pos}`;
-    btn.addEventListener('click', ()=>removeFromGlobalQueue(gi, mi));
+    btn.addEventListener('click',()=>removeFromGlobalQueue(gi,mi));
   } else {
     btn.className='send-to-btn'; btn.textContent='➕ Añadir a cola';
-    btn.addEventListener('click', ()=>addToGlobalQueue(gi, mi));
+    btn.addEventListener('click',()=>addToGlobalQueue(gi,mi));
   }
-  section.appendChild(btn);
-  container.appendChild(section);
+  section.appendChild(btn); container.appendChild(section);
 }
 
 // ── Pantallas secundarias ─────────────────────────────
@@ -2086,11 +1979,14 @@ async function launchGroupStageManual(title, teamsData){
 }
 
 function renderGroups(){
-  if(!groupData.groups) return; // torneo no cargado
+  if(!groupData.groups) return;
   const c=$('groups-container');
   if(!c) return;
   c.innerHTML='';
-  groupData.groups.forEach((g,gi)=>c.appendChild(buildGroupCard(g,gi)));
+  groupData.groups.forEach((g,gi)=>{
+    try{ c.appendChild(buildGroupCard(g,gi)); }
+    catch(e){ console.error(`buildGroupCard error gi=${gi}`,e); }
+  });
   updateGroupProgress();
 }
 
@@ -2119,13 +2015,13 @@ function buildGroupCard(group,gi){
   table.appendChild(tbody); wrap.appendChild(table); card.appendChild(wrap);
   const lbl=document.createElement('div'); lbl.className='group-matches-lbl'; lbl.textContent='Partidos'; card.appendChild(lbl);
   group.matches.forEach((m,mi)=>{
-    const live=isMatchLive(gi,mi), qInfo=!live?(isMatchQueued(gi,mi)?getMatchQueueInfo(gi,mi):null):null;
-    let cls='group-match-item'; if(m.played) cls+=' played'; if(live) cls+=' live'; else if(qInfo) cls+=' queued-match';
+    const live=isMatchLive(gi,mi), qPos=!live?getMatchQueuePos(gi,mi):null;
+    let cls='group-match-item'; if(m.played) cls+=' played'; if(live) cls+=' live'; else if(qPos) cls+=' queued-match';
     const item=document.createElement('div'); item.className=cls;
     const s1=m.played?m.s1:'-',s2=m.played?m.s2:'-';
     const editIcon=m.played?'<span style="font-size:0.6rem;color:var(--text-muted);margin-left:auto;padding-left:4px;opacity:0.6">✎</span>':'';
-    const dot=live?'<span class="live-dot"></span>':qInfo?'<span class="queue-dot"></span>':'';
-    const devTag=live?`<span style="font-size:0.58rem;color:var(--win);margin-left:2px;opacity:0.8">${getMatchDeviceName(gi,mi)||''}</span>`:qInfo?`<span style="font-size:0.58rem;color:var(--gold);margin-left:2px;opacity:0.9">#${qInfo.pos}</span>`:'';
+    const dot=live?'<span class="live-dot"></span>':qPos?'<span class="queue-dot"></span>':'';
+    const devTag=live?`<span style="font-size:0.58rem;color:var(--win);margin-left:2px;opacity:0.8">${getMatchDeviceName(gi,mi)||''}</span>`:qPos?`<span style="font-size:0.58rem;color:var(--gold);margin-left:2px;opacity:0.9">#${qPos}</span>`:'';
     item.innerHTML=`${dot}<div class="gm-team">${m.t1.name}</div><div class="gm-score${m.played?'':' pending'}">${s1}–${s2}</div><div class="gm-team r">${m.t2.name}</div>${devTag}${editIcon}`;
     item.style.cursor='pointer'; item.onclick=()=>openScorePanel(gi,mi);
     card.appendChild(item);
