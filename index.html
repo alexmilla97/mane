@@ -810,13 +810,16 @@ function showAdminView(){
     });
   });
 
-  // Listener de cola global — sincroniza globalQueue local con Firestore
-  // Solo actualiza si no estamos en medio de un dispatch (evita restaurar items ya despachados)
+  // Listener de cola global — sincroniza y actualiza cola pública
   onSnapshot(QUEUE_REF(), snap=>{
     if(!snap.exists()) return;
-    if(_dispatching) return; // ignorar durante dispatch — la cola local es correcta
+    if(_dispatching) return; // ignorar durante dispatch
     globalQueue = snap.data().queue||[];
-    if(sessionId && groupData.groups){ renderGroups(); updateDeviceUI(); }
+    if(sessionId && groupData.groups){
+      renderGroups();
+      updateDeviceUI();
+      buildAndSaveQueue().catch(()=>{}); // actualizar cola pública
+    }
   });
 
   const last = localStorage.getItem('torneoPro_lastSession');
@@ -1787,6 +1790,7 @@ async function restoreTournament(sid, data, showToast){
   }
   subscribeToSession(); updateDeviceUI();
   await checkPublishState(); updatePublishBtn();
+  await buildAndSaveQueue(); // actualizar cola pública con estado real tras carga
   const busy=connectedDevices.filter(d=>d.busy);
   if(busy.length) setTimeout(()=>toast(`⚠️ ${busy.map(d=>d.name).join(', ')} tenía${busy.length>1?'n':''} partido en curso`),1000);
   if(showToast) toast(`📂 Torneo "${groupData.title}" cargado`);
