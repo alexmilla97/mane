@@ -2085,7 +2085,14 @@ async function launchGroupStageManual(title, teamsData){
   renderGroups();
 }
 
-function renderGroups(){ const c=$('groups-container'); c.innerHTML=''; groupData.groups.forEach((g,gi)=>c.appendChild(buildGroupCard(g,gi))); updateGroupProgress(); }
+function renderGroups(){
+  if(!groupData.groups) return; // torneo no cargado
+  const c=$('groups-container');
+  if(!c) return;
+  c.innerHTML='';
+  groupData.groups.forEach((g,gi)=>c.appendChild(buildGroupCard(g,gi)));
+  updateGroupProgress();
+}
 
 function moveTeam(gi,fromIdx,toIdx){
   const group=groupData.groups[gi]; if(!group.manualOrder) group.manualOrder=calcStandings(group);
@@ -2118,7 +2125,7 @@ function buildGroupCard(group,gi){
     const s1=m.played?m.s1:'-',s2=m.played?m.s2:'-';
     const editIcon=m.played?'<span style="font-size:0.6rem;color:var(--text-muted);margin-left:auto;padding-left:4px;opacity:0.6">✎</span>':'';
     const dot=live?'<span class="live-dot"></span>':qInfo?'<span class="queue-dot"></span>':'';
-    const devTag=live?`<span style="font-size:0.58rem;color:var(--win);margin-left:2px;opacity:0.8">${getMatchDeviceName(gi,mi)}</span>`:qInfo?`<span style="font-size:0.58rem;color:var(--gold);margin-left:2px;opacity:0.9">${qInfo.name} · #${qInfo.pos}/${qInfo.total}</span>`:'';
+    const devTag=live?`<span style="font-size:0.58rem;color:var(--win);margin-left:2px;opacity:0.8">${getMatchDeviceName(gi,mi)||''}</span>`:qInfo?`<span style="font-size:0.58rem;color:var(--gold);margin-left:2px;opacity:0.9">#${qInfo.pos}</span>`:'';
     item.innerHTML=`${dot}<div class="gm-team">${m.t1.name}</div><div class="gm-score${m.played?'':' pending'}">${s1}–${s2}</div><div class="gm-team r">${m.t2.name}</div>${devTag}${editIcon}`;
     item.style.cursor='pointer'; item.onclick=()=>openScorePanel(gi,mi);
     card.appendChild(item);
