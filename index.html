@@ -802,17 +802,12 @@ function showAdminView(){
     });
   });
 
-  // Listener de cola global — mantiene globalQueue local sincronizado con Firestore
+  // Listener de cola global — sincroniza globalQueue local con Firestore en tiempo real
   onSnapshot(QUEUE_REF(), snap=>{
     if(!snap.exists()) return;
     const newQueue = snap.data().queue||[];
-    // Solo actualizar si cambió (evitar renders innecesarios)
-    if(JSON.stringify(newQueue) === JSON.stringify(globalQueue)) return;
     globalQueue = newQueue;
-    if(sessionId && groupData.groups){
-      renderGroups();   // actualizar colores live/queued/pending
-      updateDeviceUI(); // actualizar contador y botones
-    }
+    if(sessionId && groupData.groups){ renderGroups(); updateDeviceUI(); }
   });
 
   const last = localStorage.getItem('torneoPro_lastSession');
@@ -1579,54 +1574,25 @@ async function saveGlobalQueue(){
   catch(e){ console.error('saveGlobalQueue',e); }
 }
 
-// ID único global por partido enviado
+// ID único por partido
 async function getNextMatchId(){
   const ref = doc(db,'config','matchCounter');
-  let id = 1;
+  let id = Date.now(); // fallback
   try{
     await runTransaction(db, async tx=>{
       const snap = await tx.get(ref);
       id = snap.exists() ? (snap.data().next||1) : 1;
       tx.set(ref, { next: id+1 });
     });
-  }catch(e){ id = Date.now(); } // fallback: timestamp único
+  }catch(e){}
   return id;
-}
-
-// ── Operaciones de cola ───────────────────────────────────────
-
-async function saveQueueToFirestore(queue){
-  await setDoc(QUEUE_REF(), { queue, updatedAt: serverTimestamp() });
-}
-
-// Añadir item a la cola (atómico)
-async function enqueue(item){
-  await runTransaction(db, async tx=>{
-    const snap = await tx.get(QUEUE_REF());
-    const q = snap.exists() ? (snap.data().queue||[]) : [];
-    q.push(item);
-    tx.set(QUEUE_REF(), { queue: q, updatedAt: serverTimestamp() });
-  });
-  // El listener onSnapshot actualizará globalQueue local automáticamente
-}
-
-// Quitar item de la cola por matchId (atómico)
-async function dequeue(matchId){
-  let item = null;
-  await runTransaction(db, async tx=>{
-    const snap = await tx.get(QUEUE_REF());
-    const q = snap.exists() ? (snap.data().queue||[]) : [];
-    const idx = q.findIndex(x=>x.matchId===matchId);
-    if(idx>=0){ item=q.splice(idx,1)[0]; tx.set(QUEUE_REF(), { queue: q, updatedAt: serverTimestamp() }); }
-  });
-  return item;
 }
 
 // ── Envío a dispositivos ──────────────────────────────────────
 
 async function _sendMatchNow(dev, qItem){
   const {gi, mi, sid, t1, t2, group, torneoName, matchId} = qItem;
-  // Marcar ocupado INMEDIATAMENTE — antes de cualquier await
+  // Marcar ocupado INMEDIATAMENTE antes de cualquier await
   dev.busy = true;
   dev.currentMatch = {gi, mi, sid, matchId, assignedAt: Date.now()};
   const payload = {type:'match', gi, mi, t1, t2, group,
@@ -1640,59 +1606,45 @@ async function _sendMatchNow(dev, qItem){
     }
     toast(`📱 ${t1} vs ${t2} → ${dev.name}`);
   }catch(e){
-    // Si falla el envío, liberar dispositivo y devolver a la cola
     dev.busy=false; dev.currentMatch=null;
-    globalQueue.push(qItem); // restaurar en local (Firestore ya lo tiene por la transacción anterior)
     console.error('_sendMatchNow error',e);
     throw e;
   }
 }
 
-// Despachar partidos de la cola a dispositivos libres
-let _dispatching = false; // mutex local para evitar dispatches concurrentes
+// Despachar usando globalQueue local (el listener lo mantiene sincronizado)
 async function dispatchNextFromQueue(){
-  if(_dispatching) return;
-  _dispatching = true;
-  try{
-    while(true){
-      const free = connectedDevices.find(d=>!d.busy);
-      if(!free) break;
-      // Leer cola fresca de Firestore para evitar usar estado obsoleto
-      const qSnap = await getDoc(QUEUE_REF());
-      const firestoreQueue = qSnap.exists() ? (qSnap.data().queue||[]) : [];
-      if(!firestoreQueue.length) break;
-      const item = firestoreQueue[0]; // primer item FIFO
-      // Asignar matchId si no tiene (items añadidos antes de esta versión)
-      if(!item.matchId) item.matchId = await getNextMatchId();
-      // Sacar de Firestore atómicamente ANTES de marcar busy
-      const removed = await dequeue(item.matchId);
-      if(!removed) break; // otro gestor lo cogió primero
-      // Marcar busy y enviar
-      await _sendMatchNow(free, removed);
+  while(true){
+    const free = connectedDevices.find(d=>!d.busy);
+    if(!free || !globalQueue.length) break;
+    // Sacar el primer item de la cola local
+    const item = globalQueue.shift();
+    // Guardar cola en Firestore (sin await — no bloquear el dispatch)
+    saveGlobalQueue().catch(()=>{});
+    try{ await _sendMatchNow(free, item); }
+    catch(e){
+      // Devolver al frente de la cola si falla
+      globalQueue.unshift(item);
+      saveGlobalQueue().catch(()=>{});
+      break;
     }
-  }finally{
-    _dispatching = false;
   }
 }
 
 // ── Estado de cola para UI ────────────────────────────────────
 
 function isMatchLive(gi,mi){
-  return connectedDevices.some(d=>
-    d.busy && d.currentMatch?.gi===gi && d.currentMatch?.mi===mi && d.currentMatch?.sid===sessionId
-  );
+  return connectedDevices.some(d=>d.busy&&d.currentMatch?.gi===gi&&d.currentMatch?.mi===mi&&d.currentMatch?.sid===sessionId);
 }
 function getMatchDeviceName(gi,mi){
-  return connectedDevices.find(d=>
-    d.busy && d.currentMatch?.gi===gi && d.currentMatch?.mi===mi && d.currentMatch?.sid===sessionId
-  )?.name||null;
+  return connectedDevices.find(d=>d.busy&&d.currentMatch?.gi===gi&&d.currentMatch?.mi===mi&&d.currentMatch?.sid===sessionId)?.name||null;
 }
 function isMatchQueued(gi,mi){
   return globalQueue.some(q=>q.gi===gi&&q.mi===mi&&q.sid===sessionId);
 }
 function getMatchQueuePos(gi,mi){
-  const pos = globalQueue.findIndex(q=>q.gi===gi&&q.mi===mi&&q.sid===sessionId);
-  return pos>=0 ? pos+1 : null;
+  const pos=globalQueue.findIndex(q=>q.gi===gi&&q.mi===mi&&q.sid===sessionId);
+  return pos>=0?pos+1:null;
 }
 
 // ── Añadir / quitar de la cola ────────────────────────────────
@@ -1700,29 +1652,28 @@ function getMatchQueuePos(gi,mi){
 async function addToGlobalQueue(gi,mi){
   if(isMatchLive(gi,mi)){ toast('⚠️ Este partido ya está en juego'); return; }
   if(isMatchQueued(gi,mi)){ toast('⚠️ Ya está en la cola'); return; }
-  const m = groupData.groups?.[gi]?.matches?.[mi]; if(!m) return;
+  const m=groupData.groups?.[gi]?.matches?.[mi]; if(!m) return;
   const matchId = await getNextMatchId();
   const item = {matchId, gi, mi, sid:sessionId,
     t1:m.t1.name, t2:m.t2.name,
     group:groupData.groups[gi].name, torneoName:groupData.title,
     assignedAt:Date.now()};
   if(activePanel?.gi===gi&&activePanel?.mi===mi){closeScorePanel(gi);activePanel=null;}
-  await enqueue(item);           // guarda en Firestore — listener actualiza globalQueue local
-  await dispatchNextFromQueue(); // si hay dispositivo libre, despacha
-  // renderGroups() lo llama el listener de QUEUE_REF o _sendMatchNow
+  globalQueue.push(item);
+  await dispatchNextFromQueue(); // intenta despachar inmediatamente
+  await saveGlobalQueue();       // guardar estado actual en Firestore
+  renderGroups();
   await buildAndSaveQueue();
   updateDeviceUI();
 }
 
 async function removeFromGlobalQueue(gi,mi){
-  const item = globalQueue.find(q=>q.gi===gi&&q.mi===mi&&q.sid===sessionId);
-  if(!item) return;
-  await runTransaction(db, async tx=>{
-    const snap = await tx.get(QUEUE_REF());
-    const q = snap.exists() ? (snap.data().queue||[]) : [];
-    tx.set(QUEUE_REF(), { queue: q.filter(x=>!(x.gi===gi&&x.mi===mi&&x.sid===sessionId)), updatedAt: serverTimestamp() });
-  });
+  const idx=globalQueue.findIndex(q=>q.gi===gi&&q.mi===mi&&q.sid===sessionId);
+  if(idx<0) return;
+  globalQueue.splice(idx,1);
   toast('✕ Partido eliminado de la cola');
+  await saveGlobalQueue();
+  renderGroups();
   await buildAndSaveQueue();
   updateDeviceUI();
 }
@@ -1730,11 +1681,11 @@ async function removeFromGlobalQueue(gi,mi){
 // ── Botón de cola en el panel de score ───────────────────────
 
 function renderSendToSection(gi,mi,container){
-  const section = document.createElement('div'); section.className='send-to-section';
-  const live = isMatchLive(gi,mi);
-  const queued = isMatchQueued(gi,mi);
-  const pos = queued ? getMatchQueuePos(gi,mi) : null;
-  const btn = document.createElement('button');
+  const section=document.createElement('div'); section.className='send-to-section';
+  const live=isMatchLive(gi,mi);
+  const queued=isMatchQueued(gi,mi);
+  const pos=queued?getMatchQueuePos(gi,mi):null;
+  const btn=document.createElement('button');
   if(live){
     btn.className='send-to-btn sent'; btn.textContent='▶ En juego'; btn.disabled=true;
   } else if(queued){
