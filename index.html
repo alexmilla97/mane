@@ -802,6 +802,18 @@ function showAdminView(){
     });
   });
 
+  // Listener de cola global — mantiene globalQueue local sincronizado con Firestore
+  // Así los cambios de otros gestores se reflejan automáticamente
+  onSnapshot(QUEUE_REF(), snap=>{
+    if(!snap.exists()) return;
+    globalQueue = snap.data().queue||[];
+    // Actualizar UI si hay torneo cargado
+    if(sessionId && groupData.groups){
+      renderGroups();
+      updateDeviceUI();
+    }
+  });
+
   const last = localStorage.getItem('torneoPro_lastSession');
   if(last){
     $('setup-screen').style.display = 'none';
@@ -1621,18 +1633,25 @@ async function saveDevicesMeta(){
 // Solo para la vista pública — no afecta al funcionamiento interno
 async function buildAndSaveQueue(){
   if(!sessionId||!groupData.groups) return;
+  // Leer cola desde Firestore — fuente de verdad
+  let firestoreQueue = globalQueue; // fallback a local
+  try{
+    const qSnap = await getDoc(QUEUE_REF());
+    if(qSnap.exists()) firestoreQueue = qSnap.data().queue||[];
+    globalQueue = firestoreQueue; // sincronizar local
+  }catch(e){}
   const items=[];
   groupData.groups.forEach((g,gi)=>{
     g.matches.forEach((m,mi)=>{
       if(m.played) return;
       const dev  = connectedDevices.find(d=>d.busy&&d.currentMatch?.gi===gi&&d.currentMatch?.mi===mi&&d.currentMatch?.sid===sessionId);
-      const qPos = globalQueue.findIndex(q=>q.gi===gi&&q.mi===mi&&q.sid===sessionId);
+      const qPos = firestoreQueue.findIndex(q=>q.gi===gi&&q.mi===mi&&q.sid===sessionId);
       items.push({
         gi, mi, t1:m.t1.name, t2:m.t2.name, group:g.name, torneoName:groupData.title,
         status: dev?'live':qPos>=0?'queued':'pending',
         devName: dev?dev.name:null,
         queuePos: qPos>=0?qPos+1:null,
-        assignedAt: dev?.currentMatch?.assignedAt||(qPos>=0?globalQueue[qPos].assignedAt:null)
+        assignedAt: dev?.currentMatch?.assignedAt||(qPos>=0?firestoreQueue[qPos].assignedAt:null)
       });
     });
   });
