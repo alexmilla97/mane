@@ -1657,6 +1657,52 @@ function subscribeToSession(){
   });
 }
 
+async function renderTourneysList(){
+  const list = $('tourneys-list'); if(!list) return;
+  list.innerHTML = '<div style="color:var(--text-muted);padding:1rem">Cargando…</div>';
+  const all = await getAllTournaments();
+  const entries = Object.entries(all);
+  if(!entries.length){ list.innerHTML='<div style="color:var(--text-muted);padding:1rem">No hay torneos guardados.</div>'; return; }
+  list.innerHTML='';
+  entries.forEach(([sid, data])=>{
+    const gd = parseGroupData(data);
+    const title = gd?.title || sid;
+    const st = parseState(data);
+    const isKO = st?.rounds ? true : (data.stateJson ? data.stateJson.includes('"rounds"') : false);
+    const row = document.createElement('div'); row.className='tourney-row';
+    row.innerHTML=`<div style="display:flex;align-items:center;gap:0.8rem;flex:1;cursor:pointer" onclick="loadTournament('${sid}')">
+      <div>
+        <div style="font-weight:700">${title}</div>
+        <div style="font-size:0.75rem;color:var(--text-muted)">${isKO?'Fase Eliminatoria':'Fase de Grupos'}</div>
+      </div>
+    </div>
+    <button class="btn btn-danger" style="padding:0.3rem 0.6rem" onclick="deleteTournament('${sid}',event)">Eliminar</button>`;
+    list.appendChild(row);
+  });
+}
+
+async function deleteTournament(sid, event){
+  if(event) event.stopPropagation();
+  if(!confirm('¿Eliminar este torneo?')) return;
+  try{
+    // Quitar de torneos publicados
+    const pubSnap = await getDoc(doc(db,'config','publishedTorneos'));
+    const ids = (pubSnap.data()?.sessionIds||[]).filter(id=>id!==sid);
+    await setDoc(doc(db,'config','publishedTorneos'),{sessionIds:ids,updatedAt:serverTimestamp()});
+    // Borrar cola pública
+    await saveQueueMeta(sid,[],''). catch(()=>{});
+    // Borrar documento del torneo
+    await deleteDoc(tourneyRef(sid));
+    // Si era el torneo activo, resetear
+    if(sid===sessionId) resetAll();
+    // Quitar de la cola global
+    globalQueue = globalQueue.filter(q=>q.sid!==sid);
+    await saveGlobalQueue();
+    toast('🗑️ Torneo eliminado');
+    renderTourneysList();
+  }catch(e){ toast('⚠️ Error al eliminar'); console.error(e); }
+}
+
 async function loadTournament(sid){
   try{
     const snap=await getDoc(tourneyRef(sid));
