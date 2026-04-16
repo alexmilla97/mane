@@ -1261,29 +1261,36 @@ if(IS_DEVICE && DEVICE_ID){
   let curMatch = null, sc = {s1:0,s2:0}, timerInt = null, startTs = null, running = false;
 
   try {
-    // Leer estado anterior primero
+    // Leer estado anterior (partido en curso)
     const devSnap = await getDoc(doc(db,'devices',DEVICE_ID));
-    const devData = devSnap.data();
-    const hasActiveMatch = devData?.currentMatch && devData.currentMatch.type === 'match';
+    const prevMatch = devSnap.exists() && devSnap.data()?.currentMatch?.type === 'match'
+      ? devSnap.data().currentMatch : null;
 
-    // Registrar presencia con estado correcto
+    // Registrar presencia — un solo setDoc limpio
     await setDoc(doc(db,'devices',DEVICE_ID), {
-      name: DEVICE_NAME, clientId: DEVICE_ID,
+      clientId: DEVICE_ID, name: DEVICE_NAME,
       lastSeen: serverTimestamp(), blocked: false,
-      busy: hasActiveMatch ? true : false,
-      status: hasActiveMatch ? 'busy' : 'idle',
-      currentMatch: hasActiveMatch ? devData.currentMatch : null,
-    }, { merge: true });
+      busy: !!prevMatch, currentMatch: prevMatch || null,
+      status: prevMatch ? 'busy' : 'idle'
+    }); // sin merge — escritura completa y limpia
 
     dot.classList.add('on'); st.textContent = 'Conectado';
 
-    // Restaurar partido si estaba en curso
-    if(hasActiveMatch){
-      showMatch(devData.currentMatch);
-    }
+    if(prevMatch) showMatch(prevMatch);
+
   } catch(e){
-    st.textContent = 'Error de conexión';
-    console.error('Device registration error', e);
+    // Si falla el getDoc, registrar igualmente como libre
+    try {
+      await setDoc(doc(db,'devices',DEVICE_ID), {
+        clientId: DEVICE_ID, name: DEVICE_NAME,
+        lastSeen: serverTimestamp(), blocked: false,
+        busy: false, currentMatch: null, status: 'idle'
+      });
+      dot.classList.add('on'); st.textContent = 'Conectado';
+    } catch(e2){
+      st.textContent = 'Error de conexión';
+      console.error('Device registration error', e2);
+    }
   }
 
   // Ping cada 30s
@@ -1849,18 +1856,21 @@ setInterval(()=>{
   connectedDevices=connectedDevices.filter(d=>d.busy||(Date.now()-d.lastSeen<180000));
   if(connectedDevices.length!==before){ saveDevices(); }
 },30000);
-// ── Envío a dispositivos ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+// ── Envío a dispositivos ──────────────────────────────────────────────
 async function _sendMatchNow(dev, qItem){
+  // qItem tiene todos los datos — no depende del torneo activo
   const { gi, mi, sid, t1, t2, group, torneoName } = qItem;
+  // Marcar ocupado localmente ANTES de cualquier await (evita doble asignación)
   dev.busy = true;
   dev.currentMatch = { gi, mi, sid, assignedAt: Date.now() };
   const payload = {
-    type: 'match', gi, mi, t1, t2, group,
+    type:'match', gi, mi, t1, t2, group,
     target: dev.clientId, startAt: Date.now(),
     sessionId: sid, torneoName
   };
   await sendToDevice(sid, dev.clientId, { match: payload });
   await setDoc(doc(db,'devices',dev.clientId), { busy:true, busyTorneo:torneoName||sid }, { merge:true });
+  // Solo actualizar UI del torneo activo
   if(sid === sessionId){
     if(activePanel?.gi===gi && activePanel?.mi===mi){ closeScorePanel(gi); activePanel=null; }
     renderGroups();
@@ -1869,44 +1879,81 @@ async function _sendMatchNow(dev, qItem){
 }
 
 async function dispatchNextFromQueue(){
+  // Cola global FIFO — despacha a dispositivos libres de cualquier torneo
   while(true){
-    const freeDev = connectedDevices.find(d=>!d.busy&&!d.firestoreBusy);
+    const freeDev = connectedDevices.find(d => !d.busy && !d.firestoreBusy);
     if(!freeDev || !globalQueue.length) break;
     const next = globalQueue.splice(0, 1)[0];
     try {
       await _sendMatchNow(freeDev, next);
     } catch(e){
-      globalQueue.unshift(next);
+      globalQueue.unshift(next); // devolver al frente si falla
       console.error('dispatchNextFromQueue error', e);
       break;
     }
   }
 }
 
-function isMatchLive(gi,mi){ return connectedDevices.some(d=>d.busy&&d.currentMatch?.gi===gi&&d.currentMatch?.mi===mi&&d.currentMatch?.sid===sessionId); }
-function getMatchDeviceName(gi,mi){ return connectedDevices.find(d=>d.busy&&d.currentMatch?.gi===gi&&d.currentMatch?.mi===mi&&d.currentMatch?.sid===sessionId)?.name||null; }
-function isMatchQueued(gi,mi){ return globalQueue.some(q=>q.gi===gi&&q.mi===mi&&q.sid===sessionId); }
-function getMatchQueueInfo(gi,mi){
-  const pos = globalQueue.findIndex(q=>q.gi===gi&&q.mi===mi&&q.sid===sessionId);
-  if(pos<0) return null;
+// ── Cola global ───────────────────────────────────────────────────────
+function isMatchLive(gi, mi){
+  return connectedDevices.some(d =>
+    d.busy && d.currentMatch?.gi===gi && d.currentMatch?.mi===mi && d.currentMatch?.sid===sessionId
+  );
+}
+function isMatchQueued(gi, mi){
+  return globalQueue.some(q => q.gi===gi && q.mi===mi && q.sid===sessionId);
+}
+function getMatchQueueInfo(gi, mi){
+  const pos = globalQueue.findIndex(q => q.gi===gi && q.mi===mi && q.sid===sessionId);
+  if(pos < 0) return null;
   return { pos: pos+1, total: globalQueue.length };
 }
 
+async function addToGlobalQueue(gi, mi){
+  if(isMatchLive(gi, mi)){ toast('⚠️ Este partido ya está en juego'); return; }
+  if(isMatchQueued(gi, mi)){ toast('⚠️ Ya está en la cola'); return; }
+  const m = groupData.groups?.[gi]?.matches?.[mi]; if(!m) return;
+  // Guardar todos los datos del partido en el item para dispatch multi-torneo
+  globalQueue.push({
+    gi, mi, sid: sessionId,
+    t1: m.t1.name, t2: m.t2.name,
+    group: groupData.groups[gi].name,
+    torneoName: groupData.title,
+    assignedAt: Date.now()
+  });
+  if(activePanel?.gi===gi && activePanel?.mi===mi){ closeScorePanel(gi); activePanel=null; }
+  await dispatchNextFromQueue(); // si hay dispositivo libre, despacha inmediatamente
+  renderGroups();               // mostrar estado final (live o queued)
+  await saveGlobalQueue();
+  if(sessionId && groupData.groups) await buildAndSaveQueue();
+  updateDeviceUI();
+}
+
+async function removeFromGlobalQueue(gi, mi){
+  const idx = globalQueue.findIndex(q => q.gi===gi && q.mi===mi && q.sid===sessionId);
+  if(idx < 0) return;
+  globalQueue.splice(idx, 1);
+  toast('✕ Partido eliminado de la cola');
+  renderGroups();
+  await saveGlobalQueue();
+  if(sessionId && groupData.groups) await buildAndSaveQueue();
+  updateDeviceUI();
+}
+
 function renderSendToSection(gi, mi, container){
-  const section=document.createElement('div'); section.className='send-to-section';
-  const inQueue = globalQueue.some(q=>q.gi===gi&&q.mi===mi&&q.sid===sessionId);
+  const section = document.createElement('div'); section.className='send-to-section';
   const isLive = isMatchLive(gi, mi);
+  const inQueue = isMatchQueued(gi, mi);
   const btn = document.createElement('button');
   if(isLive){
-    btn.className='send-to-btn sent'; btn.textContent='▶ En juego';
-    btn.disabled=true;
+    btn.className='send-to-btn sent'; btn.textContent='▶ En juego'; btn.disabled=true;
   } else if(inQueue){
-    const pos = globalQueue.findIndex(q=>q.gi===gi&&q.mi===mi&&q.sid===sessionId)+1;
+    const pos = globalQueue.findIndex(q => q.gi===gi && q.mi===mi && q.sid===sessionId)+1;
     btn.className='send-to-btn queued'; btn.textContent=`📋 En cola #${pos}`;
-    btn.onclick=()=>{ removeFromGlobalQueue(gi,mi); };
+    btn.addEventListener('click', ()=>removeFromGlobalQueue(gi, mi));
   } else {
     btn.className='send-to-btn'; btn.textContent='➕ Añadir a cola';
-    btn.onclick=()=>{ addToGlobalQueue(gi,mi); };
+    btn.addEventListener('click', ()=>addToGlobalQueue(gi, mi));
   }
   section.appendChild(btn);
   container.appendChild(section);
@@ -1990,10 +2037,10 @@ function resetAll(){
       isPublished=false;
     }
   }
+  const oldSid = sessionId;
   sessionId=null; groupData={}; state={};
-  // Limpiar partidos de este torneo de la cola global
-  if(sessionId) globalQueue = globalQueue.filter(q=>q.sid!==sessionId);
-  globalQueue = [];
+  // Limpiar solo los partidos de ESTE torneo de la cola global
+  if(oldSid) globalQueue = globalQueue.filter(q => q.sid !== oldSid);
   saveGlobalQueue().catch(()=>{});
   // NO limpiar connectedDevices — los dispositivos son globales e independientes del torneo
   if(unsubscribeSession) unsubscribeSession();
