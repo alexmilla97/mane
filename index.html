@@ -1557,8 +1557,21 @@ async function saveCurrentTournament(){
 }
 
 // ── Persistencia de cola global ───────────────────────
-// Cada item tiene assignedAt como ID único de ordenación
-// Usamos transacciones para evitar que dos gestores despeachen el mismo partido
+// ════════════════════════════════════════════════════════════════
+// COLA GLOBAL — SISTEMA SIMPLE Y ROBUSTO
+// ════════════════════════════════════════════════════════════════
+//
+// Reglas:
+// 1. globalQueue en memoria = espejo de config/globalQueue en Firestore
+// 2. El listener onSnapshot mantiene globalQueue local sincronizado siempre
+// 3. Cada item tiene un matchId único global (config/matchCounter)
+// 4. El dispatch marca dev.busy=true localmente ANTES de cualquier await
+// 5. Un item en cola que ha sido despachado (busy=true en dev) ya no está en la cola Firestore
+//
+// Estructura de un item de cola:
+//   { matchId, gi, mi, sid, t1, t2, group, torneoName, assignedAt }
+// ════════════════════════════════════════════════════════════════
+
 const QUEUE_REF = () => doc(db,'config','globalQueue');
 
 async function saveGlobalQueue(){
@@ -1566,151 +1579,231 @@ async function saveGlobalQueue(){
   catch(e){ console.error('saveGlobalQueue',e); }
 }
 
-// Coger el primer item de la cola de forma atómica (transacción)
-// Devuelve el item cogido o null si la cola está vacía
-async function atomicShiftQueue(){
+// ID único global por partido enviado
+async function getNextMatchId(){
+  const ref = doc(db,'config','matchCounter');
+  let id = 1;
   try{
-    let taken = null;
     await runTransaction(db, async tx=>{
-      const snap = await tx.get(QUEUE_REF());
-      const queue = snap.exists() ? (snap.data().queue||[]) : [];
-      if(!queue.length) return;
-      taken = queue[0];
-      tx.set(QUEUE_REF(), { queue: queue.slice(1), updatedAt: serverTimestamp() });
+      const snap = await tx.get(ref);
+      id = snap.exists() ? (snap.data().next||1) : 1;
+      tx.set(ref, { next: id+1 });
     });
-    if(taken){
-      // Sincronizar globalQueue local con Firestore
-      const idx = globalQueue.findIndex(q=>q.assignedAt===taken.assignedAt&&q.sid===taken.sid&&q.gi===taken.gi&&q.mi===taken.mi);
-      if(idx>=0) globalQueue.splice(idx,1);
+  }catch(e){ id = Date.now(); } // fallback: timestamp único
+  return id;
+}
+
+// ── Operaciones de cola ───────────────────────────────────────
+
+async function saveQueueToFirestore(queue){
+  await setDoc(QUEUE_REF(), { queue, updatedAt: serverTimestamp() });
+}
+
+// Añadir item a la cola (atómico)
+async function enqueue(item){
+  await runTransaction(db, async tx=>{
+    const snap = await tx.get(QUEUE_REF());
+    const q = snap.exists() ? (snap.data().queue||[]) : [];
+    q.push(item);
+    tx.set(QUEUE_REF(), { queue: q, updatedAt: serverTimestamp() });
+  });
+  // El listener onSnapshot actualizará globalQueue local automáticamente
+}
+
+// Quitar item de la cola por matchId (atómico)
+async function dequeue(matchId){
+  let item = null;
+  await runTransaction(db, async tx=>{
+    const snap = await tx.get(QUEUE_REF());
+    const q = snap.exists() ? (snap.data().queue||[]) : [];
+    const idx = q.findIndex(x=>x.matchId===matchId);
+    if(idx>=0){ item=q.splice(idx,1)[0]; tx.set(QUEUE_REF(), { queue: q, updatedAt: serverTimestamp() }); }
+  });
+  return item;
+}
+
+// ── Envío a dispositivos ──────────────────────────────────────
+
+async function _sendMatchNow(dev, qItem){
+  const {gi, mi, sid, t1, t2, group, torneoName, matchId} = qItem;
+  // Marcar ocupado INMEDIATAMENTE — antes de cualquier await
+  dev.busy = true;
+  dev.currentMatch = {gi, mi, sid, matchId, assignedAt: Date.now()};
+  const payload = {type:'match', gi, mi, t1, t2, group,
+    target:dev.clientId, startAt:Date.now(), sessionId:sid, torneoName, matchId};
+  try{
+    await sendToDevice(sid, dev.clientId, {match:payload});
+    await setDoc(doc(db,'devices',dev.clientId), {busy:true, currentMatch:payload}, {merge:true});
+    if(sid===sessionId){
+      if(activePanel?.gi===gi&&activePanel?.mi===mi){closeScorePanel(gi);activePanel=null;}
+      renderGroups();
     }
-    return taken;
-  }catch(e){ console.error('atomicShiftQueue',e); return null; }
+    toast(`📱 ${t1} vs ${t2} → ${dev.name}`);
+  }catch(e){
+    // Si falla el envío, liberar dispositivo y devolver a la cola
+    dev.busy=false; dev.currentMatch=null;
+    globalQueue.push(qItem); // restaurar en local (Firestore ya lo tiene por la transacción anterior)
+    console.error('_sendMatchNow error',e);
+    throw e;
+  }
 }
 
-// Añadir item a la cola de forma atómica
-async function atomicPushQueue(item){
+// Despachar partidos de la cola a dispositivos libres
+let _dispatching = false; // mutex local para evitar dispatches concurrentes
+async function dispatchNextFromQueue(){
+  if(_dispatching) return;
+  _dispatching = true;
   try{
-    await runTransaction(db, async tx=>{
-      const snap = await tx.get(QUEUE_REF());
-      const queue = snap.exists() ? (snap.data().queue||[]) : [];
-      queue.push(item);
-      tx.set(QUEUE_REF(), { queue, updatedAt: serverTimestamp() });
-    });
-    globalQueue.push(item); // sincronizar local
-  }catch(e){ console.error('atomicPushQueue',e); throw e; }
-}
-
-// Quitar item específico de la cola de forma atómica
-async function atomicRemoveFromQueue(gi, mi, sid){
-  try{
-    let removed = null;
-    await runTransaction(db, async tx=>{
-      const snap = await tx.get(QUEUE_REF());
-      const queue = snap.exists() ? (snap.data().queue||[]) : [];
-      const idx = queue.findIndex(q=>q.gi===gi&&q.mi===mi&&q.sid===sid);
-      if(idx<0) return;
-      removed = queue.splice(idx,1)[0];
-      tx.set(QUEUE_REF(), { queue, updatedAt: serverTimestamp() });
-    });
-    if(removed){
-      const idx = globalQueue.findIndex(q=>q.gi===gi&&q.mi===mi&&q.sid===sid);
-      if(idx>=0) globalQueue.splice(idx,1);
+    while(true){
+      const free = connectedDevices.find(d=>!d.busy);
+      if(!free) break;
+      // Leer cola fresca de Firestore para evitar usar estado obsoleto
+      const qSnap = await getDoc(QUEUE_REF());
+      const firestoreQueue = qSnap.exists() ? (qSnap.data().queue||[]) : [];
+      if(!firestoreQueue.length) break;
+      const item = firestoreQueue[0]; // primer item FIFO
+      // Asignar matchId si no tiene (items añadidos antes de esta versión)
+      if(!item.matchId) item.matchId = await getNextMatchId();
+      // Sacar de Firestore atómicamente ANTES de marcar busy
+      const removed = await dequeue(item.matchId);
+      if(!removed) break; // otro gestor lo cogió primero
+      // Marcar busy y enviar
+      await _sendMatchNow(free, removed);
     }
-    return removed;
-  }catch(e){ console.error('atomicRemoveFromQueue',e); return null; }
+  }finally{
+    _dispatching = false;
+  }
 }
 
-// ── Persistencia de lista de dispositivos ─────────────
-// Firestore: config/devicesList { devices:[{clientId,name}], blocked:[] }
-// Solo guarda metadatos — busy/currentMatch viven exclusivamente en devices/{id}
-async function saveDevicesMeta(){
-  try{
-    const devList = connectedDevices.map(d=>({clientId:d.clientId, name:d.name}));
-    await setDoc(doc(db,'config','devicesList'), { devices:devList, blocked:blockedDevices, updatedAt:serverTimestamp() });
-  }catch(e){ console.error('saveDevicesMeta',e); }
+// ── Estado de cola para UI ────────────────────────────────────
+
+function isMatchLive(gi,mi){
+  return connectedDevices.some(d=>
+    d.busy && d.currentMatch?.gi===gi && d.currentMatch?.mi===mi && d.currentMatch?.sid===sessionId
+  );
+}
+function getMatchDeviceName(gi,mi){
+  return connectedDevices.find(d=>
+    d.busy && d.currentMatch?.gi===gi && d.currentMatch?.mi===mi && d.currentMatch?.sid===sessionId
+  )?.name||null;
+}
+function isMatchQueued(gi,mi){
+  return globalQueue.some(q=>q.gi===gi&&q.mi===mi&&q.sid===sessionId);
+}
+function getMatchQueuePos(gi,mi){
+  const pos = globalQueue.findIndex(q=>q.gi===gi&&q.mi===mi&&q.sid===sessionId);
+  return pos>=0 ? pos+1 : null;
 }
 
-// ── Cola pública visible (torneos/{sid}/meta/queue) ───
-// Solo para la vista pública — no afecta al funcionamiento interno
+// ── Añadir / quitar de la cola ────────────────────────────────
+
+async function addToGlobalQueue(gi,mi){
+  if(isMatchLive(gi,mi)){ toast('⚠️ Este partido ya está en juego'); return; }
+  if(isMatchQueued(gi,mi)){ toast('⚠️ Ya está en la cola'); return; }
+  const m = groupData.groups?.[gi]?.matches?.[mi]; if(!m) return;
+  const matchId = await getNextMatchId();
+  const item = {matchId, gi, mi, sid:sessionId,
+    t1:m.t1.name, t2:m.t2.name,
+    group:groupData.groups[gi].name, torneoName:groupData.title,
+    assignedAt:Date.now()};
+  if(activePanel?.gi===gi&&activePanel?.mi===mi){closeScorePanel(gi);activePanel=null;}
+  await enqueue(item);           // guarda en Firestore — listener actualiza globalQueue local
+  await dispatchNextFromQueue(); // si hay dispositivo libre, despacha
+  // renderGroups() lo llama el listener de QUEUE_REF o _sendMatchNow
+  await buildAndSaveQueue();
+  updateDeviceUI();
+}
+
+async function removeFromGlobalQueue(gi,mi){
+  const item = globalQueue.find(q=>q.gi===gi&&q.mi===mi&&q.sid===sessionId);
+  if(!item) return;
+  await runTransaction(db, async tx=>{
+    const snap = await tx.get(QUEUE_REF());
+    const q = snap.exists() ? (snap.data().queue||[]) : [];
+    tx.set(QUEUE_REF(), { queue: q.filter(x=>!(x.gi===gi&&x.mi===mi&&x.sid===sessionId)), updatedAt: serverTimestamp() });
+  });
+  toast('✕ Partido eliminado de la cola');
+  await buildAndSaveQueue();
+  updateDeviceUI();
+}
+
+// ── Botón de cola en el panel de score ───────────────────────
+
+function renderSendToSection(gi,mi,container){
+  const section = document.createElement('div'); section.className='send-to-section';
+  const live = isMatchLive(gi,mi);
+  const queued = isMatchQueued(gi,mi);
+  const pos = queued ? getMatchQueuePos(gi,mi) : null;
+  const btn = document.createElement('button');
+  if(live){
+    btn.className='send-to-btn sent'; btn.textContent='▶ En juego'; btn.disabled=true;
+  } else if(queued){
+    btn.className='send-to-btn queued'; btn.textContent=`📋 En cola #${pos}`;
+    btn.addEventListener('click',()=>removeFromGlobalQueue(gi,mi));
+  } else {
+    btn.className='send-to-btn'; btn.textContent='➕ Añadir a cola';
+    btn.addEventListener('click',()=>addToGlobalQueue(gi,mi));
+  }
+  section.appendChild(btn); container.appendChild(section);
+}
+
+// ════════════════════════════════════════════════════════════════
+// COLA PÚBLICA (vista para espectadores)
+// ════════════════════════════════════════════════════════════════
 async function buildAndSaveQueue(){
   if(!sessionId||!groupData.groups) return;
-  // Leer cola desde Firestore — fuente de verdad
-  let firestoreQueue = globalQueue; // fallback a local
-  try{
-    const qSnap = await getDoc(QUEUE_REF());
-    if(qSnap.exists()) firestoreQueue = qSnap.data().queue||[];
-    globalQueue = firestoreQueue; // sincronizar local
-  }catch(e){}
+  // Leer cola fresca de Firestore
+  let q = globalQueue;
+  try{ const s=await getDoc(QUEUE_REF()); if(s.exists()) q=s.data().queue||[]; globalQueue=q; }catch(e){}
   const items=[];
   groupData.groups.forEach((g,gi)=>{
     g.matches.forEach((m,mi)=>{
       if(m.played) return;
-      const dev  = connectedDevices.find(d=>d.busy&&d.currentMatch?.gi===gi&&d.currentMatch?.mi===mi&&d.currentMatch?.sid===sessionId);
-      const qPos = firestoreQueue.findIndex(q=>q.gi===gi&&q.mi===mi&&q.sid===sessionId);
-      items.push({
-        gi, mi, t1:m.t1.name, t2:m.t2.name, group:g.name, torneoName:groupData.title,
-        status: dev?'live':qPos>=0?'queued':'pending',
-        devName: dev?dev.name:null,
-        queuePos: qPos>=0?qPos+1:null,
-        assignedAt: dev?.currentMatch?.assignedAt||(qPos>=0?firestoreQueue[qPos].assignedAt:null)
-      });
+      const dev=connectedDevices.find(d=>d.busy&&d.currentMatch?.gi===gi&&d.currentMatch?.mi===mi&&d.currentMatch?.sid===sessionId);
+      const qPos=q.findIndex(x=>x.gi===gi&&x.mi===mi&&x.sid===sessionId);
+      items.push({gi,mi,t1:m.t1.name,t2:m.t2.name,group:g.name,torneoName:groupData.title,
+        status:dev?'live':qPos>=0?'queued':'pending',
+        devName:dev?dev.name:null, queuePos:qPos>=0?qPos+1:null,
+        assignedAt:dev?.currentMatch?.assignedAt||(qPos>=0?q[qPos].assignedAt:null)});
     });
   });
-  items.sort((a,b)=>{
-    const r={live:0,queued:1,pending:2};
-    if(r[a.status]!==r[b.status]) return r[a.status]-r[b.status];
-    return (a.assignedAt||0)-(b.assignedAt||0);
-  });
-  try{ await saveQueueMeta(sessionId, items, groupData.title); }catch(e){}
+  items.sort((a,b)=>{ const r={live:0,queued:1,pending:2}; if(r[a.status]!==r[b.status]) return r[a.status]-r[b.status]; return (a.assignedAt||0)-(b.assignedAt||0); });
+  try{ await saveQueueMeta(sessionId,items,groupData.title); }catch(e){}
 }
 
 // ════════════════════════════════════════════════════════════════
-// CARGA DE TORNEOS
+// CARGA Y GESTIÓN DE TORNEOS
 // ════════════════════════════════════════════════════════════════
 async function getAllTournaments(){
-  try{ const snap=await getDocs(collection(db,'torneos')); const r={}; snap.forEach(d=>r[d.id]=d.data()); return r; }catch(e){ return {}; }
+  try{ const s=await getDocs(collection(db,'torneos')); const r={}; s.forEach(d=>r[d.id]=d.data()); return r; }catch(e){ return {}; }
 }
 
 async function restoreTournament(sid, data, showToast){
   if(unsubscribeSession) unsubscribeSession();
-  if(unsubscribeScores)  unsubscribeScores();
-  sessionId  = sid;
-  groupData  = parseGroupData(data);
-  state      = parseState(data);
-  isPublished = false;
-  updatePublishBtn();
-  // Actualizar lista de dispositivos — preservar busy/currentMatch que ya tenemos en memoria
-  // Solo añadir dispositivos nuevos que no conocemos aún
-  const incomingDevices = (data.devices||[]);
-  incomingDevices.forEach(d=>{
-    const existing = connectedDevices.find(x=>x.clientId===d.clientId);
-    if(!existing){
-      connectedDevices.push({clientId:d.clientId, name:d.name, lastSeen:Date.now(), busy:!!d.busy, currentMatch:d.currentMatch||null});
-    }
-    // Si ya existe, NO tocar busy/currentMatch — el estado en memoria es el más fresco
+  if(unsubscribeScores) unsubscribeScores();
+  sessionId=sid; groupData=parseGroupData(data); state=parseState(data);
+  isPublished=false; updatePublishBtn();
+  // Preservar busy/currentMatch en memoria — solo añadir dispositivos nuevos
+  (data.devices||[]).forEach(d=>{
+    if(!connectedDevices.find(x=>x.clientId===d.clientId))
+      connectedDevices.push({clientId:d.clientId,name:d.name,lastSeen:Date.now(),busy:!!d.busy,currentMatch:d.currentMatch||null});
   });
-  // Eliminar dispositivos que ya no están activos (no en la lista ni en memoria reciente)
-  blockedDevices = data.blocked||[];
+  blockedDevices=data.blocked||[];
   if(state.rounds){
     console.log('restoreTournament: showing tournament-screen');
-    $('display-title').textContent=groupData.title;
-    $('fs-bar-title').textContent=groupData.title;
+    $('display-title').textContent=groupData.title; $('fs-bar-title').textContent=groupData.title;
     ['setup-screen','group-screen','pairing-screen'].forEach(id=>$(id).style.display='none');
-    $('tournament-screen').style.display='block';
-    renderBracket(); updateProgress();
+    $('tournament-screen').style.display='block'; renderBracket(); updateProgress();
   } else {
     console.log('restoreTournament: showing group-screen');
     $('gs-title').textContent=groupData.title;
     ['setup-screen','pairing-screen','tournament-screen'].forEach(id=>$(id).style.display='none');
-    $('group-screen').style.display='block';
-    renderGroups();
+    $('group-screen').style.display='block'; renderGroups();
   }
-  subscribeToSession();
-  updateDeviceUI();
-  await checkPublishState();
-  updatePublishBtn();
-  const busyDevs=connectedDevices.filter(d=>d.busy);
-  if(busyDevs.length) setTimeout(()=>toast(`⚠️ ${busyDevs.map(d=>d.name).join(', ')} tenía${busyDevs.length>1?'n':''} partido en curso`),1000);
+  subscribeToSession(); updateDeviceUI();
+  await checkPublishState(); updatePublishBtn();
+  const busy=connectedDevices.filter(d=>d.busy);
+  if(busy.length) setTimeout(()=>toast(`⚠️ ${busy.map(d=>d.name).join(', ')} tenía${busy.length>1?'n':''} partido en curso`),1000);
   if(showToast) toast(`📂 Torneo "${groupData.title}" cargado`);
 }
 
@@ -1725,14 +1818,13 @@ function subscribeToSession(){
       if(dev){ dev.busy=false; dev.currentMatch=null; }
       if(d.from) setDoc(doc(db,'devices',d.from),{busy:false,currentMatch:null},{merge:true}).catch(()=>{});
       // Aplicar resultado solo si es del torneo activo
-      if(d.sid === sessionId){
+      if(d.sid===sessionId){
         const match=groupData.groups?.[d.gi]?.matches?.[d.mi];
         if(match&&!match.played){
           applyScore(d.gi,d.mi,+d.s1,+d.s2);
           toast(`📱 ${match.t1.name} ${d.s1}–${d.s2} ${match.t2.name}${dev?' · '+dev.name:''}`);
         } else { renderGroups(); }
       }
-      // Despachar siguiente siempre — el dispositivo ya está libre
       await dispatchNextFromQueue();
       await buildAndSaveQueue();
       updateDeviceUI();
@@ -1741,27 +1833,35 @@ function subscribeToSession(){
   });
 }
 
+async function loadTournament(sid){
+  try{
+    const snap=await getDoc(tourneyRef(sid));
+    if(!snap.exists()){ localStorage.removeItem('torneoPro_lastSession'); toast('⚠️ Torneo no encontrado'); return; }
+    const data=snap.data();
+    const qSnap=await getDoc(QUEUE_REF());
+    globalQueue=qSnap.exists()?(qSnap.data().queue||[]):[];
+    const fiveMin=Date.now()-300000;
+    const devSnap=await getDocs(collection(db,'devices'));
+    const liveDevices=[];
+    devSnap.forEach(d=>{ const dd=d.data(); if(!dd.blocked&&dd.clientId){ const ts=dd.lastSeen?.toMillis?.()||0; if(ts>fiveMin||dd.busy) liveDevices.push({clientId:dd.clientId,name:dd.name,lastSeen:Date.now(),busy:!!dd.busy,currentMatch:dd.currentMatch||null}); } });
+    const dlSnap=await getDoc(doc(db,'config','devicesList'));
+    const blocked=dlSnap.exists()?(dlSnap.data().blocked||[]):[];
+    await restoreTournament(sid,{...data,devices:liveDevices,blocked},true);
+    $('tourneys-overlay').style.display='none';
+  }catch(e){ toast('⚠️ Error al cargar torneo'); console.error(e); }
+}
 
 async function renderTourneysList(){
-  const list = $('tourneys-list'); if(!list) return;
-  list.innerHTML = '<div style="color:var(--text-muted);padding:1rem">Cargando…</div>';
-  const all = await getAllTournaments();
-  const entries = Object.entries(all);
+  const list=$('tourneys-list'); if(!list) return;
+  list.innerHTML='<div style="color:var(--text-muted);padding:1rem">Cargando…</div>';
+  const all=await getAllTournaments(); const entries=Object.entries(all);
   if(!entries.length){ list.innerHTML='<div style="color:var(--text-muted);padding:1rem">No hay torneos guardados.</div>'; return; }
   list.innerHTML='';
-  entries.forEach(([sid, data])=>{
-    const gd = parseGroupData(data);
-    const title = gd?.title || sid;
-    const st = parseState(data);
-    const isKO = st?.rounds ? true : (data.stateJson ? data.stateJson.includes('"rounds"') : false);
-    const row = document.createElement('div'); row.className='tourney-row';
-    row.innerHTML=`<div style="display:flex;align-items:center;gap:0.8rem;flex:1;cursor:pointer" onclick="loadTournament('${sid}')">
-      <div>
-        <div style="font-weight:700">${title}</div>
-        <div style="font-size:0.75rem;color:var(--text-muted)">${isKO?'Fase Eliminatoria':'Fase de Grupos'}</div>
-      </div>
-    </div>
-    <button class="btn btn-danger" style="padding:0.3rem 0.6rem" onclick="deleteTournament('${sid}',event)">Eliminar</button>`;
+  entries.forEach(([sid,data])=>{
+    const gd=parseGroupData(data); const title=gd?.title||sid;
+    const st=parseState(data); const isKO=st?.rounds?true:(data.stateJson?data.stateJson.includes('"rounds"'):false);
+    const row=document.createElement('div'); row.className='tourney-row';
+    row.innerHTML=`<div style="display:flex;align-items:center;gap:0.8rem;flex:1;cursor:pointer" onclick="loadTournament('${sid}')"><div><div style="font-weight:700">${title}</div><div style="font-size:0.75rem;color:var(--text-muted)">${isKO?'Fase Eliminatoria':'Fase de Grupos'}</div></div></div><button class="btn btn-danger" style="padding:0.3rem 0.6rem" onclick="deleteTournament('${sid}',event)">Eliminar</button>`;
     list.appendChild(row);
   });
 }
@@ -1770,57 +1870,16 @@ async function deleteTournament(sid, event){
   if(event) event.stopPropagation();
   if(!confirm('¿Eliminar este torneo?')) return;
   try{
-    // Quitar de torneos publicados
-    const pubSnap = await getDoc(doc(db,'config','publishedTorneos'));
-    const ids = (pubSnap.data()?.sessionIds||[]).filter(id=>id!==sid);
+    const pubSnap=await getDoc(doc(db,'config','publishedTorneos'));
+    const ids=(pubSnap.data()?.sessionIds||[]).filter(id=>id!==sid);
     await setDoc(doc(db,'config','publishedTorneos'),{sessionIds:ids,updatedAt:serverTimestamp()});
-    // Borrar cola pública
     await saveQueueMeta(sid,[],''). catch(()=>{});
-    // Borrar documento del torneo
     await deleteDoc(tourneyRef(sid));
     if(sid===sessionId) resetAll();
-    // Quitar items de este torneo de la cola global atómicamente
-    try{
-      await runTransaction(db, async tx=>{
-        const snap = await tx.get(QUEUE_REF());
-        const queue = snap.exists() ? (snap.data().queue||[]) : [];
-        tx.set(QUEUE_REF(), { queue: queue.filter(q=>q.sid!==sid), updatedAt: serverTimestamp() });
-      });
-      globalQueue = globalQueue.filter(q=>q.sid!==sid);
-    }catch(e){}
-    toast('🗑️ Torneo eliminado');
-    renderTourneysList();
+    await runTransaction(db,async tx=>{ const s=await tx.get(QUEUE_REF()); const q=s.exists()?(s.data().queue||[]):[]; tx.set(QUEUE_REF(),{queue:q.filter(x=>x.sid!==sid),updatedAt:serverTimestamp()}); }).catch(()=>{});
+    globalQueue=globalQueue.filter(q=>q.sid!==sid);
+    toast('🗑️ Torneo eliminado'); renderTourneysList();
   }catch(e){ toast('⚠️ Error al eliminar'); console.error(e); }
-}
-
-async function loadTournament(sid){
-  try{
-    const snap=await getDoc(tourneyRef(sid));
-    if(!snap.exists()){ localStorage.removeItem('torneoPro_lastSession'); toast('⚠️ Torneo no encontrado'); return; }
-    const data=snap.data();
-    // Cargar cola global desde Firestore (fuente de verdad)
-    const qSnap=await getDoc(QUEUE_REF());
-    globalQueue = qSnap.exists()?(qSnap.data().queue||[]):[];
-    // Cargar estado real de dispositivos desde devices/{id}
-    const fiveMin=Date.now()-300000;
-    const devSnap=await getDocs(collection(db,'devices'));
-    const liveDevices=[];
-    devSnap.forEach(d=>{
-      const dd=d.data();
-      if(!dd.blocked&&dd.clientId){
-        const ts=dd.lastSeen?.toMillis?.()||0;
-        if(ts>fiveMin||dd.busy) liveDevices.push({
-          clientId:dd.clientId, name:dd.name, lastSeen:Date.now(),
-          busy:!!dd.busy, currentMatch:dd.currentMatch||null
-        });
-      }
-    });
-    // Cargar blocked desde config/devicesList
-    const dlSnap=await getDoc(doc(db,'config','devicesList'));
-    const blocked=dlSnap.exists()?(dlSnap.data().blocked||[]):[];
-    await restoreTournament(sid,{...data,devices:liveDevices,blocked},true);
-    $('tourneys-overlay').style.display='none';
-  }catch(e){ toast('⚠️ Error al cargar torneo'); console.error(e); }
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -1831,11 +1890,9 @@ function updateDeviceUI(){
   const mini=$('ntfy-mini-text'); if(mini) mini.textContent=count===0?'0 disp.':`${count} disp.`;
   const dot2=$('ntfy-dot2'); if(dot2){ count>0?dot2.classList.add('on'):dot2.classList.remove('on'); }
   renderDevicesList();
-  // Refrescar botón de cola en paneles abiertos (id = sp-{gi})
   document.querySelectorAll('.score-panel.open').forEach(p=>{
     if(!activePanel) return;
-    const gi = activePanel.gi, mi = activePanel.mi;
-    if(`sp-${gi}` !== p.id) return;
+    const {gi,mi}=activePanel; if(`sp-${gi}`!==p.id) return;
     const sec=p.querySelector('.send-to-section');
     if(sec){ const tmp=document.createElement('div'); renderSendToSection(gi,mi,tmp); sec.replaceWith(tmp.firstElementChild||tmp); }
   });
@@ -1847,7 +1904,7 @@ async function clearAllDevices(){
     const snap=await getDocs(collection(db,'devices'));
     await Promise.all(snap.docs.map(d=>deleteDoc(d.ref)));
     connectedDevices=[]; blockedDevices=[]; globalQueue=[];
-    await saveGlobalQueue(); await saveDevicesMeta();
+    await saveGlobalQueue(); await setDoc(doc(db,'config','devicesList'),{devices:[],blocked:[],updatedAt:serverTimestamp()});
     updateDeviceUI(); toast('🗑️ Todos los dispositivos eliminados');
   }catch(e){ toast('⚠️ Error al limpiar'); }
 }
@@ -1855,7 +1912,7 @@ async function clearAllDevices(){
 async function removeDevice(clientId){
   connectedDevices=connectedDevices.filter(d=>d.clientId!==clientId);
   try{ await deleteDoc(doc(db,'devices',clientId)); }catch(e){}
-  await saveDevicesMeta(); updateDeviceUI();
+  updateDeviceUI();
 }
 
 function renderDevicesList(){
@@ -1880,133 +1937,27 @@ function generateDeviceQR(){
   const wrap=$('connect-qr-wrap'); wrap.innerHTML='';
   if(window.QRCode){ new QRCode(wrap,{text:url,width:200,height:200}); }
   else { wrap.innerHTML=`<a href="${url}" target="_blank" style="word-break:break-all;font-size:0.75rem">${url}</a>`; }
-  // Mostrar URL y botón copiar
   const urlRow=$('connect-url-row'); const urlBox=$('connect-url-box');
   if(urlRow&&urlBox){ urlBox.textContent=url; urlRow.style.display='flex'; }
 }
 
 function copyConnectURL(){
-  const urlBox=$('connect-url-box');
-  const url=urlBox?.textContent||'';
+  const urlBox=$('connect-url-box'); const url=urlBox?.textContent||'';
   if(!url) return;
   navigator.clipboard.writeText(url).then(()=>toast('✓ URL copiada')).catch(()=>{
-    // Fallback para móvil
     const ta=document.createElement('textarea'); ta.value=url; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); toast('✓ URL copiada');
   });
 }
 
 function openConnectModal(){
-  $('connect-overlay').classList.add('open');
-  renderDevicesList();
+  $('connect-overlay').classList.add('open'); renderDevicesList();
   if(!$('connect-device-name').value){ $('connect-device-name').value=`Dispositivo ${connectedDevices.length+1}`; }
-  // Limpiar dispositivos inactivos (no busy, sin ping en 3 minutos)
   const before=connectedDevices.length;
   connectedDevices=connectedDevices.filter(d=>d.busy||(Date.now()-d.lastSeen<180000));
-  if(connectedDevices.length!==before){ saveDevicesMeta(); }
+  if(connectedDevices.length!==before) updateDeviceUI();
 }
 
-// ════════════════════════════════════════════════════════════════
-// COLA GLOBAL — ENVÍO A DISPOSITIVOS
-// ════════════════════════════════════════════════════════════════
 
-// Obtener y reservar el siguiente matchId global
-async function getNextMatchId(){
-  const ref = doc(db,'config','matchCounter');
-  const snap = await getDoc(ref);
-  const current = snap.exists() ? (snap.data().next||1) : 1;
-  await setDoc(ref, { next: current+1 }, { merge:true });
-  return current;
-}
-
-// Enviar partido a dispositivo — marca busy localmente y en Firestore
-async function _sendMatchNow(dev, qItem){
-  const {gi, mi, sid, t1, t2, group, torneoName} = qItem;
-  // Obtener ID único global para este partido
-  const matchId = await getNextMatchId();
-  // Marcar ocupado ANTES de cualquier await adicional
-  dev.busy=true; dev.currentMatch={gi,mi,sid,matchId,assignedAt:Date.now()};
-  const payload={type:'match',gi,mi,t1,t2,group,target:dev.clientId,startAt:Date.now(),sessionId:sid,torneoName,matchId};
-  await sendToDevice(sid, dev.clientId, {match:payload});
-  await setDoc(doc(db,'devices',dev.clientId),{busy:true,currentMatch:payload},{merge:true});
-  if(sid===sessionId){ if(activePanel?.gi===gi&&activePanel?.mi===mi){closeScorePanel(gi);activePanel=null;} renderGroups(); }
-  toast(`📱 ${t1} vs ${t2} → ${dev.name}`);
-}
-
-// Despachar partidos de la cola a dispositivos libres (FIFO global, atómico)
-async function dispatchNextFromQueue(){
-  while(true){
-    const free=connectedDevices.find(d=>!d.busy);
-    if(!free) break;
-    // Coger el primer item de forma atómica — evita doble-dispatch entre gestores
-    const item = await atomicShiftQueue();
-    if(!item) break;
-    try{ await _sendMatchNow(free,item); }
-    catch(e){
-      // Devolver a la cola si falla el envío
-      await atomicPushQueue(item);
-      console.error('dispatch error',e); break;
-    }
-  }
-}
-
-// ── Estado de cola para un partido ───────────────────
-function isMatchLive(gi,mi){
-  return connectedDevices.some(d=>d.busy&&d.currentMatch?.gi===gi&&d.currentMatch?.mi===mi&&d.currentMatch?.sid===sessionId);
-}
-function getMatchDeviceName(gi,mi){
-  return connectedDevices.find(d=>d.busy&&d.currentMatch?.gi===gi&&d.currentMatch?.mi===mi&&d.currentMatch?.sid===sessionId)?.name||null;
-}
-function isMatchQueued(gi,mi){
-  return globalQueue.some(q=>q.gi===gi&&q.mi===mi&&q.sid===sessionId);
-}
-function getMatchQueuePos(gi,mi){
-  const pos=globalQueue.findIndex(q=>q.gi===gi&&q.mi===mi&&q.sid===sessionId);
-  return pos>=0?pos+1:null;
-}
-
-// ── Añadir / quitar de la cola ────────────────────────
-async function addToGlobalQueue(gi,mi){
-  if(isMatchLive(gi,mi)){ toast('⚠️ Este partido ya está en juego'); return; }
-  if(isMatchQueued(gi,mi)){ toast('⚠️ Ya está en la cola'); return; }
-  const m=groupData.groups?.[gi]?.matches?.[mi]; if(!m) return;
-  const item={gi,mi,sid:sessionId,t1:m.t1.name,t2:m.t2.name,group:groupData.groups[gi].name,torneoName:groupData.title,assignedAt:Date.now()};
-  if(activePanel?.gi===gi&&activePanel?.mi===mi){closeScorePanel(gi);activePanel=null;}
-  await atomicPushQueue(item);
-  await dispatchNextFromQueue();
-  renderGroups();
-  await buildAndSaveQueue();
-  updateDeviceUI();
-}
-
-async function removeFromGlobalQueue(gi,mi){
-  const removed = await atomicRemoveFromQueue(gi,mi,sessionId);
-  if(!removed) return;
-  toast('✕ Partido eliminado de la cola');
-  renderGroups();
-  await buildAndSaveQueue();
-  updateDeviceUI();
-}
-
-// ── Botón de cola en el panel de score ───────────────
-function renderSendToSection(gi,mi,container){
-  const section=document.createElement('div'); section.className='send-to-section';
-  const live=isMatchLive(gi,mi);
-  const queued=isMatchQueued(gi,mi);
-  const pos=queued?getMatchQueuePos(gi,mi):null;
-  const btn=document.createElement('button');
-  if(live){
-    btn.className='send-to-btn sent'; btn.textContent='▶ En juego'; btn.disabled=true;
-  } else if(queued){
-    btn.className='send-to-btn queued'; btn.textContent=`📋 En cola #${pos}`;
-    btn.addEventListener('click',()=>removeFromGlobalQueue(gi,mi));
-  } else {
-    btn.className='send-to-btn'; btn.textContent='➕ Añadir a cola';
-    btn.addEventListener('click',()=>addToGlobalQueue(gi,mi));
-  }
-  section.appendChild(btn); container.appendChild(section);
-}
-
-// ── Header buttons ────────────────────────────────────
 $('btn-display-mode').addEventListener('click',()=>{
   if(!sessionId){toast('⚠️ Crea o carga un torneo primero');return;}
   window.open(`${location.pathname}?mode=display&session=${sessionId}`,'_blank','noopener');
