@@ -772,19 +772,27 @@ function showAdminView(){
 
       const existing = connectedDevices.find(x=>x.clientId===clientId);
       if(existing){
-        // Dispositivo conocido — actualizar ping
         existing.lastSeen = Date.now();
         existing.name = d.name||existing.name;
+
         if(d.busy && !existing.busy){
           // Firestore dice ocupado, nosotros libres → otro gestor asignó
           existing.busy = true;
           existing.currentMatch = d.currentMatch||null;
+        } else if(!d.busy && existing.busy){
+          // Firestore dice libre — el dispositivo se reconectó sin partido activo
+          // (recarga, crash, etc.) → liberar y despachar siguiente
+          existing.busy = false;
+          existing.currentMatch = null;
+          // Dar 2s para que el dispositivo se suscriba al inbox antes de despachar
+          setTimeout(async ()=>{
+            if(_dispatching){ setTimeout(dispatchNextFromQueue, 1000); return; }
+            await dispatchNextFromQueue();
+            if(sessionId && groupData.groups){ await buildAndSaveQueue(); updateDeviceUI(); }
+          }, 2000);
         }
-        // NO liberar desde el listener de presencia — el handler global de scores lo gestiona
       } else {
-        // Dispositivo nuevo — solo aceptar si tiene ping reciente (no fantasmas viejos)
-        // 'added' = recién escrito en Firestore (aceptar siempre)
-        // 'modified' = ping periódico (filtrar si es muy antiguo)
+        // Dispositivo nuevo
         if(change.type==='modified'){
           const ts = d.lastSeen?.toMillis?.() || 0;
           if(Date.now()-ts > 120000) return;
@@ -795,13 +803,10 @@ function showAdminView(){
         });
         $('connect-overlay')?.classList.remove('open');
         toast(`📱 ${d.name} conectado`);
-        // Despachar tras 2s para dar tiempo al dispositivo de suscribirse al inbox
         if(!d.busy){
           setTimeout(async ()=>{
-            // Si hay dispatch en curso, esperar un poco más
             if(_dispatching){ setTimeout(dispatchNextFromQueue, 1000); return; }
             await dispatchNextFromQueue();
-            if(globalQueue.length) await saveGlobalQueue();
             if(sessionId && groupData.groups){ await buildAndSaveQueue(); updateDeviceUI(); }
           }, 2000);
         }
@@ -1268,8 +1273,8 @@ if(IS_DEVICE && DEVICE_ID){
 
   let curMatch = null, sc = {s1:0,s2:0}, timerInt = null, startTs = null, running = false;
 
-  // Suscribirse al inbox ANTES de registrar presencia
-  // Así cuando el gestor ve el dispositivo, el inbox ya está escuchando
+  // Suscribirse al inbox PRIMERO — antes de cualquier otra operación
+  // onSnapshot entrega mensajes pendientes inmediatamente en 'added'
   onSnapshot(collection(db,'devices',DEVICE_ID,'inbox'), snap => {
     snap.docChanges().forEach(async change => {
       if(change.type !== 'added') return;
@@ -1283,21 +1288,26 @@ if(IS_DEVICE && DEVICE_ID){
   });
 
   try {
-    // Leer estado anterior (partido en curso)
+    // Leer estado actual de Firestore
     const devSnap = await getDoc(doc(db,'devices',DEVICE_ID));
-    const prevMatch = devSnap.exists() && devSnap.data()?.currentMatch?.type === 'match'
-      ? devSnap.data().currentMatch : null;
+    const devData = devSnap.exists() ? devSnap.data() : {};
+    const prevMatch = devData?.currentMatch?.type === 'match' ? devData.currentMatch : null;
 
-    // Registrar presencia DESPUÉS de suscribirse al inbox
+    // Comprobar si hay mensajes pendientes en el inbox
+    const inboxSnap = await getDocs(collection(db,'devices',DEVICE_ID,'inbox'));
+    const hasPendingInbox = inboxSnap.docs.some(d => d.data()?.match?.type === 'match');
+
+    // Registrar como ocupado si tiene partido activo O mensaje pendiente en inbox
+    const isBusy = !!prevMatch || hasPendingInbox;
     await setDoc(doc(db,'devices',DEVICE_ID), {
       clientId: DEVICE_ID, name: DEVICE_NAME,
       lastSeen: serverTimestamp(), blocked: false,
-      busy: !!prevMatch, currentMatch: prevMatch || null,
-      status: prevMatch ? 'busy' : 'idle'
+      busy: isBusy, currentMatch: prevMatch || null,
+      status: isBusy ? 'busy' : 'idle'
     });
 
     dot.classList.add('on'); st.textContent = 'Conectado';
-    if(prevMatch) showMatch(prevMatch);
+    if(prevMatch && !hasPendingInbox) showMatch(prevMatch); // el inbox listener mostrará el nuevo si hay
 
   } catch(e){
     // Si falla el getDoc, registrar igualmente como libre
