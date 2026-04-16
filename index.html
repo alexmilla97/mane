@@ -770,30 +770,30 @@ function showAdminView(){
         return;
       }
 
-      if(!d || d.blocked) return;
+      if(!d || d.blocked || !d.clientId) return;
 
       const existing = connectedDevices.find(x => x.clientId === clientId);
       if(existing){
-        // Solo actualizar lastSeen — NO tocar busy/currentMatch desde Firestore
-        // El gestor gestiona busy localmente para evitar conflictos
         existing.lastSeen = Date.now();
         existing.name = d.name || existing.name;
-        // Excepción: si Firestore dice idle y nosotros decimos libre también, ignorar
-        // Si Firestore dice busy y nosotros decimos libre → alguien más lo asignó
+        // Solo sincronizar busy desde Firestore si Firestore dice ocupado y nosotros no
         if(d.busy && !existing.busy){
           existing.busy = true;
           existing.currentMatch = d.currentMatch || null;
           existing.busyTorneo = d.busyTorneo || null;
-          existing.firestoreBusy = (d.busyTorneo && d.busyTorneo !== groupData.title) || false;
         }
+        // Si Firestore dice libre y nosotros decimos ocupado → confiar en local (puede ser race)
       } else {
-        // Solo añadir dispositivos con ping reciente (últimos 2 minutos)
-        const lastSeenMs = d.lastSeen?.toMillis?.() || 0;
-        if((Date.now() - lastSeenMs) > 120000) return;
+        // Nuevo dispositivo — filtrar por tiempo solo en 'modified' (pings periódicos)
+        // Para 'added' siempre aceptar — el dispositivo acaba de conectarse
+        if(change.type === 'modified'){
+          const lastSeenMs = d.lastSeen?.toMillis?.() || 0;
+          if((Date.now() - lastSeenMs) > 120000) return; // ping muy antiguo, ignorar
+        }
         connectedDevices.push({
           clientId: d.clientId, name: d.name, lastSeen: Date.now(),
           busy: !!d.busy, currentMatch: d.currentMatch || null,
-          firestoreBusy: false, busyTorneo: null
+          firestoreBusy: false, busyTorneo: d.busyTorneo || null
         });
         const overlay = $('connect-overlay');
         if(overlay?.classList.contains('open')) overlay.classList.remove('open');
@@ -1682,15 +1682,16 @@ async function loadTournament(sid){
     // Cargar estado real (busy/currentMatch) desde devices/{id}
     const devListSnap = await getDocs(collection(db,'devices'));
     const liveDevices = [];
-    const twoMinutesAgo = Date.now() - 120000;
+    const fiveMinutesAgo = Date.now() - 300000;
     devListSnap.forEach(d=>{
       const dd=d.data();
       if(!dd.blocked && dd.clientId){
-        const lastSeenMs = dd.lastSeen?.toMillis?.() || 0;
-        if(lastSeenMs > twoMinutesAgo) liveDevices.push({
+        const lastSeenMs = dd.lastSeen?.toMillis?.() || dd.lastSeen || 0;
+        // Incluir si tiene ping reciente O si está marcado busy (puede tener partido en curso)
+        if(lastSeenMs > fiveMinutesAgo || dd.busy) liveDevices.push({
           clientId: dd.clientId, name: dd.name,
           busy: !!dd.busy, currentMatch: dd.currentMatch||null,
-          lastSeen: Date.now()
+          lastSeen: Date.now(), firestoreBusy: false, busyTorneo: dd.busyTorneo||null
         });
       }
     });
@@ -1844,9 +1845,10 @@ $('btn-connect-device').addEventListener('click', openConnectModal);
 // Limpieza dispositivos inactivos (nunca los ocupados)
 setInterval(()=>{
   const before=connectedDevices.length;
-  connectedDevices=connectedDevices.filter(d=>d.busy||(Date.now()-d.lastSeen<90000));
+  // Mantener dispositivos ocupados siempre; limpiar los inactivos tras 3 minutos
+  connectedDevices=connectedDevices.filter(d=>d.busy||(Date.now()-d.lastSeen<180000));
   if(connectedDevices.length!==before){ saveDevices(); }
-},15000);
+},30000);
 // ── Envío a dispositivos ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 async function _sendMatchNow(dev, qItem){
   const { gi, mi, sid, t1, t2, group, torneoName } = qItem;
