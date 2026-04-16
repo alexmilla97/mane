@@ -1719,19 +1719,17 @@ function renderSendToSection(gi,mi,container){
 // ════════════════════════════════════════════════════════════════
 async function buildAndSaveQueue(){
   if(!sessionId||!groupData.groups) return;
-  // Leer cola fresca de Firestore
-  let q = globalQueue;
-  try{ const s=await getDoc(QUEUE_REF()); if(s.exists()) q=s.data().queue||[]; globalQueue=q; }catch(e){}
+  // Usar globalQueue local — siempre sincronizado después de cada operación
   const items=[];
   groupData.groups.forEach((g,gi)=>{
     g.matches.forEach((m,mi)=>{
       if(m.played) return;
       const dev=connectedDevices.find(d=>d.busy&&d.currentMatch?.gi===gi&&d.currentMatch?.mi===mi&&d.currentMatch?.sid===sessionId);
-      const qPos=q.findIndex(x=>x.gi===gi&&x.mi===mi&&x.sid===sessionId);
+      const qPos=globalQueue.findIndex(q=>q.gi===gi&&q.mi===mi&&q.sid===sessionId);
       items.push({gi,mi,t1:m.t1.name,t2:m.t2.name,group:g.name,torneoName:groupData.title,
         status:dev?'live':qPos>=0?'queued':'pending',
         devName:dev?dev.name:null, queuePos:qPos>=0?qPos+1:null,
-        assignedAt:dev?.currentMatch?.assignedAt||(qPos>=0?q[qPos].assignedAt:null)});
+        assignedAt:dev?.currentMatch?.assignedAt||(qPos>=0?globalQueue[qPos].assignedAt:null)});
     });
   });
   items.sort((a,b)=>{ const r={live:0,queued:1,pending:2}; if(r[a.status]!==r[b.status]) return r[a.status]-r[b.status]; return (a.assignedAt||0)-(b.assignedAt||0); });
@@ -2132,7 +2130,7 @@ function applyScore(gi,mi,forceS1,forceS2){
   m.played=true; _commitScore(gi);
 }
 function clearScore(gi,mi){ const m=groupData.groups[gi].matches[mi]; m.played=false;m.s1=null;m.s2=null; _commitScore(gi); toast('🗑️ Resultado eliminado'); }
-function _commitScore(gi){ groupData.groups[gi].manualOrder=null; closeScorePanel(gi); activePanel=null; renderGroups(); saveCurrentTournament(); }
+function _commitScore(gi){ groupData.groups[gi].manualOrder=null; closeScorePanel(gi); activePanel=null; renderGroups(); saveCurrentTournament(); buildAndSaveQueue(); }
 
 $('btn-simulate-gs').onclick=()=>{ groupData.groups.forEach((g,gi)=>{ g.matches.forEach((m,mi)=>{ if(!m.played){ applyScore(gi,mi,Math.floor(Math.random()*5),Math.floor(Math.random()*5)); } }); }); toast('🎲 Resultados simulados'); };
 
