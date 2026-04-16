@@ -803,14 +803,15 @@ function showAdminView(){
   });
 
   // Listener de cola global — mantiene globalQueue local sincronizado con Firestore
-  // Así los cambios de otros gestores se reflejan automáticamente
   onSnapshot(QUEUE_REF(), snap=>{
     if(!snap.exists()) return;
-    globalQueue = snap.data().queue||[];
-    // Actualizar UI si hay torneo cargado
+    const newQueue = snap.data().queue||[];
+    // Solo actualizar si cambió (evitar renders innecesarios)
+    if(JSON.stringify(newQueue) === JSON.stringify(globalQueue)) return;
+    globalQueue = newQueue;
     if(sessionId && groupData.groups){
-      renderGroups();
-      updateDeviceUI();
+      renderGroups();   // actualizar colores live/queued/pending
+      updateDeviceUI(); // actualizar contador y botones
     }
   });
 
@@ -1777,11 +1778,16 @@ async function deleteTournament(sid, event){
     await saveQueueMeta(sid,[],''). catch(()=>{});
     // Borrar documento del torneo
     await deleteDoc(tourneyRef(sid));
-    // Si era el torneo activo, resetear
     if(sid===sessionId) resetAll();
-    // Quitar de la cola global
-    globalQueue = globalQueue.filter(q=>q.sid!==sid);
-    await saveGlobalQueue();
+    // Quitar items de este torneo de la cola global atómicamente
+    try{
+      await runTransaction(db, async tx=>{
+        const snap = await tx.get(QUEUE_REF());
+        const queue = snap.exists() ? (snap.data().queue||[]) : [];
+        tx.set(QUEUE_REF(), { queue: queue.filter(q=>q.sid!==sid), updatedAt: serverTimestamp() });
+      });
+      globalQueue = globalQueue.filter(q=>q.sid!==sid);
+    }catch(e){}
     toast('🗑️ Torneo eliminado');
     renderTourneysList();
   }catch(e){ toast('⚠️ Error al eliminar'); console.error(e); }
@@ -1789,13 +1795,11 @@ async function deleteTournament(sid, event){
 
 async function loadTournament(sid){
   try{
-    // Guardar la cola actual antes de cambiar de torneo
-    if(globalQueue.length) await saveGlobalQueue();
     const snap=await getDoc(tourneyRef(sid));
     if(!snap.exists()){ localStorage.removeItem('torneoPro_lastSession'); toast('⚠️ Torneo no encontrado'); return; }
     const data=snap.data();
-    // Cargar cola global desde Firestore (incluye items de todos los torneos)
-    const qSnap=await getDoc(doc(db,'config','globalQueue'));
+    // Cargar cola global desde Firestore (fuente de verdad)
+    const qSnap=await getDoc(QUEUE_REF());
     globalQueue = qSnap.exists()?(qSnap.data().queue||[]):[];
     // Cargar estado real de dispositivos desde devices/{id}
     const fiveMin=Date.now()-300000;
@@ -2084,9 +2088,15 @@ function resetAll(){
   }
   const oldSid = sessionId;
   sessionId=null; groupData={}; state={};
-  // Limpiar solo los partidos de ESTE torneo de la cola global
-  if(oldSid) globalQueue = globalQueue.filter(q => q.sid !== oldSid);
-  saveGlobalQueue().catch(()=>{});
+  // Quitar partidos de este torneo de la cola global atómicamente
+  if(oldSid){
+    runTransaction(db, async tx=>{
+      const snap = await tx.get(QUEUE_REF());
+      const queue = snap.exists() ? (snap.data().queue||[]) : [];
+      tx.set(QUEUE_REF(), { queue: queue.filter(q=>q.sid!==oldSid), updatedAt: serverTimestamp() });
+    }).catch(()=>{});
+    globalQueue = globalQueue.filter(q=>q.sid!==oldSid);
+  }
   // NO limpiar connectedDevices — los dispositivos son globales e independientes del torneo
   if(unsubscribeSession) unsubscribeSession();
   if(unsubscribeScores) unsubscribeScores();
