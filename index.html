@@ -1719,7 +1719,6 @@ function renderSendToSection(gi,mi,container){
 // ════════════════════════════════════════════════════════════════
 async function buildAndSaveQueue(){
   if(!sessionId||!groupData.groups) return;
-  // Usar globalQueue local — siempre sincronizado después de cada operación
   const items=[];
   groupData.groups.forEach((g,gi)=>{
     g.matches.forEach((m,mi)=>{
@@ -1734,6 +1733,27 @@ async function buildAndSaveQueue(){
   });
   items.sort((a,b)=>{ const r={live:0,queued:1,pending:2}; if(r[a.status]!==r[b.status]) return r[a.status]-r[b.status]; return (a.assignedAt||0)-(b.assignedAt||0); });
   try{ await saveQueueMeta(sessionId,items,groupData.title); }catch(e){}
+}
+
+// Actualizar la cola pública de torneos que no son el activo
+// (cuando un dispositivo termina un partido de otro torneo)
+async function buildAndSaveQueueForSid(sid){
+  if(sid===sessionId){ await buildAndSaveQueue(); return; }
+  // Para torneos no activos, solo podemos marcar como 'pending' los que estaban 'live'
+  // ya que no tenemos groupData de ese torneo
+  // La solución: marcar todos los items de ese torneo como no-live en la cola pública
+  try{
+    const snap = await getDoc(queueRef(sid));
+    if(!snap.exists()) return;
+    const {items} = parseQueueData(snap.data());
+    // Marcar como pending los que estaban live para este dispositivo
+    const updated = items.map(it=>({
+      ...it,
+      status: it.status==='live' ? 'pending' : it.status,
+      devName: it.status==='live' ? null : it.devName
+    }));
+    await saveQueueMeta(sid, updated, snap.data().title||'');
+  }catch(e){}
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -1791,6 +1811,10 @@ function subscribeToSession(){
         } else { renderGroups(); }
       }
       await dispatchNextFromQueue();
+      // Actualizar cola pública del torneo del partido (puede ser diferente al activo)
+      if(d.sid && d.sid !== sessionId){
+        await buildAndSaveQueueForSid(d.sid);
+      }
       await buildAndSaveQueue();
       updateDeviceUI();
       deleteDoc(change.doc.ref).catch(()=>{});
@@ -2130,7 +2154,13 @@ function applyScore(gi,mi,forceS1,forceS2){
   m.played=true; _commitScore(gi);
 }
 function clearScore(gi,mi){ const m=groupData.groups[gi].matches[mi]; m.played=false;m.s1=null;m.s2=null; _commitScore(gi); toast('🗑️ Resultado eliminado'); }
-function _commitScore(gi){ groupData.groups[gi].manualOrder=null; closeScorePanel(gi); activePanel=null; renderGroups(); saveCurrentTournament(); buildAndSaveQueue(); }
+function _commitScore(gi){
+  groupData.groups[gi].manualOrder=null;
+  closeScorePanel(gi); activePanel=null;
+  renderGroups();
+  saveCurrentTournament();
+  buildAndSaveQueue().catch(e=>console.error('buildAndSaveQueue',e));
+}
 
 $('btn-simulate-gs').onclick=()=>{ groupData.groups.forEach((g,gi)=>{ g.matches.forEach((m,mi)=>{ if(!m.played){ applyScore(gi,mi,Math.floor(Math.random()*5),Math.floor(Math.random()*5)); } }); }); toast('🎲 Resultados simulados'); };
 
