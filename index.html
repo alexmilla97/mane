@@ -1852,17 +1852,19 @@ function renderSendToSection(gi,mi,container){
   section.appendChild(btn); container.appendChild(section);
 }
 
-// ── Pantallas secundarias ─────────────────────────────
+// ── Header buttons ────────────────────────────────────
 $('btn-display-mode').addEventListener('click',()=>{
   if(!sessionId){toast('⚠️ Crea o carga un torneo primero');return;}
   window.open(`${location.pathname}?mode=display&session=${sessionId}`,'_blank','noopener');
   toast('📺 Pantalla grande abierta');
 });
 $('btn-queue-mode').addEventListener('click',()=>{
-  // Cola combinada de todos los torneos publicados — sin session específica
   window.open(`${location.pathname}?mode=queue`,'_blank','noopener');
   toast('📋 Cola combinada abierta');
 });
+$('btn-manage-tourneys').addEventListener('click',()=>{ renderTourneysList(); $('tourneys-overlay').style.display='flex'; });
+$('btn-connect-device').addEventListener('click',()=>openConnectModal());
+$('btn-clear-devices').addEventListener('click',()=>clearAllDevices());
 
 // ── Setup ─────────────────────────────────────────────
 function divisors(n){ const r=[]; for(let i=2;i<=n;i++) if(n%i===0) r.push(i); return r; }
