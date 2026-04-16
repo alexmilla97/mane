@@ -1640,23 +1640,24 @@ async function restoreTournament(sid, data, showToast){
 }
 
 function subscribeToSession(){
-  // Escuchar colección global scores/ — un score tiene {matchId, sid, gi, mi, s1, s2, from}
-  // Al ser global, funciona aunque el gestor cambie de torneo durante el partido
   if(unsubscribeScores) unsubscribeScores();
   unsubscribeScores = onSnapshot(collection(db,'scores'), snap=>{
     snap.docChanges().forEach(async change=>{
       if(change.type!=='added') return;
       const d=change.doc.data();
-      // Solo procesar scores del torneo activo en este gestor
-      if(d.sid !== sessionId) return;
-      const match=groupData.groups?.[d.gi]?.matches?.[d.mi];
+      // Liberar dispositivo siempre — independientemente del torneo
       const dev=connectedDevices.find(x=>x.clientId===d.from);
       if(dev){ dev.busy=false; dev.currentMatch=null; }
       if(d.from) setDoc(doc(db,'devices',d.from),{busy:false,currentMatch:null},{merge:true}).catch(()=>{});
-      if(match&&!match.played){
-        applyScore(d.gi,d.mi,+d.s1,+d.s2);
-        toast(`📱 ${match.t1.name} ${d.s1}–${d.s2} ${match.t2.name}${dev?' · '+dev.name:''}`);
-      } else { renderGroups(); }
+      // Aplicar resultado solo si es del torneo activo
+      if(d.sid === sessionId){
+        const match=groupData.groups?.[d.gi]?.matches?.[d.mi];
+        if(match&&!match.played){
+          applyScore(d.gi,d.mi,+d.s1,+d.s2);
+          toast(`📱 ${match.t1.name} ${d.s1}–${d.s2} ${match.t2.name}${dev?' · '+dev.name:''}`);
+        } else { renderGroups(); }
+      }
+      // Despachar siguiente siempre — el dispositivo ya está libre
       await dispatchNextFromQueue();
       await saveGlobalQueue();
       await buildAndSaveQueue();
