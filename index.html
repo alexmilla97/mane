@@ -807,7 +807,8 @@ function showAdminView(){
         });
         $('connect-overlay')?.classList.remove('open');
         toast(`📱 ${d.name} conectado`);
-        if(!d.busy) dispatchNextFromQueue();
+        // Esperar 2s antes de despachar — el dispositivo necesita tiempo para suscribirse al inbox
+        if(!d.busy) setTimeout(()=>dispatchNextFromQueue(), 2000);
       }
       updateDeviceUI();
     });
@@ -1259,22 +1260,35 @@ if(IS_DEVICE && DEVICE_ID){
 
   let curMatch = null, sc = {s1:0,s2:0}, timerInt = null, startTs = null, running = false;
 
+  // Suscribirse al inbox ANTES de registrar presencia
+  // Así cuando el gestor ve el dispositivo, el inbox ya está escuchando
+  onSnapshot(collection(db,'devices',DEVICE_ID,'inbox'), snap => {
+    snap.docChanges().forEach(async change => {
+      if(change.type !== 'added') return;
+      const data = change.doc.data();
+      const m = data.match;
+      if(!m || m.type !== 'match') return;
+      deleteDoc(change.doc.ref).catch(()=>{});
+      await setDoc(doc(db,'devices',DEVICE_ID), { currentMatch: m, busy: true }, { merge: true }).catch(()=>{});
+      showMatch(m);
+    });
+  });
+
   try {
     // Leer estado anterior (partido en curso)
     const devSnap = await getDoc(doc(db,'devices',DEVICE_ID));
     const prevMatch = devSnap.exists() && devSnap.data()?.currentMatch?.type === 'match'
       ? devSnap.data().currentMatch : null;
 
-    // Registrar presencia — un solo setDoc limpio
+    // Registrar presencia DESPUÉS de suscribirse al inbox
     await setDoc(doc(db,'devices',DEVICE_ID), {
       clientId: DEVICE_ID, name: DEVICE_NAME,
       lastSeen: serverTimestamp(), blocked: false,
       busy: !!prevMatch, currentMatch: prevMatch || null,
       status: prevMatch ? 'busy' : 'idle'
-    }); // sin merge — escritura completa y limpia
+    });
 
     dot.classList.add('on'); st.textContent = 'Conectado';
-
     if(prevMatch) showMatch(prevMatch);
 
   } catch(e){
@@ -1385,19 +1399,6 @@ if(IS_DEVICE && DEVICE_ID){
       alert('Error al guardar. Inténtalo de nuevo.');
     }
   };
-
-  // Escuchar mensajes entrantes — subcolección inbox
-  onSnapshot(collection(db,'devices',DEVICE_ID,'inbox'), snap => {
-    snap.docChanges().forEach(async change => {
-      if(change.type !== 'added') return;
-      const data = change.doc.data();
-      const m = data.match;
-      if(!m || m.type !== 'match') return;
-      deleteDoc(change.doc.ref).catch(()=>{});
-      await setDoc(doc(db,'devices',DEVICE_ID), { currentMatch: m, busy: true }, { merge: true }).catch(()=>{});
-      showMatch(m);
-    });
-  });
 
   window.ipadToggleFS = () => {
     const el=$('ipad-screen');
