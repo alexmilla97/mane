@@ -2140,8 +2140,9 @@ $('btn-advance').onclick=()=>renderPairingScreen();
 
 // ── Pairing ───────────────────────────────────────────
 function renderPairingScreen(){
+  const nGroups = groupData.groups.length;
   const grid=$('pairing-grid'); grid.innerHTML='';
-  for(let i=0;i<numGroups/2;i++){
+  for(let i=0;i<nGroups/2;i++){
     const pairDiv=document.createElement('div'); pairDiv.className='pairing-match';
     pairDiv.innerHTML=`<div class="pairing-match-title">Cruce de Grupos ${i+1}</div>`;
     const row=document.createElement('div'); row.className='pairing-row';
@@ -2164,10 +2165,13 @@ $('btn-start-bracket').onclick=()=>{
 };
 
 function generateProfessionalNames(pairings){
-  const sortedGroups=groupData.groups.map(g=>calcStandings(g)), tpg=bracketSize/numGroups, groupMap={};
+  const nGroups = groupData.groups.length;
+  const tpg = groupData.groups[0]?.teams?.length || (groupData.groups[0]?.matches ? Math.round((1 + Math.sqrt(1 + 8*groupData.groups[0].matches.length))/2) : 4);
+  const totalTeams = nGroups * tpg;
+  const sortedGroups=groupData.groups.map(g=>calcStandings(g)), groupMap={};
   pairings.forEach((pair,i)=>{ groupMap[i*2]=sortedGroups[pair[0]]; groupMap[i*2+1]=sortedGroups[pair[1]]; });
-  const names=new Array(bracketSize).fill(null), getT=(gIdx,pos)=>groupMap[gIdx][pos].team.name;
-  if(numGroups===4){
+  const names=new Array(totalTeams).fill(null), getT=(gIdx,pos)=>groupMap[gIdx][pos].team.name;
+  if(nGroups===4){
     if(tpg===4){names[0]=getT(0,0);names[1]=getT(3,3);names[2]=getT(1,1);names[3]=getT(2,2);names[4]=getT(2,0);names[5]=getT(1,3);names[6]=getT(3,1);names[7]=getT(0,2);names[8]=getT(1,0);names[9]=getT(2,3);names[10]=getT(0,1);names[11]=getT(3,2);names[12]=getT(3,0);names[13]=getT(0,3);names[14]=getT(2,1);names[15]=getT(1,2);}
     else if(tpg===8){names[0]=getT(0,0);names[1]=getT(3,7);names[2]=getT(2,3);names[3]=getT(1,4);names[4]=getT(1,1);names[5]=getT(2,6);names[6]=getT(0,2);names[7]=getT(3,5);names[8]=getT(2,0);names[9]=getT(1,7);names[10]=getT(0,3);names[11]=getT(3,4);names[12]=getT(3,1);names[13]=getT(0,6);names[14]=getT(2,2);names[15]=getT(1,5);names[16]=getT(1,0);names[17]=getT(2,7);names[18]=getT(3,3);names[19]=getT(0,4);names[20]=getT(0,1);names[21]=getT(3,6);names[22]=getT(1,2);names[23]=getT(2,5);names[24]=getT(3,0);names[25]=getT(0,7);names[26]=getT(1,3);names[27]=getT(2,4);names[28]=getT(2,1);names[29]=getT(1,6);names[30]=getT(3,2);names[31]=getT(0,5);}
   }
@@ -2178,6 +2182,7 @@ function generateProfessionalNames(pairings){
   }
   return names;
 }
+
 
 // ── Knockout — Double Elimination ─────────────────────
 function launchTournament(title, names){
