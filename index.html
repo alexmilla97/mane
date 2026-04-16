@@ -775,13 +775,22 @@ function showAdminView(){
         // Dispositivo conocido — actualizar ping
         existing.lastSeen = Date.now();
         existing.name = d.name||existing.name;
-        // Si Firestore dice busy=true y nosotros creemos libre → aceptar (otro gestor asignó)
         if(d.busy && !existing.busy){
+          // Firestore dice ocupado, nosotros libres → otro gestor asignó
           existing.busy = true;
           existing.currentMatch = d.currentMatch||null;
+        } else if(!d.busy && existing.busy){
+          // Firestore dice libre, nosotros ocupados → terminó partido de otro torneo
+          const isOtherTorneo = existing.currentMatch?.sid !== sessionId;
+          if(isOtherTorneo){
+            existing.busy = false;
+            existing.currentMatch = null;
+            dispatchNextFromQueue().then(()=>{
+              renderGroups(); // verde si se despachó partido del torneo activo
+              saveGlobalQueue(); buildAndSaveQueue(); updateDeviceUI();
+            });
+          }
         }
-        // NUNCA pasar de busy=true a busy=false desde el listener
-        // Solo el score handler libera dispositivos
       } else {
         // Dispositivo nuevo — solo aceptar si tiene ping reciente (no fantasmas viejos)
         // 'added' = recién escrito en Firestore (aceptar siempre)
