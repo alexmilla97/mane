@@ -1432,6 +1432,8 @@ if(IS_DEVICE && DEVICE_ID){
             <div class="ipad-waiting-sub">Esperando el próximo partido…</div>
           </div>`;
       },2500);
+      // Recargar automáticamente tras 5s para garantizar conexión fresca
+      setTimeout(()=>{ if(!curMatch) location.reload(); }, 5000);
     } catch(e){
       curMatch=done; btn.disabled=false; btn.textContent='Guardar resultado ✓';
       alert('Error al guardar. Inténtalo de nuevo.');
@@ -2089,21 +2091,14 @@ $('start-btn').addEventListener('click',async()=>{
 
 function resetAll(){
   if(isFsMode) exitFs();
-  // Limpiar cola del torneo actual para que no quede en vista pública
-  if(sessionId){
-    saveQueueMeta(sessionId, [], groupData.title||'').catch(()=>{});
-    // Despublicar si estaba publicado
-    if(isPublished){
-      getDoc(doc(db,'config','publishedTorneos')).then(snap=>{
-        const ids=(snap.data()?.sessionIds||[]).filter(id=>id!==sessionId);
-        setDoc(doc(db,'config','publishedTorneos'),{sessionIds:ids,updatedAt:serverTimestamp()});
-      }).catch(()=>{});
-      isPublished=false;
-    }
-  }
+  // NO vaciar cola pública — los partidos en juego/cola siguen siendo válidos
+  // NO despublicar — el torneo sigue publicado con sus partidos
+  // NO cancelar unsubscribeScores — el listener de scores sigue necesitándose para
+  //    procesar resultados de partidos en curso de este torneo
   const oldSid = sessionId;
   sessionId=null; groupData={}; state={};
-  // Quitar partidos de este torneo de la cola global atómicamente
+  // Quitar partidos SIN asignar de este torneo de la cola global
+  // (los que están en juego siguen su curso — el score handler los gestionará)
   if(oldSid){
     runTransaction(db, async tx=>{
       const snap = await tx.get(QUEUE_REF());
@@ -2112,10 +2107,9 @@ function resetAll(){
     }).catch(()=>{});
     globalQueue = globalQueue.filter(q=>q.sid!==oldSid);
   }
-  // NO limpiar connectedDevices — los dispositivos son globales e independientes del torneo
+  // NO limpiar connectedDevices ni scores listener
   if(unsubscribeSession) unsubscribeSession();
-  if(unsubscribeScores) unsubscribeScores();
-  // Mantener unsubscribeDevices activo para seguir viendo dispositivos
+  // unsubscribeScores se mantiene activo — procesa resultados de partidos en curso
   updatePublishBtn();
   ['group-screen','pairing-screen','tournament-screen'].forEach(id=>$(id).style.display='none');
   $('setup-screen').style.display='block';
