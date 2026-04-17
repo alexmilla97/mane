@@ -523,8 +523,12 @@
         <div class="step-badge">Paso 3 · Participantes y Grupos</div>
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
           <div class="field-label" style="margin-bottom:0;">Asigna cada equipo a su grupo</div>
-          <button class="btn btn-fs" id="btn-fill-test" style="font-size:0.7rem; padding:0.2rem 0.6rem;">🎲 Rellenar Prueba</button>
+          <div style="display:flex;gap:0.4rem;">
+            <button class="btn btn-fs" id="btn-import-players" style="font-size:0.7rem; padding:0.2rem 0.6rem;">📂 Importar</button>
+            <button class="btn btn-fs" id="btn-fill-test" style="font-size:0.7rem; padding:0.2rem 0.6rem;">🎲 Rellenar Prueba</button>
+          </div>
         </div>
+        <input type="file" id="import-file-input" accept=".txt,.csv,.xlsx,.xls" style="display:none">
         <div class="teams-grid" id="teams-grid"></div>
         <button class="btn btn-primary" id="start-btn" style="width:100%;margin-top:0.5rem;padding:0.75rem;">
           Generar Fase de Grupos →
@@ -2105,6 +2109,42 @@ rebuildGroupOptions();
 
 $('btn-fill-test').onclick=()=>{ [...$('teams-grid').querySelectorAll('input')].forEach((inp,i)=>{ if(!inp.value.trim()) inp.value=`Jugador ${i+1}`; }); toast('🎲 Nombres de prueba rellenados'); };
 
+// Importar jugadores desde archivo
+$('btn-import-players').addEventListener('click', ()=>$('import-file-input').click());
+$('import-file-input').addEventListener('change', async e=>{
+  const file = e.target.files[0]; if(!file) return;
+  e.target.value = ''; // reset para poder reimportar el mismo archivo
+  try{
+    let names = [];
+    const ext = file.name.split('.').pop().toLowerCase();
+
+    if(ext==='xlsx'||ext==='xls'){
+      // Excel: usar SheetJS si está disponible, si no avisar
+      const XLSX = await import('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/xlsx.mjs').catch(()=>null);
+      if(!XLSX){ toast('⚠️ Formato Excel no soportado en este navegador. Usa .txt o .csv'); return; }
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, {type:'array'});
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, {header:1});
+      names = rows.flatMap(r=>r).map(v=>String(v||'').trim()).filter(Boolean);
+    } else {
+      // txt / csv: leer como texto, una línea = un jugador
+      const text = await file.text();
+      names = text.split(/\r?\n|;|,/).map(n=>n.trim()).filter(Boolean);
+    }
+
+    if(!names.length){ toast('⚠️ No se encontraron nombres en el archivo'); return; }
+
+    const inputs = [...$('teams-grid').querySelectorAll('input')];
+    const filled = Math.min(names.length, inputs.length);
+    inputs.forEach((inp, i)=>{ inp.value = i<names.length ? names[i] : ''; });
+    toast(`✓ ${filled} jugadores importados${names.length>inputs.length?' (hay más en el archivo que plazas disponibles)':''}`);
+  }catch(err){
+    console.error('Import error', err);
+    toast('⚠️ Error al leer el archivo');
+  }
+});
+
 $('start-btn').addEventListener('click',async()=>{
   const title=$('tourney-name').value.trim()||'Torneo';
   const teamsData=[...$('teams-grid').querySelectorAll('.team-input-row')].map(row=>({
@@ -2354,9 +2394,35 @@ function launchTournament(title, names){
   const gf = { t1:null, t2:null, winner:null }; // Gran Final
   const totalMatches = (rounds.flat().length) + (lRounds.flat().length) + 1;
   state = { title, numTeams:names.length, totalMatches, rounds, lRounds, gf };
+  // Auto-avanzar BYEs en lower R1: si ambos slots están y uno es BYE, el otro avanza
+  autoAdvanceLowerByes();
   $('display-title').textContent=title; $('fs-bar-title').textContent=title;
   $('tournament-screen').style.display='block';
   saveCurrentTournament(); renderBracket(); updateProgress(); flashHint();
+}
+
+function autoAdvanceLowerByes(){
+  // Recorrer todas las rondas del lower y auto-avanzar partidos donde un slot es BYE
+  if(!state.lRounds) return;
+  state.lRounds.forEach((round, lri)=>{
+    round.forEach((m, mi)=>{
+      if(m.winner) return; // ya resuelto
+      const t1IsBye = m.t1?.name==='BYE';
+      const t2IsBye = m.t2?.name==='BYE';
+      if(t1IsBye && m.t2 && !t2IsBye){
+        m.winner = m.t2; m.loser = m.t1;
+        propagateLower(lri, mi, m.t2);
+      } else if(t2IsBye && m.t1 && !t1IsBye){
+        m.winner = m.t1; m.loser = m.t2;
+        propagateLower(lri, mi, m.t1);
+      }
+    });
+  });
+  // Repetir hasta que no queden BYEs sin resolver (pueden propagarse en cascada)
+  const hasPendingByes = state.lRounds.some(round=>
+    round.some(m=>!m.winner&&(m.t1?.name==='BYE'||m.t2?.name==='BYE'))
+  );
+  if(hasPendingByes) autoAdvanceLowerByes();
 }
 
 function buildUpperRounds(names){
@@ -2367,10 +2433,18 @@ function buildUpperRounds(names){
   const rounds = [first];
   for(let p=first.length; p>1; p=Math.ceil(p/2))
     rounds.push(Array.from({length:Math.ceil(p/2)}, ()=>({t1:null,t2:null,winner:null,loser:null})));
-  // Auto-advance BYEs
+  // Auto-advance BYEs — ganador sube a upper, y recibe BYE en lower R1 también
   rounds[0].forEach((m,mi)=>{
-    if(!m.t2||m.t2.name==='BYE'){ m.winner=m.t1; m.loser=m.t2; propagateUpper(rounds,0,mi,m.t1); }
-    else if(m.t1&&m.t1.name==='BYE'){ m.winner=m.t2; m.loser=m.t1; propagateUpper(rounds,0,mi,m.t2); }
+    if(!m.t2||m.t2.name==='BYE'){
+      m.winner=m.t1; m.loser=m.t2;
+      propagateUpper(rounds,0,mi,m.t1);
+      // En lower R1, el slot correspondiente queda como BYE (se auto-avanza)
+      dropToLower(0, mi, {name:'BYE', seed:0});
+    } else if(m.t1&&m.t1.name==='BYE'){
+      m.winner=m.t2; m.loser=m.t1;
+      propagateUpper(rounds,0,mi,m.t2);
+      dropToLower(0, mi, {name:'BYE', seed:0});
+    }
   });
   return rounds;
 }
@@ -2477,6 +2551,8 @@ function propagateLower(lri, mi, winner){
     state.gf.t2 = winner;
   }
 }function renderBracket(){
+  // Auto-avanzar BYEs pendientes (por si el torneo fue guardado antes del fix)
+  if(state.lRounds) autoAdvanceLowerByes();
   const c=$('bracket-container'); c.innerHTML='';
   if(state.numTeams===32) c.classList.add('size-32'); else c.classList.remove('size-32');
   const wrap = document.createElement('div'); wrap.className='bracket-full-wrap';
