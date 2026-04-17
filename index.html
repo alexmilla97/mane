@@ -811,15 +811,14 @@ function showAdminView(){
     });
   });
 
-  // Listener de cola global — sincroniza y actualiza cola pública
+  // Listener de cola global — siempre sincroniza globalQueue local con Firestore
   onSnapshot(QUEUE_REF(), snap=>{
     if(!snap.exists()) return;
-    if(_dispatching) return; // ignorar durante dispatch
     globalQueue = snap.data().queue||[];
     if(sessionId && groupData.groups){
       renderGroups();
       updateDeviceUI();
-      buildAndSaveQueue().catch(()=>{}); // actualizar cola pública
+      buildAndSaveQueue().catch(()=>{});
     }
   });
 
