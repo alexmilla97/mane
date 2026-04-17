@@ -1533,11 +1533,11 @@ if((IS_DISPLAY||IS_BRACKET||IS_QUEUE) && (SESSION_ID||IS_QUEUE)){
       } else if(!IS_BRACKET){ const gd=parseGroupData(data); if(gd?.groups) renderDisplayScreen(gd); }
     });
     if(IS_BRACKET){
-      document.addEventListener('fullscreenchange',()=>{ setTimeout(()=>syncBracketOverlay(),50); });
+      document.addEventListener('fullscreenchange',()=>{ window.dispatchEvent(new Event('resize')); });
       setTimeout(()=>{
         const elem=$('display-screen');
-        if(elem?.requestFullscreen) elem.requestFullscreen().then(()=>setTimeout(()=>{syncBracketOverlay();window.dispatchEvent(new Event('resize'));},100)).catch(()=>{});
-      },500);
+        if(elem?.requestFullscreen) elem.requestFullscreen().catch(()=>{});
+      },300);
     }
   }
   throw new Error('display-mode');
@@ -2805,29 +2805,101 @@ function renderDisplayScreen(data){
 }
 function renderBracketDisplay(data){
   if(!data?.rounds) return;
-  $('dv-title').textContent=data.title||'—'; $('dv-badge-text').textContent='EN VIVO · Cuadro Eliminatorio';
-  const cont=$('dv-groups'); cont.innerHTML=''; cont.style.overflow='auto'; cont.style.padding='0';
-  const scaler=document.createElement('div'); scaler.id='bracket-scaler-dv'; scaler.style.cssText='transition:transform 0.2s ease-out;transform-origin:top left;';
-  const bc=document.createElement('div'); bc.id='bracket-container-dv'; bc.style.cssText='display:flex;gap:2rem;align-items:center;padding:2rem;position:relative;';
-  // Temporarily set state to render
-  const savedState=state; state=data;
-  renderBracket(); // renders into #bracket-container
-  // Move rendered content to display container
-  const rendered=$('bracket-container'); if(rendered) bc.innerHTML=rendered.innerHTML;
-  state=savedState;
-  scaler.appendChild(bc); cont.appendChild(scaler);
-  setTimeout(()=>{
-    const sc=Math.min((cont.clientWidth-40)/(bc.scrollWidth||1),(cont.clientHeight-40)/(bc.scrollHeight||1),1);
-    scaler.style.width=bc.scrollWidth+'px'; scaler.style.height=bc.scrollHeight+'px';
-    scaler.style.transform=`scale(${sc})`;
-  },100);
-  const uPlayed=data.rounds.flat().filter(m=>m.winner).length;
-  const lPlayed=(data.lRounds||[]).flat().filter(m=>m.winner).length;
-  const gfPlayed=data.gf?.winner?1:0;
-  const played=uPlayed+lPlayed+gfPlayed, total=data.totalMatches;
-  $('dv-progress-text').textContent=`${played} / ${total} partidos jugados`;
-  $('dv-progress-fill').style.width=total?Math.round(played/total*100)+'%':'0%';
-  window.addEventListener('resize',syncBracketOverlay);
+  $('dv-title').textContent = data.title||'—';
+  $('dv-badge-text').textContent = '🏆 Cuadro Eliminatorio';
+
+  const cont = $('dv-groups');
+  cont.innerHTML = '';
+  cont.style.cssText = 'overflow:hidden;padding:0;flex:1;display:flex;align-items:flex-start;justify-content:flex-start;';
+
+  // Wrapper escalable
+  const scaler = document.createElement('div');
+  scaler.style.cssText = 'transform-origin:top left;transition:transform 0.3s ease;flex-shrink:0;';
+
+  // Contenedor del cuadro completo
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'display:flex;flex-direction:column;gap:1.5rem;padding:1.5rem;min-width:max-content;';
+
+  // Renderizar usando el state temporal
+  const savedState = state;
+  state = data;
+
+  // Upper bracket
+  const upperLabel = document.createElement('div');
+  upperLabel.style.cssText = 'font-family:"Barlow Condensed",sans-serif;font-size:0.75rem;font-weight:700;color:var(--gold);text-transform:uppercase;letter-spacing:0.12em;opacity:0.7;';
+  upperLabel.textContent = '▲ Upper Bracket';
+  wrap.appendChild(upperLabel);
+
+  const upperWrap = document.createElement('div');
+  upperWrap.style.cssText = 'display:flex;gap:2rem;align-items:center;position:relative;';
+  renderUpperInto(upperWrap);
+  wrap.appendChild(upperWrap);
+
+  // Divider
+  const div1 = document.createElement('div');
+  div1.style.cssText = 'height:1px;background:var(--border);opacity:0.4;';
+  wrap.appendChild(div1);
+
+  // Lower bracket
+  const lowerLabel = document.createElement('div');
+  lowerLabel.style.cssText = 'font-family:"Barlow Condensed",sans-serif;font-size:0.75rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.12em;opacity:0.7;';
+  lowerLabel.textContent = '▼ Lower Bracket';
+  wrap.appendChild(lowerLabel);
+
+  const lowerWrap = document.createElement('div');
+  lowerWrap.className = 'lower-bracket-wrap';
+  renderLowerInto(lowerWrap);
+  wrap.appendChild(lowerWrap);
+
+  // Gran Final
+  const div2 = document.createElement('div');
+  div2.style.cssText = 'height:1px;background:var(--border);opacity:0.4;';
+  wrap.appendChild(div2);
+
+  const gfWrap = document.createElement('div');
+  gfWrap.className = 'grand-final-wrap';
+  const gfLabel = document.createElement('div');
+  gfLabel.className = 'grand-final-label';
+  gfLabel.textContent = '🏆 Gran Final';
+  gfWrap.appendChild(gfLabel);
+  const gfCard = buildCard(state.gf, 'gf', 0, true);
+  gfCard.id = 'match-gf-0';
+  gfWrap.appendChild(gfCard);
+  wrap.appendChild(gfWrap);
+
+  state = savedState;
+
+  scaler.appendChild(wrap);
+  cont.appendChild(scaler);
+
+  // Calcular escala para que quepa en pantalla
+  function fitBracket(){
+    scaler.style.transform = 'scale(1)';
+    requestAnimationFrame(()=>{
+      const cW = cont.clientWidth  || window.innerWidth;
+      const cH = cont.clientHeight || window.innerHeight;
+      const bW = wrap.scrollWidth;
+      const bH = wrap.scrollHeight;
+      if(!bW || !bH) return;
+      const sc = Math.min(cW / bW, cH / bH, 1);
+      scaler.style.transform = `scale(${sc})`;
+      scaler.style.width  = bW + 'px';
+      scaler.style.height = bH + 'px';
+      cont.style.height   = Math.round(bH * sc) + 'px';
+    });
+  }
+
+  setTimeout(fitBracket, 150);
+  window.addEventListener('resize', fitBracket);
+
+  // Progreso
+  const uPlayed  = data.rounds.flat().filter(m=>m.winner).length;
+  const lPlayed  = (data.lRounds||[]).flat().filter(m=>m.winner).length;
+  const gfPlayed = data.gf?.winner ? 1 : 0;
+  const played   = uPlayed + lPlayed + gfPlayed;
+  const total    = data.totalMatches;
+  $('dv-progress-text').textContent = `${played} / ${total} partidos jugados`;
+  $('dv-progress-fill').style.width = total ? Math.round(played/total*100)+'%' : '0%';
 }
 
 // ── Fullscreen ────────────────────────────────────────
