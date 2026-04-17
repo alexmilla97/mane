@@ -545,7 +545,7 @@
     <div style="display:flex;gap:0.6rem;align-items:center;flex-wrap:wrap;">
       <div style="font-size:0.84rem;color:var(--text-muted)" id="gs-progress-text"></div>
       <button class="btn btn-fs" id="btn-simulate-gs" style="border-color:var(--gold); color:var(--gold);">🎲 Simular Resultados</button>
-      <button class="btn btn-fs" id="btn-display-mode">📺 Pantalla grande</button>
+      <button class="btn btn-fs" id="btn-display-mode">👥 Grupos (Público)</button>
       <button class="btn btn-fs" id="publish-btn" onclick="togglePublish()" style="display:none">📡 Publicar</button>
     </div>
   </div>
@@ -592,7 +592,7 @@
     </div>
     <div style="display:flex;gap:0.6rem;align-items:center;flex-wrap:wrap;">
       <div style="font-size:0.85rem;color:var(--text-muted)" id="progress-text"></div>
-      <button class="btn btn-fs" id="btn-fullscreen">⛶ Pantalla completa</button>
+      <button class="btn btn-fs" id="btn-fullscreen">🏆 Cuadro (Público)</button>
       <button class="btn btn-fs" id="publish-btn-bracket" onclick="togglePublish()" style="display:none">📡 Publicar</button>
     </div>
   </div>
@@ -2055,7 +2055,7 @@ function openConnectModal(){
 $('btn-display-mode').addEventListener('click',()=>{
   if(!sessionId){toast('⚠️ Crea o carga un torneo primero');return;}
   window.open(`${location.pathname}?mode=display&session=${sessionId}`,'_blank','noopener');
-  toast('📺 Pantalla grande abierta');
+  toast('👥 Vista pública de grupos abierta');
 });
 $('btn-queue-mode').addEventListener('click',()=>{
   window.open(`${location.pathname}?mode=queue`,'_blank','noopener');
@@ -2753,7 +2753,11 @@ function enterFs(){ const elem=$('tournament-screen'); if(!elem) return; isFsMod
 function exitFs(){ isFsMode=false; if(document.fullscreenElement) document.exitFullscreen().catch(()=>{}); else if(document.webkitFullscreenElement) document.webkitExitFullscreen(); document.body.classList.remove('fs-mode'); setTimeout(()=>{syncBracketOverlay();window.dispatchEvent(new Event('resize'));},100); }
 document.addEventListener('keydown',e=>{ if(e.key==='F11'){e.preventDefault();if($('tournament-screen').style.display!=='none')isFsMode?exitFs():enterFs();}if(e.key==='Escape'&&isFsMode){e.preventDefault();exitFs();} });
 ['fullscreenchange','webkitfullscreenchange','mozfullscreenchange'].forEach(ev=>document.addEventListener(ev,()=>{setTimeout(()=>{syncBracketOverlay();window.dispatchEvent(new Event('resize'));},50);}));
-$('btn-fullscreen').addEventListener('click',()=>isFsMode?exitFs():enterFs());
+$('btn-fullscreen').addEventListener('click',()=>{
+  if(!sessionId){ toast('⚠️ No hay cuadro activo'); return; }
+  window.open(`${location.pathname}?mode=bracket&session=${sessionId}`,'_blank','noopener');
+  toast('🏆 Cuadro público abierto');
+});
 window.addEventListener('resize',()=>syncBracketOverlay());
 function flashHint(){ const h=$('fs-hint'); h.classList.add('show'); setTimeout(()=>h.classList.remove('show'),3500); }
 
