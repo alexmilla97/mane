@@ -1642,9 +1642,18 @@ async function dispatchNextFromQueue(){
         const free = connectedDevices.find(d=>!d.busy);
         if(!free || !globalQueue.length) break;
         const item = globalQueue.shift();
-        await saveGlobalQueue();
-        try{ await _sendMatchNow(free, item); }
+        // Marcar busy ANTES de guardar — así buildAndSaveQueue verá live=true
+        free.busy = true;
+        free.currentMatch = {gi:item.gi, mi:item.mi, sid:item.sid, matchId:item.matchId, assignedAt:Date.now()};
+        await saveGlobalQueue(); // listener dispara: item no está + dev.busy=true → status:'live' ✓
+        try{
+          await _sendMatchNow(free, item);
+          // Actualizar cola pública con status live (listener puede no haber disparado aún)
+          if(sessionId && groupData.groups) buildAndSaveQueue().catch(()=>{});
+        }
         catch(e){
+          free.busy = false;
+          free.currentMatch = null;
           globalQueue.unshift(item);
           await saveGlobalQueue();
           break;
