@@ -1272,31 +1272,18 @@ if(IS_DEVICE && DEVICE_ID){
 
   let curMatch = null, sc = {s1:0,s2:0}, timerInt = null, startTs = null, running = false;
 
-  // Suscribirse al inbox PRIMERO — antes de cualquier otra operación
-  // onSnapshot entrega mensajes pendientes inmediatamente en 'added'
-  onSnapshot(collection(db,'devices',DEVICE_ID,'inbox'), snap => {
-    snap.docChanges().forEach(async change => {
-      if(change.type !== 'added') return;
-      const data = change.doc.data();
-      const m = data.match;
-      if(!m || m.type !== 'match') return;
-      deleteDoc(change.doc.ref).catch(()=>{});
-      await setDoc(doc(db,'devices',DEVICE_ID), { currentMatch: m, busy: true }, { merge: true }).catch(()=>{});
-      showMatch(m);
-    });
-  });
-
   try {
-    // Leer estado actual de Firestore
+    // 1. Leer estado actual PRIMERO — antes de suscribirse al inbox
     const devSnap = await getDoc(doc(db,'devices',DEVICE_ID));
     const devData = devSnap.exists() ? devSnap.data() : {};
     const prevMatch = devData?.currentMatch?.type === 'match' ? devData.currentMatch : null;
 
-    // Comprobar si hay mensajes pendientes en el inbox
+    // 2. Comprobar inbox pendiente
     const inboxSnap = await getDocs(collection(db,'devices',DEVICE_ID,'inbox'));
-    const hasPendingInbox = inboxSnap.docs.some(d => d.data()?.match?.type === 'match');
+    const pendingMsg = inboxSnap.docs.find(d => d.data()?.match?.type === 'match');
+    const hasPendingInbox = !!pendingMsg;
 
-    // Registrar como ocupado si tiene partido activo O mensaje pendiente en inbox
+    // 3. Registrar presencia con estado correcto
     const isBusy = !!prevMatch || hasPendingInbox;
     await setDoc(doc(db,'devices',DEVICE_ID), {
       clientId: DEVICE_ID, name: DEVICE_NAME,
@@ -1306,10 +1293,26 @@ if(IS_DEVICE && DEVICE_ID){
     });
 
     dot.classList.add('on'); st.textContent = 'Conectado';
-    if(prevMatch && !hasPendingInbox) showMatch(prevMatch); // el inbox listener mostrará el nuevo si hay
+
+    // 4. Mostrar partido anterior si existe
+    if(prevMatch) showMatch(prevMatch);
+
+    // 5. Suscribirse al inbox DESPUÉS de registrar
+    // El onSnapshot entregará el mensaje pendiente y actualizará el partido si hace falta
+    onSnapshot(collection(db,'devices',DEVICE_ID,'inbox'), snap => {
+      snap.docChanges().forEach(async change => {
+        if(change.type !== 'added') return;
+        const data = change.doc.data();
+        const m = data.match;
+        if(!m || m.type !== 'match') return;
+        deleteDoc(change.doc.ref).catch(()=>{});
+        await setDoc(doc(db,'devices',DEVICE_ID), { currentMatch: m, busy: true }, { merge: true }).catch(()=>{});
+        showMatch(m);
+      });
+    });
 
   } catch(e){
-    // Si falla el getDoc, registrar igualmente como libre
+    // Si falla, registrar como libre y suscribir inbox igualmente
     try {
       await setDoc(doc(db,'devices',DEVICE_ID), {
         clientId: DEVICE_ID, name: DEVICE_NAME,
@@ -1321,6 +1324,17 @@ if(IS_DEVICE && DEVICE_ID){
       st.textContent = 'Error de conexión';
       console.error('Device registration error', e2);
     }
+    onSnapshot(collection(db,'devices',DEVICE_ID,'inbox'), snap => {
+      snap.docChanges().forEach(async change => {
+        if(change.type !== 'added') return;
+        const data = change.doc.data();
+        const m = data.match;
+        if(!m || m.type !== 'match') return;
+        deleteDoc(change.doc.ref).catch(()=>{});
+        await setDoc(doc(db,'devices',DEVICE_ID), { currentMatch: m, busy: true }, { merge: true }).catch(()=>{});
+        showMatch(m);
+      });
+    });
   }
 
   // Ping cada 30s
@@ -1615,7 +1629,7 @@ async function _sendMatchNow(dev, qItem){
   const {gi, mi, sid, t1, t2, group, torneoName, matchId} = qItem;
   // Marcar ocupado INMEDIATAMENTE antes de cualquier await
   dev.busy = true;
-  dev.currentMatch = {gi, mi, sid, matchId, assignedAt: Date.now()};
+  dev.currentMatch = {gi, mi, sid, matchId, t1, t2, group, torneoName, assignedAt: Date.now()};
   const payload = {type:'match', gi, mi, t1, t2, group,
     target:dev.clientId, startAt:Date.now(), sessionId:sid, torneoName, matchId};
   try{
@@ -1648,7 +1662,9 @@ async function dispatchNextFromQueue(){
         const item = globalQueue.shift();
         // Marcar busy ANTES de guardar — así buildAndSaveQueue verá live=true
         free.busy = true;
-        free.currentMatch = {gi:item.gi, mi:item.mi, sid:item.sid, matchId:item.matchId, assignedAt:Date.now()};
+        free.currentMatch = {gi:item.gi, mi:item.mi, sid:item.sid, matchId:item.matchId,
+          t1:item.t1, t2:item.t2, group:item.group, torneoName:item.torneoName,
+          assignedAt:Date.now()};
         await saveGlobalQueue(); // listener dispara: item no está + dev.busy=true → status:'live' ✓
         try{
           await _sendMatchNow(free, item);
