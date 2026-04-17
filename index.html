@@ -771,18 +771,18 @@ function showAdminView(){
       if(!d||d.blocked||!d.clientId) return;
 
       const existing = connectedDevices.find(x=>x.clientId===clientId);
+      // Normalizar currentMatch: payload en Firestore usa 'sessionId', local usa 'sid'
+      const rawCm = d.currentMatch||null;
+      const normCm = rawCm && rawCm.sessionId && !rawCm.sid ? {...rawCm, sid:rawCm.sessionId} : rawCm;
       if(existing){
         existing.lastSeen = Date.now();
         existing.name = d.name||existing.name;
-
         if(d.busy && !existing.busy){
           existing.busy = true;
-          existing.currentMatch = d.currentMatch||null;
+          existing.currentMatch = normCm;
         } else if(!d.busy && existing.busy){
-          // Dispositivo se liberó (recarga, score enviado, crash)
           existing.busy = false;
           existing.currentMatch = null;
-          // Dispatch es idempotente — si score handler ya lo hará, este queda pending y no duplica
           setTimeout(async ()=>{
             await dispatchNextFromQueue();
             if(sessionId && groupData.groups){ await buildAndSaveQueue(); updateDeviceUI(); }
@@ -796,7 +796,7 @@ function showAdminView(){
         }
         connectedDevices.push({
           clientId:d.clientId, name:d.name, lastSeen:Date.now(),
-          busy:!!d.busy, currentMatch:d.currentMatch||null
+          busy:!!d.busy, currentMatch:normCm
         });
         $('connect-overlay')?.classList.remove('open');
         toast(`📱 ${d.name} conectado`);
@@ -1294,36 +1294,35 @@ if(IS_DEVICE && DEVICE_ID){
 
     dot.classList.add('on'); st.textContent = 'Conectado';
 
-    // 4. Mostrar partido anterior si existe
+    // 4. Suscribirse al inbox ANTES de registrar presencia visible al gestor
+    // onSnapshot registra el listener síncronamente — la conexión se establece en paralelo
+    // El gestor no recibirá el evento hasta que hagamos setDoc en paso 5
+    const inboxUnsub = onSnapshot(collection(db,'devices',DEVICE_ID,'inbox'), snap => {
+      snap.docChanges().forEach(async change => {
+        if(change.type !== 'added') return;
+        const data = change.doc.data();
+        const m = data.match;
+        if(!m || m.type !== 'match') return;
+        deleteDoc(change.doc.ref).catch(()=>{});
+        await setDoc(doc(db,'devices',DEVICE_ID), { currentMatch: m, busy: true }, { merge: true }).catch(()=>{});
+        showMatch(m);
+      });
+    });
+
+    // 5. Registrar presencia — el gestor lo verá ahora que el inbox ya está suscrito
+    await setDoc(doc(db,'devices',DEVICE_ID), {
+      clientId: DEVICE_ID, name: DEVICE_NAME,
+      lastSeen: serverTimestamp(), blocked: false,
+      busy: isBusy, currentMatch: prevMatch || null,
+      status: isBusy ? 'busy' : 'idle'
+    });
+
+    // 6. Mostrar partido anterior si existe
     if(prevMatch) showMatch(prevMatch);
 
-    // 5. Suscribirse al inbox DESPUÉS de registrar
-    // El onSnapshot entregará el mensaje pendiente y actualizará el partido si hace falta
-    onSnapshot(collection(db,'devices',DEVICE_ID,'inbox'), snap => {
-      snap.docChanges().forEach(async change => {
-        if(change.type !== 'added') return;
-        const data = change.doc.data();
-        const m = data.match;
-        if(!m || m.type !== 'match') return;
-        deleteDoc(change.doc.ref).catch(()=>{});
-        await setDoc(doc(db,'devices',DEVICE_ID), { currentMatch: m, busy: true }, { merge: true }).catch(()=>{});
-        showMatch(m);
-      });
-    });
-
   } catch(e){
-    // Si falla, registrar como libre y suscribir inbox igualmente
-    try {
-      await setDoc(doc(db,'devices',DEVICE_ID), {
-        clientId: DEVICE_ID, name: DEVICE_NAME,
-        lastSeen: serverTimestamp(), blocked: false,
-        busy: false, currentMatch: null, status: 'idle'
-      });
-      dot.classList.add('on'); st.textContent = 'Conectado';
-    } catch(e2){
-      st.textContent = 'Error de conexión';
-      console.error('Device registration error', e2);
-    }
+    console.error('Device setup error', e);
+    // Suscribir inbox igualmente aunque falle el registro
     onSnapshot(collection(db,'devices',DEVICE_ID,'inbox'), snap => {
       snap.docChanges().forEach(async change => {
         if(change.type !== 'added') return;
@@ -1335,6 +1334,7 @@ if(IS_DEVICE && DEVICE_ID){
         showMatch(m);
       });
     });
+    st.textContent = 'Error de conexión';
   }
 
   // Ping cada 30s
@@ -1896,7 +1896,12 @@ async function loadTournament(sid){
     const fiveMin=Date.now()-300000;
     const devSnap=await getDocs(collection(db,'devices'));
     const liveDevices=[];
-    devSnap.forEach(d=>{ const dd=d.data(); if(!dd.blocked&&dd.clientId){ const ts=dd.lastSeen?.toMillis?.()||0; if(ts>fiveMin||dd.busy) liveDevices.push({clientId:dd.clientId,name:dd.name,lastSeen:Date.now(),busy:!!dd.busy,currentMatch:dd.currentMatch||null}); } });
+    devSnap.forEach(d=>{ const dd=d.data(); if(!dd.blocked&&dd.clientId){ const ts=dd.lastSeen?.toMillis?.()||0; if(ts>fiveMin||dd.busy){
+      // Normalizar currentMatch: el payload en Firestore usa 'sessionId', local usa 'sid'
+      let cm = dd.currentMatch||null;
+      if(cm && cm.sessionId && !cm.sid) cm = {...cm, sid:cm.sessionId};
+      liveDevices.push({clientId:dd.clientId,name:dd.name,lastSeen:Date.now(),busy:!!dd.busy,currentMatch:cm});
+    } } });
     const dlSnap=await getDoc(doc(db,'config','devicesList'));
     const blocked=dlSnap.exists()?(dlSnap.data().blocked||[]):[];
     await restoreTournament(sid,{...data,devices:liveDevices,blocked},true);
