@@ -1436,6 +1436,10 @@ if(IS_DEVICE && DEVICE_ID){
 // ══════════════════════════════════════════════════════
 // MODO PANTALLA GRANDE / COLA (pestaña secundaria)
 // ══════════════════════════════════════════════════════
+// Declarar state aquí para que esté disponible en renderBracketDisplay
+// incluso cuando el throw interrumpe la ejecución del módulo
+let state = {};
+
 if((IS_DISPLAY||IS_BRACKET||IS_QUEUE) && (SESSION_ID||IS_QUEUE)){
   if(!auth.currentUser) await signInAnonymously(auth);
   document.querySelector('header').style.display='none';
@@ -1540,15 +1544,19 @@ if((IS_DISPLAY||IS_BRACKET||IS_QUEUE) && (SESSION_ID||IS_QUEUE)){
       },300);
     }
   }
-  throw new Error('display-mode');
+  // Modo pantalla pública — no inicializar el admin
+  // Usar flag para evitar ejecutar el código de admin
+  window._publicMode = true;
 }
+
+if(!window._publicMode && !IS_DEVICE){
 
 // ══════════════════════════════════════════════════════
 // MODO GESTOR
 // ══════════════════════════════════════════════════════
 
 let bracketSize=4, numGroups=2;
-let groupData={}, state={}, sessionId=null;
+let groupData={}, sessionId=null;
 let isFsMode=false, activePanel=null;
 // ════════════════════════════════════════════════════════════════
 // ESTADO GLOBAL DE DISPOSITIVOS Y COLA
@@ -2938,6 +2946,8 @@ const _fns = {
   showPubPanel: window.showPubPanel, closePubPanel: window.closePubPanel,
 };
 Object.entries(_fns).forEach(([k,v]) => { if(v){ window[k]=v; window['_fn_'+k]=v; } });
+
+} // fin bloque admin (!_publicMode && !IS_DEVICE)
 
 // ── Auth reactivo — al final para que todas las funciones estén definidas ──
 if(!IS_DEVICE && !IS_DISPLAY && !IS_BRACKET && !IS_QUEUE){
