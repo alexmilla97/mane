@@ -1435,8 +1435,10 @@ if(IS_DEVICE && DEVICE_ID){
             <div class="ipad-waiting-sub">Esperando el próximo partido…</div>
           </div>`;
       },2500);
-      // Recargar automáticamente tras 5s para garantizar conexión fresca
-      setTimeout(()=>{ if(!curMatch) location.reload(); }, 5000);
+      // Recargar cada 10s hasta que llegue un partido — garantiza conexión fresca
+      const reloadInterval = setInterval(()=>{ if(!curMatch) location.reload(); }, 10000);
+      // Si llega un partido antes, cancelar el interval (showMatch actualiza curMatch)
+      const cancelReload = setInterval(()=>{ if(curMatch) clearInterval(reloadInterval); }, 500);
     } catch(e){
       curMatch=done; btn.disabled=false; btn.textContent='Guardar resultado ✓';
       alert('Error al guardar. Inténtalo de nuevo.');
@@ -1526,6 +1528,20 @@ if((IS_DISPLAY||IS_BRACKET||IS_QUEUE) && (SESSION_ID||IS_QUEUE)){
         Object.keys(pubQueuesLocal).forEach(sid=>{if(!ids.includes(sid)){delete pubQueuesLocal[sid];}});
         mergAndRender();
       });
+      // Refrescar la cola leyendo Firestore cada 30s por si algún onSnapshot se desincroniza
+      setInterval(async ()=>{
+        try{
+          const pubSnap = await getDoc(doc(db,'config','publishedTorneos'));
+          const ids = (pubSnap.data()?.sessionIds||[]).filter(Boolean);
+          for(const sid of ids){
+            const qSnap = await getDoc(queueRef(sid));
+            if(qSnap.exists()){
+              pubQueuesLocal[sid] = parseQueueData(qSnap.data());
+            }
+          }
+          mergAndRender();
+        }catch(e){}
+      }, 30000);
     }
   } else {
     $('display-screen').classList.add('active');
