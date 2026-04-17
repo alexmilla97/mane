@@ -1549,15 +1549,17 @@ if((IS_DISPLAY||IS_BRACKET||IS_QUEUE) && (SESSION_ID||IS_QUEUE)){
   window._publicMode = true;
 }
 
+// Variables del gestor — declaradas en scope de módulo para acceso desde funciones globales
+let bracketSize=4, numGroups=2;
+let groupData={}, sessionId=null;
+let isFsMode=false, activePanel=null;
+
 if(!window._publicMode && !IS_DEVICE){
 
 // ══════════════════════════════════════════════════════
 // MODO GESTOR
 // ══════════════════════════════════════════════════════
 
-let bracketSize=4, numGroups=2;
-let groupData={}, sessionId=null;
-let isFsMode=false, activePanel=null;
 // ════════════════════════════════════════════════════════════════
 // ESTADO GLOBAL DE DISPOSITIVOS Y COLA
 // ════════════════════════════════════════════════════════════════
