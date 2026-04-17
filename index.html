@@ -1908,14 +1908,17 @@ function subscribeToSession(){
           applyScore(d.gi,d.mi,+d.s1,+d.s2);
           toast(`📱 ${match.t1.name} ${d.s1}–${d.s2} ${match.t2.name}${dev?' · '+dev.name:''}`);
         } else { renderGroups(); }
+        // Borrar score del torneo activo — ya procesado
+        deleteDoc(change.doc.ref).catch(()=>{});
+      } else {
+        // Score de otro torneo — guardarlo en Firestore para que lo procese quien tenga ese torneo activo
+        // Si nadie lo procesa en 60s, borrarlo para no acumular basura
+        setTimeout(()=>deleteDoc(change.doc.ref).catch(()=>{}), 60000);
       }
       await dispatchNextFromQueue();
-      // Reconstruir cola pública para el torneo del partido recibido
       await buildAndSaveQueueForSid(d.sid||sessionId);
-      // Y para el torneo activo si es diferente
       if(d.sid && d.sid !== sessionId) await buildAndSaveQueue();
       updateDeviceUI();
-      deleteDoc(change.doc.ref).catch(()=>{});
     });
   });
 }
@@ -1927,6 +1930,23 @@ async function loadTournament(sid){
     const data=snap.data();
     const qSnap=await getDoc(QUEUE_REF());
     globalQueue=qSnap.exists()?(qSnap.data().queue||[]):[];
+    // Aplicar scores pendientes de este torneo antes de restaurar
+    try{
+      const scoresSnap=await getDocs(collection(db,'scores'));
+      const pending=scoresSnap.docs.filter(d=>d.data().sid===sid);
+      if(pending.length){
+        const gd=parseGroupData(data);
+        pending.forEach(scoreDoc=>{
+          const sc=scoreDoc.data();
+          const match=gd.groups?.[sc.gi]?.matches?.[sc.mi];
+          if(match&&!match.played){ match.s1=+sc.s1; match.s2=+sc.s2; match.played=true; }
+          deleteDoc(scoreDoc.ref).catch(()=>{});
+        });
+        // Guardar groupData con resultados aplicados
+        await saveState(sid, gd, parseState(data));
+        data.groupDataJson=JSON.stringify(gd);
+      }
+    }catch(e){ console.error('pending scores',e); }
     const fiveMin=Date.now()-300000;
     const devSnap=await getDocs(collection(db,'devices'));
     const liveDevices=[];
