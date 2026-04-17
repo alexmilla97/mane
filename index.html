@@ -2402,27 +2402,27 @@ function launchTournament(title, names){
 }
 
 function autoAdvanceLowerByes(){
-  // Recorrer todas las rondas del lower y auto-avanzar partidos donde un slot es BYE
   if(!state.lRounds) return;
+  let advanced = false;
   state.lRounds.forEach((round, lri)=>{
     round.forEach((m, mi)=>{
-      if(m.winner) return; // ya resuelto
+      if(m.winner) return;
       const t1IsBye = m.t1?.name==='BYE';
       const t2IsBye = m.t2?.name==='BYE';
+      // Solo avanzar si exactamente uno es BYE y el otro es un jugador real
       if(t1IsBye && m.t2 && !t2IsBye){
         m.winner = m.t2; m.loser = m.t1;
         propagateLower(lri, mi, m.t2);
+        advanced = true;
       } else if(t2IsBye && m.t1 && !t1IsBye){
         m.winner = m.t1; m.loser = m.t2;
         propagateLower(lri, mi, m.t1);
+        advanced = true;
       }
     });
   });
-  // Repetir hasta que no queden BYEs sin resolver (pueden propagarse en cascada)
-  const hasPendingByes = state.lRounds.some(round=>
-    round.some(m=>!m.winner&&(m.t1?.name==='BYE'||m.t2?.name==='BYE'))
-  );
-  if(hasPendingByes) autoAdvanceLowerByes();
+  // Repetir si avanzamos alguno (puede crear nuevos BYEs en rondas siguientes)
+  if(advanced) autoAdvanceLowerByes();
 }
 
 function buildUpperRounds(names){
@@ -2687,6 +2687,8 @@ function selectWinner(ri, mi, si){
   if(lastR.length===1 && lastR[0].winner) state.gf.t1 = lastR[0].winner;
   // Drop loser to lower bracket
   dropToLower(ri, mi, loser);
+  // Auto-avanzar si el partido de lower quedó con un BYE (cascada)
+  autoAdvanceLowerByes();
   toast(`✓ ${winner.name} avanza · ${loser.name} al lower`);
   saveCurrentTournament(); renderBracket(); updateProgress();
 }
