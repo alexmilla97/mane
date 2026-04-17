@@ -726,7 +726,7 @@ window.$ = id => document.getElementById(id);
 </script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
-import { getFirestore, doc, setDoc, getDoc, onSnapshot, collection, getDocs, deleteDoc, serverTimestamp, addDoc, runTransaction, arrayRemove }
+import { getFirestore, doc, setDoc, getDoc, onSnapshot, collection, getDocs, deleteDoc, serverTimestamp, addDoc, runTransaction }
   from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { getAuth, signInAnonymously, signInWithEmailAndPassword, signOut, onAuthStateChanged, setPersistence, browserLocalPersistence } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
 
@@ -982,13 +982,6 @@ function subscribePublicView(){
   // Mapa de unsubs activos por torneo { sid: { torneoUnsub, queueUnsub } }
   const activeSubs = {};
 
-  function unsubAll(){
-    Object.values(activeSubs).forEach(({torneoUnsub, queueUnsub}) => {
-      try { torneoUnsub?.(); queueUnsub?.(); } catch(e){}
-    });
-    Object.keys(activeSubs).forEach(k => delete activeSubs[k]);
-  }
-
   pubUnsub = onSnapshot(doc(db, 'config', 'publishedTorneos'), snap => {
     const data = snap.data();
     const ids = (data?.sessionIds || []).filter(Boolean);
@@ -1165,23 +1158,6 @@ function renderMergedQueue(queueMap, body){
   });
 }
 
-function renderPublicQueue(items, body){
-  if(!body) body = $('pub-queue-body');
-  const active = items.filter(it => it.status==='live' || it.status==='queued');
-  if(!active.length){ body.innerHTML='<div class="qv-empty">Sin partidos asignados</div>'; return; }
-  body.innerHTML='';
-  active.forEach((it,idx)=>{
-    const isLive = it.status==='live';
-    const div = document.createElement('div'); div.className='qv-item '+(isLive?'live':'queued');
-    const posLabel = isLive?'En juego':`#${idx+1-active.filter((x,i)=>i<idx&&x.status==='live').length}`;
-    div.innerHTML =
-      `<div class="qv-indicator"><div class="qv-dot ${it.status}"></div><div class="qv-pos-num ${it.status}">${posLabel}</div></div>`+
-      `<div><div class="qv-teams">${it.t1}<span class="vs">vs</span>${it.t2}</div><div class="qv-group">${it.group}</div></div>`+
-      (it.devName?`<div class="qv-device"><div class="qv-device-name ${it.status}">📱 ${it.devName}</div><div class="qv-device-lbl">${isLive?'dispositivo':'siguiente en'}</div></div>`:'');
-    body.appendChild(div);
-  });
-}
-
 function renderPublicStandings(data, body){
   if(!data?.groups) return;
   if(!body) body = $('pub-standings-body');
@@ -1225,9 +1201,7 @@ function toast(msg){ const t=$('toast'); t.textContent=msg; t.classList.add('sho
 
 // ── Firestore helpers ─────────────────────────────────
 const tourneyRef  = sid => doc(db, 'torneos', sid);
-const devicesRef  = sid => doc(db, 'torneos', sid, 'meta', 'devices');
 const queueRef    = sid => doc(db, 'torneos', sid, 'meta', 'queue');
-const globalDevicesRef = doc(db, 'config', 'devicesList'); // lista global de dispositivos
 
 async function saveState(sid, groupData, state){
   // Serializar como JSON strings — Firestore no soporta arrays anidados
@@ -1285,31 +1259,10 @@ if(IS_DEVICE && DEVICE_ID){
 
   let curMatch = null, sc = {s1:0,s2:0}, timerInt = null, startTs = null, running = false;
 
-  try {
-    // 1. Leer estado actual
-    const devSnap = await getDoc(doc(db,'devices',DEVICE_ID));
-    const devData = devSnap.exists() ? devSnap.data() : {};
-    const prevMatch = devData?.currentMatch?.type === 'match' ? devData.currentMatch : null;
-
-    // 2. Comprobar inbox pendiente
-    const inboxSnap = await getDocs(collection(db,'devices',DEVICE_ID,'inbox'));
-    const hasPendingInbox = inboxSnap.docs.some(d => d.data()?.match?.type === 'match');
-    const isBusy = !!prevMatch || hasPendingInbox;
-
-    // 3. Registrar como NO listo todavía (ready:false) — el gestor no despachará aún
-    await setDoc(doc(db,'devices',DEVICE_ID), {
-      clientId: DEVICE_ID, name: DEVICE_NAME,
-      lastSeen: serverTimestamp(), blocked: false,
-      busy: isBusy, currentMatch: prevMatch || null,
-      ready: false
-    });
-
-    dot.classList.add('on'); st.textContent = 'Conectando…';
-
-    // 4. Suscribir inbox — cuando el primer snapshot llega, sabemos que Firestore está conectado
+  // Inbox listener — procesa partidos entrantes
+  function subscribeInbox(){
     let readySignaled = false;
     onSnapshot(collection(db,'devices',DEVICE_ID,'inbox'), snap => {
-      // Primera entrega del snapshot = listener activo y conectado
       if(!readySignaled){
         readySignaled = true;
         setDoc(doc(db,'devices',DEVICE_ID), { ready: true }, { merge: true })
@@ -1326,23 +1279,36 @@ if(IS_DEVICE && DEVICE_ID){
         showMatch(m);
       });
     });
+  }
 
-    // Mostrar partido anterior si existía
+  try {
+    // 1. Leer estado actual
+    const devSnap = await getDoc(doc(db,'devices',DEVICE_ID));
+    const devData = devSnap.exists() ? devSnap.data() : {};
+    const prevMatch = devData?.currentMatch?.type === 'match' ? devData.currentMatch : null;
+
+    // 2. Comprobar inbox pendiente
+    const inboxSnap = await getDocs(collection(db,'devices',DEVICE_ID,'inbox'));
+    const hasPendingInbox = inboxSnap.docs.some(d => d.data()?.match?.type === 'match');
+    const isBusy = !!prevMatch || hasPendingInbox;
+
+    // 3. Registrar con ready:false — el gestor no despachará hasta que el inbox confirme conexión
+    await setDoc(doc(db,'devices',DEVICE_ID), {
+      clientId: DEVICE_ID, name: DEVICE_NAME,
+      lastSeen: serverTimestamp(), blocked: false,
+      busy: isBusy, currentMatch: prevMatch || null,
+      ready: false
+    });
+
+    dot.classList.add('on'); st.textContent = 'Conectando…';
+
+    // 4. Suscribir inbox — el primer snapshot señaliza ready:true al gestor
+    subscribeInbox();
     if(prevMatch) showMatch(prevMatch);
 
   } catch(e){
     console.error('Device setup error', e);
-    onSnapshot(collection(db,'devices',DEVICE_ID,'inbox'), snap => {
-      snap.docChanges().forEach(async change => {
-        if(change.type !== 'added') return;
-        const data = change.doc.data();
-        const m = data.match;
-        if(!m || m.type !== 'match') return;
-        deleteDoc(change.doc.ref).catch(()=>{});
-        await setDoc(doc(db,'devices',DEVICE_ID), { currentMatch: m, busy: true }, { merge: true }).catch(()=>{});
-        showMatch(m);
-      });
-    });
+    subscribeInbox();
     st.textContent = 'Error de conexión';
   }
 
@@ -1424,7 +1390,7 @@ if(IS_DEVICE && DEVICE_ID){
         from:DEVICE_ID, elapsed:startTs?Date.now()-startTs:0, ts:serverTimestamp()
       });
       // Limpiar partido activo de Firestore
-      await setDoc(doc(db,'devices',DEVICE_ID), { status:'idle', currentMatch: null, busy: false }, { merge: true });
+      await setDoc(doc(db,'devices',DEVICE_ID), { currentMatch: null, busy: false }, { merge: true });
       $('ipad-sent-msg').style.display='block';
       btn.style.display='none';
       setTimeout(()=>{
@@ -1884,12 +1850,10 @@ async function restoreTournament(sid, data, showToast){
   });
   blockedDevices=data.blocked||[];
   if(state.rounds){
-    console.log('restoreTournament: showing tournament-screen');
     $('display-title').textContent=groupData.title; $('fs-bar-title').textContent=groupData.title;
     ['setup-screen','group-screen','pairing-screen'].forEach(id=>$(id).style.display='none');
     $('tournament-screen').style.display='block'; renderBracket(); updateProgress();
   } else {
-    console.log('restoreTournament: showing group-screen');
     $('gs-title').textContent=groupData.title;
     ['setup-screen','pairing-screen','tournament-screen'].forEach(id=>$(id).style.display='none');
     $('group-screen').style.display='block'; renderGroups();
@@ -2581,17 +2545,14 @@ function buildCard(match, ri, mi, isFinal=false){
       const _ri=ri, _mi=mi, _si=si, _lri=lri, _teamName=team?.name;
       slot.addEventListener('click', (e)=>{
         e.stopPropagation();
-        console.log('slot click', {isGF, isLower, _ri, _mi, _si, _lri, _teamName, stateRounds: !!state.rounds, stateLRounds: !!state.lRounds});
         if(isGF){
           window.selectWinnerGF(_si);
         } else if(isLower){
           const cur = state.lRounds?.[_lri]?.[_mi];
-          console.log('lower cur', cur);
           if(!cur) return;
           if(!cur.winner) window.selectWinnerLower(_lri, _mi, _si);
         } else {
           const cur = state.rounds?.[_ri]?.[_mi];
-          console.log('upper cur', cur);
           if(!cur) return;
           if(!cur.winner) window.selectWinner(_ri, _mi, _si);
           else if(cur.winner?.name === _teamName) window.resetWinner(_ri, _mi);
