@@ -2391,10 +2391,17 @@ function generateProfessionalNames(pairings){
 function launchTournament(title, names){
   const rounds = buildUpperRounds(names);
   const lRounds = buildLowerRounds(rounds);
-  const gf = { t1:null, t2:null, winner:null }; // Gran Final
+  const gf = { t1:null, t2:null, winner:null };
   const totalMatches = (rounds.flat().length) + (lRounds.flat().length) + 1;
   state = { title, numTeams:names.length, totalMatches, rounds, lRounds, gf };
-  // Auto-avanzar BYEs en lower R1: si ambos slots están y uno es BYE, el otro avanza
+  // Ahora que state.lRounds existe, hacer drop de los BYEs de upper R1 al lower
+  rounds[0].forEach((m,mi)=>{
+    if(m.winner && m.loser){
+      // Partido ya resuelto (BYE) — bajar el BYE al lower
+      dropToLower(0, mi, {name:'BYE', seed:0});
+    }
+  });
+  // Auto-avanzar en lower si hay algún match con BYE + jugador real
   autoAdvanceLowerByes();
   $('display-title').textContent=title; $('fs-bar-title').textContent=title;
   $('tournament-screen').style.display='block';
@@ -2433,17 +2440,15 @@ function buildUpperRounds(names){
   const rounds = [first];
   for(let p=first.length; p>1; p=Math.ceil(p/2))
     rounds.push(Array.from({length:Math.ceil(p/2)}, ()=>({t1:null,t2:null,winner:null,loser:null})));
-  // Auto-advance BYEs — ganador sube a upper, y recibe BYE en lower R1 también
+  // Auto-advance BYEs en upper R1 — solo propagar al upper siguiente
+  // El drop al lower se hace en launchTournament después de construir state
   rounds[0].forEach((m,mi)=>{
     if(!m.t2||m.t2.name==='BYE'){
-      m.winner=m.t1; m.loser=m.t2;
+      m.winner=m.t1; m.loser={name:'BYE',seed:0};
       propagateUpper(rounds,0,mi,m.t1);
-      // En lower R1, el slot correspondiente queda como BYE (se auto-avanza)
-      dropToLower(0, mi, {name:'BYE', seed:0});
     } else if(m.t1&&m.t1.name==='BYE'){
-      m.winner=m.t2; m.loser=m.t1;
+      m.winner=m.t2; m.loser={name:'BYE',seed:0};
       propagateUpper(rounds,0,mi,m.t2);
-      dropToLower(0, mi, {name:'BYE', seed:0});
     }
   });
   return rounds;
