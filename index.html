@@ -794,6 +794,9 @@ function showAdminView(){
           setTimeout(async ()=>{
             await dispatchNextFromQueue();
             if(sessionId && groupData.groups){ await buildAndSaveQueue(); updateDeviceUI(); }
+            // También actualizar cola de otros torneos con dispositivos activos
+            const activeSids = [...new Set(connectedDevices.filter(x=>x.busy&&x.currentMatch?.sid).map(x=>x.currentMatch.sid))];
+            for(const sid of activeSids) if(sid!==sessionId) await buildAndSaveQueueForSid(sid);
           }, 300);
         }
         existing.ready = !!d.ready;
@@ -1688,6 +1691,13 @@ async function dispatchNextFromQueue(){
         }
       }
     } while(_dispatchPending); // re-ejecutar si alguien llamó durante el dispatch
+    // Siempre actualizar cola pública al terminar el dispatch
+    if(sessionId && groupData.groups){
+      buildAndSaveQueue().catch(()=>{});
+      // También otros torneos con dispositivos activos
+      const activeSids = [...new Set(connectedDevices.filter(d=>d.busy&&d.currentMatch?.sid&&d.currentMatch.sid!==sessionId).map(d=>d.currentMatch.sid))];
+      activeSids.forEach(sid=>buildAndSaveQueueForSid(sid).catch(()=>{}));
+    }
   }finally{
     _dispatching = false;
   }
