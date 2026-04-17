@@ -818,7 +818,11 @@ function showAdminView(){
     if(sessionId && groupData.groups){
       renderGroups();
       updateDeviceUI();
+      // Actualizar cola pública del torneo activo
       buildAndSaveQueue().catch(()=>{});
+      // Actualizar cola pública de otros torneos con items
+      const otherSids = [...new Set(globalQueue.filter(q=>q.sid!==sessionId).map(q=>q.sid))];
+      otherSids.forEach(sid=>buildAndSaveQueueForSid(sid).catch(()=>{}));
     }
   });
 
@@ -1753,24 +1757,47 @@ async function buildAndSaveQueue(){
   try{ await saveQueueMeta(sessionId,items,groupData.title); }catch(e){}
 }
 
-// Actualizar la cola pública de torneos que no son el activo
-// (cuando un dispositivo termina un partido de otro torneo)
-async function buildAndSaveQueueForSid(sid){
-  if(sid===sessionId){ await buildAndSaveQueue(); return; }
-  // Para torneos no activos, solo podemos marcar como 'pending' los que estaban 'live'
-  // ya que no tenemos groupData de ese torneo
-  // La solución: marcar todos los items de ese torneo como no-live en la cola pública
+// Reconstruir cola pública de cualquier torneo usando globalQueue + connectedDevices
+// No necesita groupData — todo lo que necesitamos está en los items de la cola
+async function buildAndSaveQueueForSid(targetSid){
+  if(targetSid===sessionId){ await buildAndSaveQueue(); return; }
+  // Items de este torneo que están en cola
+  const queuedItems = globalQueue.filter(q=>q.sid===targetSid);
+  // Dispositivos ocupados con partidos de este torneo
+  const liveDevs = connectedDevices.filter(d=>d.busy&&d.currentMatch?.sid===targetSid);
+
+  const items = [];
+  // Añadir los que están en juego (live)
+  liveDevs.forEach(dev=>{
+    const cm = dev.currentMatch;
+    items.push({
+      gi:cm.gi, mi:cm.mi,
+      t1:cm.t1||'', t2:cm.t2||'',
+      group:cm.group||'', torneoName:cm.torneoName||targetSid,
+      status:'live', devName:dev.name,
+      assignedAt:cm.assignedAt||0
+    });
+  });
+  // Añadir los que están en cola (queued)
+  queuedItems.forEach((q,i)=>{
+    items.push({
+      gi:q.gi, mi:q.mi,
+      t1:q.t1, t2:q.t2,
+      group:q.group, torneoName:q.torneoName||targetSid,
+      status:'queued', devName:null,
+      queuePos:i+1, assignedAt:q.assignedAt
+    });
+  });
+  items.sort((a,b)=>{
+    const r={live:0,queued:1,pending:2};
+    if(r[a.status]!==r[b.status]) return r[a.status]-r[b.status];
+    return (a.assignedAt||0)-(b.assignedAt||0);
+  });
+  // Obtener título del torneo de la cola pública existente
   try{
-    const snap = await getDoc(queueRef(sid));
-    if(!snap.exists()) return;
-    const {items} = parseQueueData(snap.data());
-    // Marcar como pending los que estaban live para este dispositivo
-    const updated = items.map(it=>({
-      ...it,
-      status: it.status==='live' ? 'pending' : it.status,
-      devName: it.status==='live' ? null : it.devName
-    }));
-    await saveQueueMeta(sid, updated, snap.data().title||'');
+    const snap = await getDoc(queueRef(targetSid));
+    const title = snap.exists() ? (snap.data().title||targetSid) : targetSid;
+    await saveQueueMeta(targetSid, items, title);
   }catch(e){}
 }
 
@@ -1805,7 +1832,10 @@ async function restoreTournament(sid, data, showToast){
   }
   subscribeToSession(); updateDeviceUI();
   await checkPublishState(); updatePublishBtn();
-  await buildAndSaveQueue(); // actualizar cola pública con estado real tras carga
+  await buildAndSaveQueue(); // cola pública del torneo activo
+  // Actualizar cola pública de otros torneos con items en la cola global
+  const otherSids = [...new Set(globalQueue.filter(q=>q.sid!==sid).map(q=>q.sid))];
+  for(const otherSid of otherSids){ await buildAndSaveQueueForSid(otherSid); }
   const busy=connectedDevices.filter(d=>d.busy);
   if(busy.length) setTimeout(()=>toast(`⚠️ ${busy.map(d=>d.name).join(', ')} tenía${busy.length>1?'n':''} partido en curso`),1000);
   if(showToast) toast(`📂 Torneo "${groupData.title}" cargado`);
@@ -1830,11 +1860,10 @@ function subscribeToSession(){
         } else { renderGroups(); }
       }
       await dispatchNextFromQueue();
-      // Actualizar cola pública del torneo del partido (puede ser diferente al activo)
-      if(d.sid && d.sid !== sessionId){
-        await buildAndSaveQueueForSid(d.sid);
-      }
-      await buildAndSaveQueue();
+      // Reconstruir cola pública para el torneo del partido recibido
+      await buildAndSaveQueueForSid(d.sid||sessionId);
+      // Y para el torneo activo si es diferente
+      if(d.sid && d.sid !== sessionId) await buildAndSaveQueue();
       updateDeviceUI();
       deleteDoc(change.doc.ref).catch(()=>{});
     });
