@@ -788,6 +788,15 @@ function showAdminView(){
             if(sessionId && groupData.groups){ await buildAndSaveQueue(); updateDeviceUI(); }
           }, 2000);
         }
+        // Dispositivo acaba de señalar ready:true — despachar si está libre
+        if(d.ready && !existing.ready && !d.busy){
+          existing.ready = true;
+          setTimeout(async ()=>{
+            await dispatchNextFromQueue();
+            if(sessionId && groupData.groups){ await buildAndSaveQueue(); updateDeviceUI(); }
+          }, 300);
+        }
+        existing.ready = !!d.ready;
       } else {
         // Dispositivo nuevo
         if(change.type==='modified'){
@@ -800,11 +809,12 @@ function showAdminView(){
         });
         $('connect-overlay')?.classList.remove('open');
         toast(`📱 ${d.name} conectado`);
-        if(!d.busy){
+        // Solo despachar cuando el dispositivo confirma ready:true
+        if(!d.busy && d.ready){
           setTimeout(async ()=>{
             await dispatchNextFromQueue();
             if(sessionId && groupData.groups){ await buildAndSaveQueue(); updateDeviceUI(); }
-          }, 2000);
+          }, 500);
         }
       }
       updateDeviceUI();
@@ -1273,31 +1283,36 @@ if(IS_DEVICE && DEVICE_ID){
   let curMatch = null, sc = {s1:0,s2:0}, timerInt = null, startTs = null, running = false;
 
   try {
-    // 1. Leer estado actual PRIMERO — antes de suscribirse al inbox
+    // 1. Leer estado actual
     const devSnap = await getDoc(doc(db,'devices',DEVICE_ID));
     const devData = devSnap.exists() ? devSnap.data() : {};
     const prevMatch = devData?.currentMatch?.type === 'match' ? devData.currentMatch : null;
 
     // 2. Comprobar inbox pendiente
     const inboxSnap = await getDocs(collection(db,'devices',DEVICE_ID,'inbox'));
-    const pendingMsg = inboxSnap.docs.find(d => d.data()?.match?.type === 'match');
-    const hasPendingInbox = !!pendingMsg;
-
-    // 3. Registrar presencia con estado correcto
+    const hasPendingInbox = inboxSnap.docs.some(d => d.data()?.match?.type === 'match');
     const isBusy = !!prevMatch || hasPendingInbox;
+
+    // 3. Registrar como NO listo todavía (ready:false) — el gestor no despachará aún
     await setDoc(doc(db,'devices',DEVICE_ID), {
       clientId: DEVICE_ID, name: DEVICE_NAME,
       lastSeen: serverTimestamp(), blocked: false,
       busy: isBusy, currentMatch: prevMatch || null,
-      status: isBusy ? 'busy' : 'idle'
+      ready: false
     });
 
-    dot.classList.add('on'); st.textContent = 'Conectado';
+    dot.classList.add('on'); st.textContent = 'Conectando…';
 
-    // 4. Suscribirse al inbox ANTES de registrar presencia visible al gestor
-    // onSnapshot registra el listener síncronamente — la conexión se establece en paralelo
-    // El gestor no recibirá el evento hasta que hagamos setDoc en paso 5
-    const inboxUnsub = onSnapshot(collection(db,'devices',DEVICE_ID,'inbox'), snap => {
+    // 4. Suscribir inbox — cuando el primer snapshot llega, sabemos que Firestore está conectado
+    let readySignaled = false;
+    onSnapshot(collection(db,'devices',DEVICE_ID,'inbox'), snap => {
+      // Primera entrega del snapshot = listener activo y conectado
+      if(!readySignaled){
+        readySignaled = true;
+        setDoc(doc(db,'devices',DEVICE_ID), { ready: true }, { merge: true })
+          .then(()=>{ st.textContent = 'Conectado'; })
+          .catch(()=>{});
+      }
       snap.docChanges().forEach(async change => {
         if(change.type !== 'added') return;
         const data = change.doc.data();
@@ -1309,20 +1324,11 @@ if(IS_DEVICE && DEVICE_ID){
       });
     });
 
-    // 5. Registrar presencia — el gestor lo verá ahora que el inbox ya está suscrito
-    await setDoc(doc(db,'devices',DEVICE_ID), {
-      clientId: DEVICE_ID, name: DEVICE_NAME,
-      lastSeen: serverTimestamp(), blocked: false,
-      busy: isBusy, currentMatch: prevMatch || null,
-      status: isBusy ? 'busy' : 'idle'
-    });
-
-    // 6. Mostrar partido anterior si existe
+    // Mostrar partido anterior si existía
     if(prevMatch) showMatch(prevMatch);
 
   } catch(e){
     console.error('Device setup error', e);
-    // Suscribir inbox igualmente aunque falle el registro
     onSnapshot(collection(db,'devices',DEVICE_ID,'inbox'), snap => {
       snap.docChanges().forEach(async change => {
         if(change.type !== 'added') return;
