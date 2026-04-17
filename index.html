@@ -561,8 +561,12 @@
 <div id="pairing-screen">
   <div class="pairing-card">
     <h2 style="font-family:'Barlow Condensed', sans-serif; color:var(--gold); text-transform:uppercase; margin-bottom:0.5rem;">Configuración de Cruces</h2>
-    <p style="color:var(--text-muted); font-size:0.9rem; margin-bottom:1.5rem;">Selecciona cómo se cruzarán los grupos. El sistema asegura que el 1º y 2º de cada grupo solo se vean en la final.</p>
+    <p style="color:var(--text-muted); font-size:0.9rem; margin-bottom:1rem;">Selecciona cómo se cruzarán los grupos. El sistema asegura que el 1º y 2º de cada grupo solo se vean en la final.</p>
     
+    <button class="btn" id="btn-random-pairing" style="margin-bottom:1.2rem;width:100%;background:var(--bg3);border-color:var(--border-strong);">
+      🔀 Cruces aleatorios
+    </button>
+
     <div class="pairing-grid" id="pairing-grid"></div>
     
     <button class="btn btn-primary" id="btn-start-bracket" style="width:100%; margin-top:2rem; padding:0.8rem;">
@@ -2262,10 +2266,20 @@ function updateGroupProgress(){
   $('gs-fill').style.width=(all.length?Math.round(done/all.length*100):100)+'%';
   $('gs-progress-text').textContent=`${done} / ${all.length} partidos`;
   const complete=done===all.length;
-  $('btn-advance').classList.toggle('ready',complete);
-  $('footer-info').innerHTML=complete?'<strong>¡Fase de grupos completada!</strong> Ya puedes configurar los cruces.':'Completa todos los partidos para continuar.';
+  $('btn-advance').classList.toggle('ready',complete||!!state.rounds);
+  $('btn-advance').textContent=state.rounds?'Ver Cuadro →':'Avanzar al Cuadro →';
+  $('footer-info').innerHTML=state.rounds?'<strong>Cuadro generado.</strong> Puedes volver a verlo o seguir editando resultados.':complete?'<strong>¡Fase de grupos completada!</strong> Ya puedes configurar los cruces.':'Completa todos los partidos para continuar.';
 }
-$('btn-advance').onclick=()=>renderPairingScreen();
+$('btn-advance').onclick=()=>{
+  if(state.rounds){
+    // Cuadro ya generado — mostrar directamente sin reconfigurar
+    $('group-screen').style.display='none';
+    $('tournament-screen').style.display='block';
+    renderBracket(); updateProgress();
+  } else {
+    renderPairingScreen();
+  }
+};
 
 // ── Pairing ───────────────────────────────────────────
 function renderPairingScreen(){
@@ -2286,6 +2300,26 @@ function renderPairingScreen(){
   }
   $('group-screen').style.display='none'; $('pairing-screen').style.display='block';
 }
+
+// Generar cruces aleatorios sin repetir grupos en el mismo cruce
+function randomizePairings(){
+  const nGroups = groupData.groups.length;
+  const nPairs = nGroups / 2;
+  const indices = [...Array(nGroups).keys()]; // [0,1,2,3,...]
+  
+  // Fisher-Yates shuffle
+  for(let i=indices.length-1; i>0; i--){
+    const j = Math.floor(Math.random()*(i+1));
+    [indices[i], indices[j]] = [indices[j], indices[i]];
+  }
+  
+  // Asignar selects: índices shuffled en pares
+  const selects = [...document.querySelectorAll('.group-pairing-select')];
+  selects.forEach((sel, i) => { sel.value = indices[i]; });
+  toast('🔀 Cruces aleatorizados');
+}
+$('btn-random-pairing').addEventListener('click', randomizePairings);
+
 $('btn-start-bracket').onclick=()=>{
   const selects=[...document.querySelectorAll('.group-pairing-select')], groupIndices=selects.map(s=>parseInt(s.value));
   if(new Set(groupIndices).size!==groupIndices.length){ toast('⚠️ No puedes repetir grupos en los cruces.'); return; }
