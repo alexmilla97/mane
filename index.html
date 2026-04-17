@@ -1528,20 +1528,25 @@ if((IS_DISPLAY||IS_BRACKET||IS_QUEUE) && (SESSION_ID||IS_QUEUE)){
         Object.keys(pubQueuesLocal).forEach(sid=>{if(!ids.includes(sid)){delete pubQueuesLocal[sid];}});
         mergAndRender();
       });
-      // Refrescar la cola leyendo Firestore cada 30s por si algún onSnapshot se desincroniza
-      setInterval(async ()=>{
+      // Refresh bajo demanda — escucha evento 'refreshQueue' desde el gestor o dispositivo
+      async function forceRefresh(){
         try{
           const pubSnap = await getDoc(doc(db,'config','publishedTorneos'));
           const ids = (pubSnap.data()?.sessionIds||[]).filter(Boolean);
           for(const sid of ids){
             const qSnap = await getDoc(queueRef(sid));
-            if(qSnap.exists()){
-              pubQueuesLocal[sid] = parseQueueData(qSnap.data());
-            }
+            if(qSnap.exists()) pubQueuesLocal[sid] = parseQueueData(qSnap.data());
           }
           mergAndRender();
         }catch(e){}
-      }, 30000);
+      }
+      // Escuchar mensajes del gestor/dispositivo en la misma pestaña o broadcast
+      window.addEventListener('refreshQueue', forceRefresh);
+      // También via BroadcastChannel para pestañas diferentes
+      try{
+        const bc = new BroadcastChannel('torneoPro_queue');
+        bc.onmessage = ()=>forceRefresh();
+      }catch(e){}
     }
   } else {
     $('display-screen').classList.add('active');
@@ -1630,6 +1635,14 @@ async function saveCurrentTournament(){
 // ════════════════════════════════════════════════════════════════
 
 const QUEUE_REF = () => doc(db,'config','globalQueue');
+
+// Notificar a las pestañas de cola pública que deben refrescarse
+let _bc = null;
+try{ _bc = new BroadcastChannel('torneoPro_queue'); }catch(e){}
+function broadcastQueueRefresh(){
+  window.dispatchEvent(new Event('refreshQueue'));
+  try{ _bc?.postMessage('refresh'); }catch(e){}
+}
 
 async function saveGlobalQueue(){
   try{ await setDoc(QUEUE_REF(), { queue: globalQueue, updatedAt: serverTimestamp() }); }
@@ -1804,7 +1817,7 @@ async function buildAndSaveQueue(){
     });
   });
   items.sort((a,b)=>{ const r={live:0,queued:1,pending:2}; if(r[a.status]!==r[b.status]) return r[a.status]-r[b.status]; return (a.assignedAt||0)-(b.assignedAt||0); });
-  try{ await saveQueueMeta(sessionId,items,groupData.title); }catch(e){}
+  try{ await saveQueueMeta(sessionId,items,groupData.title); broadcastQueueRefresh(); }catch(e){}
 }
 
 // Reconstruir cola pública de cualquier torneo usando globalQueue + connectedDevices
@@ -1848,6 +1861,7 @@ async function buildAndSaveQueueForSid(targetSid){
     const snap = await getDoc(queueRef(targetSid));
     const title = snap.exists() ? (snap.data().title||targetSid) : targetSid;
     await saveQueueMeta(targetSid, items, title);
+    broadcastQueueRefresh();
   }catch(e){}
 }
 
