@@ -732,11 +732,6 @@ window.$ = id => document.getElementById(id);
 // modSc e closeScorePanel se definen directamente en window dentro del módulo
 </script>
 <script type="module">
-// Suprimir el error de parada en modo pantalla pública
-window.addEventListener('unhandledrejection', e => {
-  if(e.reason?.message === 'public-mode-stop') e.preventDefault();
-});
-
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
 import { getFirestore, doc, setDoc, getDoc, onSnapshot, collection, getDocs, deleteDoc, serverTimestamp, addDoc, runTransaction }
   from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
@@ -1440,8 +1435,8 @@ if(IS_DEVICE && DEVICE_ID){
 // ══════════════════════════════════════════════════════
 // MODO PANTALLA GRANDE / COLA (pestaña secundaria)
 // ══════════════════════════════════════════════════════
-// Declarar state aquí para que esté disponible en renderBracketDisplay
-// incluso cuando el throw interrumpe la ejecución del módulo
+// state declarado aquí para que renderBracketDisplay pueda acceder a él
+// incluso después del throw que detiene la inicialización del admin
 let state = {};
 
 if((IS_DISPLAY||IS_BRACKET||IS_QUEUE) && (SESSION_ID||IS_QUEUE)){
@@ -1548,7 +1543,7 @@ if((IS_DISPLAY||IS_BRACKET||IS_QUEUE) && (SESSION_ID||IS_QUEUE)){
       },300);
     }
   }
-  throw new Error('public-mode-stop'); // detiene el módulo silenciosamente
+  throw new Error('display-mode')
 }
 
 // Variables del gestor — en scope de módulo para acceso desde funciones compartidas
