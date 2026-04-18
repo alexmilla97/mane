@@ -1544,18 +1544,15 @@ if((IS_DISPLAY||IS_BRACKET||IS_QUEUE) && (SESSION_ID||IS_QUEUE)){
       },300);
     }
   }
-  // Modo pantalla pública — no inicializar el admin
-  // Usar flag para evitar ejecutar el código de admin
-  window._publicMode = true;
 }
+const _isPublicMode = IS_DISPLAY || IS_BRACKET || IS_QUEUE || IS_DEVICE;
 
-// Variables del gestor — declaradas en scope de módulo para acceso desde funciones globales
+// Variables del gestor — en scope de módulo para acceso desde funciones compartidas
 let bracketSize=4, numGroups=2;
 let groupData={}, sessionId=null;
 let isFsMode=false, activePanel=null;
 
-if(!window._publicMode && !IS_DEVICE){
-
+if(!_isPublicMode){
 // ══════════════════════════════════════════════════════
 // MODO GESTOR
 // ══════════════════════════════════════════════════════
@@ -2195,6 +2192,12 @@ function resetAll(){
 }
 $('reset-btn').addEventListener('click', resetAll);
 
+} // fin if(!_isPublicMode) — bloque admin exclusivo
+
+// ══════════════════════════════════════════════════════
+// FUNCIONES COMPARTIDAS (admin + vistas públicas)
+// ══════════════════════════════════════════════════════
+
 // ── Group stage ───────────────────────────────────────
 function makeRR(teams){
   const m=[];
@@ -2202,11 +2205,6 @@ function makeRR(teams){
     if(teams[i].name!=='BYE'&&teams[j].name!=='BYE') m.push({t1:teams[i],t2:teams[j],s1:null,s2:null,played:false});
   return m;
 }
-} // fin bloque admin-exclusivo (!_publicMode && !IS_DEVICE)
-
-// ══════════════════════════════════════════════════════
-// FUNCIONES COMPARTIDAS (admin + vista pública)
-// ══════════════════════════════════════════════════════
 function calcStandings(group){
   if(group.manualOrder) return group.manualOrder;
   const mp={};
@@ -2928,6 +2926,7 @@ function drawLines(){
 }
 
 // ── Exponer funciones al HTML (onclick inline) ────────
+if(!_isPublicMode){
 const _fns = {
   loadTournament, deleteTournament, moveTeam,
   openScorePanel, modSc: window.modSc, closeScorePanel: window.closeScorePanel,
@@ -2953,6 +2952,7 @@ const _fns = {
   showPubPanel: window.showPubPanel, closePubPanel: window.closePubPanel,
 };
 Object.entries(_fns).forEach(([k,v]) => { if(v){ window[k]=v; window['_fn_'+k]=v; } });
+} // fin _fns admin block
 
 // ── Auth reactivo — al final para que todas las funciones estén definidas ──
 if(!IS_DEVICE && !IS_DISPLAY && !IS_BRACKET && !IS_QUEUE){
