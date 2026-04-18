@@ -2202,6 +2202,11 @@ function makeRR(teams){
     if(teams[i].name!=='BYE'&&teams[j].name!=='BYE') m.push({t1:teams[i],t2:teams[j],s1:null,s2:null,played:false});
   return m;
 }
+} // fin bloque admin-exclusivo (!_publicMode && !IS_DEVICE)
+
+// ══════════════════════════════════════════════════════
+// FUNCIONES COMPARTIDAS (admin + vista pública)
+// ══════════════════════════════════════════════════════
 function calcStandings(group){
   if(group.manualOrder) return group.manualOrder;
   const mp={};
@@ -2948,8 +2953,6 @@ const _fns = {
   showPubPanel: window.showPubPanel, closePubPanel: window.closePubPanel,
 };
 Object.entries(_fns).forEach(([k,v]) => { if(v){ window[k]=v; window['_fn_'+k]=v; } });
-
-} // fin bloque admin (!_publicMode && !IS_DEVICE)
 
 // ── Auth reactivo — al final para que todas las funciones estén definidas ──
 if(!IS_DEVICE && !IS_DISPLAY && !IS_BRACKET && !IS_QUEUE){
