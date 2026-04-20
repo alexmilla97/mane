@@ -2420,10 +2420,30 @@ function generateProfessionalNames(pairings){
 
 // ── Knockout — Double Elimination ─────────────────────
 function launchTournament(title, names){
-  // Rellenar con BYEs hasta la siguiente potencia de 2
+  // Calcular cuántos BYEs necesitamos
   const nextPow2 = n => { let p=1; while(p<n) p*=2; return p; };
   const targetSize = nextPow2(names.length);
-  while(names.length < targetSize) names.push('BYE');
+  const byesNeeded = targetSize - names.length;
+
+  if(byesNeeded > 0){
+    // Distribuir los BYEs junto a los mejores seeds del array
+    // El array viene ordenado: 1º gA, último gB, 2º gA, penúltimo gB, ...
+    // Los primeros jugadores del array son los mejores seeds
+    // Insertamos un BYE después de cada uno de los mejores clasificados
+    // para que se enfrenten a BYE en R1 y salten ronda
+    const result = [];
+    let byesLeft = byesNeeded;
+    for(let i = 0; i < names.length; i++){
+      result.push(names[i]);
+      // Intercalar BYE después de este seed si quedan BYEs
+      // Los primeros byesNeeded jugadores (mejores seeds) reciben BYE
+      if(byesLeft > 0 && i < byesNeeded){
+        result.push('BYE');
+        byesLeft--;
+      }
+    }
+    names = result;
+  }
 
   const rounds = buildUpperRounds(names);
   const lRounds = buildLowerRounds(rounds);
