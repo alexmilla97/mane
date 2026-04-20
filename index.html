@@ -2398,6 +2398,11 @@ function generateProfessionalNames(pairings){
 
 // ── Knockout — Double Elimination ─────────────────────
 function launchTournament(title, names){
+  // Rellenar con BYEs hasta la siguiente potencia de 2
+  const nextPow2 = n => { let p=1; while(p<n) p*=2; return p; };
+  const targetSize = nextPow2(names.length);
+  while(names.length < targetSize) names.push('BYE');
+
   const rounds = buildUpperRounds(names);
   const lRounds = buildLowerRounds(rounds);
   const gf = { t1:null, t2:null, winner:null };
