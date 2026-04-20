@@ -160,6 +160,9 @@
   .team-slot.winner .slot-win-icon { opacity: 1; }
   .team-slot.empty { cursor: default; color: var(--text-muted); font-style: italic; }
   .team-slot.bye { background: rgba(255,255,255,0.02); }
+  .bye-match { opacity:0.85; }
+  .bye-match .team-slot.bye-winner { background:rgba(46,204,113,0.06); cursor:default; }
+  .bye-badge { font-size:0.6rem; font-weight:700; letter-spacing:0.08em; color:var(--text-muted); background:rgba(255,255,255,0.06); border:1px solid var(--border); border-radius:3px; padding:0.1rem 0.3rem; margin-left:auto; opacity:0.6; white-space:nowrap; }
   .final-match { border: 2px solid var(--gold); transform: scale(1.1); }
   .bracket-section-label { font-family: 'Barlow Condensed', sans-serif; font-size: 0.75rem; font-weight: 800; letter-spacing: 0.18em; text-transform: uppercase; color: var(--text-muted); opacity: 0.5; text-align: center; padding: 0.4rem 1rem; border-radius: 4px; white-space: nowrap; }
   .bracket-divider { width: 100%; height: 2px; background: linear-gradient(to right, transparent, var(--border-strong), transparent); margin: 1.5rem 0; flex-shrink: 0; }
@@ -2378,91 +2381,66 @@ $('btn-start-bracket').onclick=()=>{
 
 function generateProfessionalNames(pairings){
   const nGroups = groupData.groups.length;
-  const sortedGroups = groupData.groups.map(g=>calcStandings(g));
-  // Contar solo jugadores reales (no BYE) — los BYEs se añaden en launchTournament
-  const realPlayersPerGroup = sortedGroups[0].filter(s=>s.team.name!=='BYE').length;
-  const tpg = realPlayersPerGroup;
-  const groupMap = {};
-  pairings.forEach((pair,i)=>{
-    // Filtrar BYEs de cada grupo
-    groupMap[i*2]  = sortedGroups[pair[0]].filter(s=>s.team.name!=='BYE');
-    groupMap[i*2+1]= sortedGroups[pair[1]].filter(s=>s.team.name!=='BYE');
-  });
-  const getT = (gIdx,pos) => groupMap[gIdx][pos]?.team.name || 'BYE';
+  const sortedGroups = groupData.groups.map(g => calcStandings(g));
 
-  // Para configuraciones conocidas con seeds perfectos (4 grupos × 4 u 8 jugadores reales)
-  const totalTeams = nGroups * tpg;
-  const names = new Array(totalTeams).fill(null);
-  if(nGroups===4){
-    if(tpg===4){names[0]=getT(0,0);names[1]=getT(3,3);names[2]=getT(1,1);names[3]=getT(2,2);names[4]=getT(2,0);names[5]=getT(1,3);names[6]=getT(3,1);names[7]=getT(0,2);names[8]=getT(1,0);names[9]=getT(2,3);names[10]=getT(0,1);names[11]=getT(3,2);names[12]=getT(3,0);names[13]=getT(0,3);names[14]=getT(2,1);names[15]=getT(1,2);}
-    else if(tpg===8){names[0]=getT(0,0);names[1]=getT(3,7);names[2]=getT(2,3);names[3]=getT(1,4);names[4]=getT(1,1);names[5]=getT(2,6);names[6]=getT(0,2);names[7]=getT(3,5);names[8]=getT(2,0);names[9]=getT(1,7);names[10]=getT(0,3);names[11]=getT(3,4);names[12]=getT(3,1);names[13]=getT(0,6);names[14]=getT(2,2);names[15]=getT(1,5);names[16]=getT(1,0);names[17]=getT(2,7);names[18]=getT(3,3);names[19]=getT(0,4);names[20]=getT(0,1);names[21]=getT(3,6);names[22]=getT(1,2);names[23]=getT(2,5);names[24]=getT(3,0);names[25]=getT(0,7);names[26]=getT(1,3);names[27]=getT(2,4);names[28]=getT(2,1);names[29]=getT(1,6);names[30]=getT(3,2);names[31]=getT(0,5);}
-  }
-  if(names.some(n=>n===null)){
-    // Fallback genérico: cruzar 1º vs último, 2º vs penúltimo, etc.
-    const L=[], R=[];
-    pairings.forEach((pair, pi)=>{
-      const gA = groupMap[pi*2];
-      const gB = groupMap[pi*2+1];
-      const half = Math.ceil(tpg/2);
-      for(let i=0;i<half;i++){
-        const top=i, bot=tpg-1-i;
-        const m1=[gA[top]?.team.name||'BYE', gB[bot]?.team.name||'BYE'];
-        const m2=[gB[top]?.team.name||'BYE', gA[bot]?.team.name||'BYE'];
-        if(i%2===0){L.push(...m1);R.push(...m2);}
-        else{R.push(...m1);L.push(...m2);}
-      }
-    });
-    return [...L,...R];
-  }
-  return names;
+  // Solo jugadores reales (sin BYE), ordenados por clasificación
+  const realOf = gIdx => sortedGroups[gIdx]
+    .filter(s => s.team.name !== 'BYE')
+    .map(s => s.team.name);
+
+  const pairs = pairings.map(([a, b]) => ({ gA: realOf(a), gB: realOf(b) }));
+  const tpg = pairs[0].gA.length; // jugadores reales por grupo
+
+  // Cuántos BYEs necesitamos en total
+  const totalReal = nGroups * tpg;
+  const nextPow2 = n => { let p = 1; while(p < n) p *= 2; return p; };
+  const bracketSize = nextPow2(totalReal);
+  const byesNeeded = bracketSize - totalReal;
+
+  // Cuántos BYEs por grupo (distribuidos equitativamente)
+  // byesNeeded / nGroups = BYEs por grupo
+  // Estos van a los mejores clasificados: 1º, 2º, ... de cada grupo
+  const byesPerGroup = byesNeeded / nGroups; // ej: 8 BYEs / 4 grupos = 2
+
+  const result = [];
+
+  pairs.forEach(({ gA, gB }) => {
+    // Primeros byesPerGroup de cada grupo juegan contra BYE
+    for(let i = 0; i < byesPerGroup; i++){
+      result.push(gA[i], 'BYE');
+      result.push(gB[i], 'BYE');
+    }
+    // Resto se cruzan entre sí: mejores de A vs peores de B y viceversa
+    const restA = gA.slice(byesPerGroup);
+    const restB = gB.slice(byesPerGroup);
+    const n = restA.length;
+    for(let i = 0; i < n; i++){
+      result.push(restA[i], restB[n - 1 - i]);
+      result.push(restB[i], restA[n - 1 - i]);
+    }
+  });
+
+  return result;
 }
 
 
 // ── Knockout — Double Elimination ─────────────────────
 function launchTournament(title, names){
-  // Calcular cuántos BYEs necesitamos
-  const nextPow2 = n => { let p=1; while(p<n) p*=2; return p; };
-  const targetSize = nextPow2(names.length);
-  const byesNeeded = targetSize - names.length;
-
-  if(byesNeeded > 0){
-    // Distribuir los BYEs junto a los mejores seeds del array
-    // El array viene ordenado: 1º gA, último gB, 2º gA, penúltimo gB, ...
-    // Los primeros jugadores del array son los mejores seeds
-    // Insertamos un BYE después de cada uno de los mejores clasificados
-    // para que se enfrenten a BYE en R1 y salten ronda
-    const result = [];
-    let byesLeft = byesNeeded;
-    for(let i = 0; i < names.length; i++){
-      result.push(names[i]);
-      // Intercalar BYE después de este seed si quedan BYEs
-      // Los primeros byesNeeded jugadores (mejores seeds) reciben BYE
-      if(byesLeft > 0 && i < byesNeeded){
-        result.push('BYE');
-        byesLeft--;
-      }
-    }
-    names = result;
-  }
-
   const rounds = buildUpperRounds(names);
   const lRounds = buildLowerRounds(rounds);
-  const gf = { t1:null, t2:null, winner:null };
-  const totalMatches = (rounds.flat().length) + (lRounds.flat().length) + 1;
-  state = { title, numTeams:names.length, totalMatches, rounds, lRounds, gf };
-  // Ahora que state.lRounds existe, hacer drop de los BYEs de upper R1 al lower
-  rounds[0].forEach((m,mi)=>{
-    if(m.winner && m.loser){
-      // Partido ya resuelto (BYE) — bajar el BYE al lower
-      dropToLower(0, mi, {name:'BYE', seed:0});
-    }
+  const gf = { t1: null, t2: null, winner: null };
+  const totalMatches = rounds.flat().length + lRounds.flat().length + 1;
+  state = { title, numTeams: names.length, totalMatches, rounds, lRounds, gf };
+  // Drop BYEs de upper R1 al lower (state.lRounds ya existe)
+  rounds[0].forEach((m, mi) => {
+    if(m.winner && m.loser) dropToLower(0, mi, { name:'BYE', seed:0 });
   });
-  // Auto-avanzar en lower si hay algún match con BYE + jugador real
   autoAdvanceLowerByes();
-  $('display-title').textContent=title; $('fs-bar-title').textContent=title;
-  $('tournament-screen').style.display='block';
+  $('display-title').textContent = title; $('fs-bar-title').textContent = title;
+  $('tournament-screen').style.display = 'block';
   saveCurrentTournament(); renderBracket(); updateProgress(); flashHint();
 }
+
 
 function autoAdvanceLowerByes(){
   if(!state.lRounds) return;
@@ -2705,14 +2683,32 @@ function buildCard(match, ri, mi, isFinal=false){
   const isLower = typeof ri === 'string' && ri.startsWith('l');
   const isGF = ri === 'gf';
   const lri = isLower ? parseInt(ri.slice(1)) : null;
+
+  // Detectar partido con BYE
+  const t1IsBye = match.t1?.name === 'BYE';
+  const t2IsBye = match.t2?.name === 'BYE';
+  const hasBye  = t1IsBye || t2IsBye;
+
+  if(hasBye){
+    // Mostrar solo el jugador real con badge "BYE" — ocultar slot BYE
+    const realTeam = t1IsBye ? match.t2 : match.t1;
+    card.classList.add('bye-match');
+    if(realTeam){
+      const slot = document.createElement('div');
+      slot.className = 'team-slot winner bye-winner';
+      slot.innerHTML = `<span class="slot-seed">#${realTeam.seed}</span><span class="slot-name">${realTeam.name}</span><span class="bye-badge">BYE</span>`;
+      card.appendChild(slot);
+    }
+    return card;
+  }
+
   [match.t1, match.t2].forEach((team, si)=>{
     const slot=document.createElement('div');
-    const isBye=team&&team.name==='BYE';
     const isWin=match.winner&&team&&match.winner.name===team.name;
     const isLos=match.winner&&team&&match.winner.name!==team.name;
-    slot.className='team-slot'+(isBye?' bye empty':'')+((!team)?' empty':'')+(isWin?' winner':'')+(isLos?' loser':'');
-    slot.innerHTML=`<span class="slot-seed">${team?'#'+team.seed:''}</span><span class="slot-name">${isBye?'BYE':(team?team.name:'Por decidir')}</span><span class="slot-win-icon">▲</span>`;
-    if(!isBye&&team&&!IS_DISPLAY&&!IS_BRACKET){
+    slot.className='team-slot'+((!team)?' empty':'')+(isWin?' winner':'')+(isLos?' loser':'');
+    slot.innerHTML=`<span class="slot-seed">${team?'#'+team.seed:''}</span><span class="slot-name">${team?team.name:'Por decidir'}</span><span class="slot-win-icon">▲</span>`;
+    if(team&&!IS_DISPLAY&&!IS_BRACKET){
       const _ri=ri, _mi=mi, _si=si, _lri=lri, _teamName=team?.name;
       slot.addEventListener('click', (e)=>{
         e.stopPropagation();
@@ -2734,6 +2730,7 @@ function buildCard(match, ri, mi, isFinal=false){
   });
   return card;
 }
+
 
 function selectWinner(ri, mi, si){
   const match = state.rounds[ri][mi];
