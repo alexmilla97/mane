@@ -3342,16 +3342,17 @@ function renderBracketDisplay(data){
       const uW=upperC.scrollWidth||1, uH=upperC.scrollHeight||1;
       const lW=lowerC.scrollWidth||1, lH=lowerC.scrollHeight||1;
 
-      // 1. Lower: calcular su escala perfecta
+      // 1. Lower: su escala perfecta (~35% del alto)
       const lScW = vW/lW;
-      const lScH = availH*0.35/lH; // lower ocupa ~35% del alto
+      const lScH = availH*0.35/lH;
       const lSc  = Math.min(lScW, lScH);
       const lowerVisW = lW*lSc;
+      const lowerVisH = lH*lSc;
 
-      // 2. Upper: mismo ancho visual que el lower, limitado por el alto disponible
-      const remainH = availH - lH*lSc;
-      const uScW = lowerVisW/uW; // escala que da el mismo ancho visual que el lower
-      const uScH = remainH*0.98/uH;
+      // 2. Upper: usa TODO el ancho disponible y TODO el alto restante
+      const remainH = availH - lowerVisH;
+      const uScW = vW/uW;
+      const uScH = remainH/uH;
       const uSc  = Math.min(uScW, uScH);
       _uSc = uSc;
 
@@ -3361,7 +3362,7 @@ function renderBracketDisplay(data){
       upperC.style.left=Math.max(0,(vW-uW*uSc)/2)+'px';
       upperC.style.top='0px';
 
-      // Aplicar lower
+      // Aplicar lower — centrado abajo
       lowerC.style.transform=`scale(${lSc})`;
       lowerC.style.width=lW+'px'; lowerC.style.height=lH+'px';
       lowerC.style.left=Math.max(0,(vW-lowerVisW)/2)+'px';
