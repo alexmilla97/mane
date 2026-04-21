@@ -610,6 +610,7 @@
       <div style="font-size:0.85rem;color:var(--text-muted)" id="progress-text"></div>
       <button class="btn btn-fs" id="btn-fullscreen">🏆 Cuadro (Público)</button>
       <button class="btn btn-fs" id="publish-btn-bracket" onclick="togglePublish()" style="display:none">📡 Publicar</button>
+      <button class="btn btn-fs" id="btn-simulate-bracket" style="border-color:var(--border);color:var(--text-muted);">🎲 Simular</button>
     </div>
   </div>
   <div style="width:100%"><div class="progress-bar"><div class="progress-fill" id="progress-fill" style="width:0%"></div></div></div>
@@ -2517,7 +2518,48 @@ function randomizePairings(){
   selects.forEach((sel, i) => { sel.value = indices[i]; });
   toast('🔀 Cruces aleatorizados');
 }
-$('btn-random-pairing').addEventListener('click', randomizePairings);
+$('btn-simulate-bracket').addEventListener('click', ()=>{
+  if(!state.rounds){ toast('⚠️ No hay cuadro activo'); return; }
+  if(!confirm('¿Simular todos los partidos con resultados aleatorios?')) return;
+  function simMatch(match){
+    if(match.winner||!match.t1||!match.t2) return;
+    if(match.t1.name==='BYE'||match.t2.name==='BYE') return;
+    const s = Math.random()>0.5 ? 0 : 1;
+    const winner = s===0?match.t1:match.t2, loser = s===0?match.t2:match.t1;
+    match.winner=winner; match.loser=loser;
+  }
+  // Simular iterativamente hasta que no haya cambios
+  let changed=true;
+  while(changed){
+    changed=false;
+    state.rounds.forEach((round,ri)=>round.forEach((m,mi)=>{
+      if(!m.winner&&m.t1&&m.t2&&m.t1.name!=='BYE'&&m.t2.name!=='BYE'){
+        simMatch(m);
+        if(m.winner){ changed=true; propagateUpper(state.rounds,ri,mi,m.winner); dropToLower(ri,mi,m.loser); autoAdvanceLowerByes(); }
+      }
+    }));
+    (state.lRounds||[]).forEach((round,lri)=>round.forEach((m,mi)=>{
+      if(!m.winner&&m.t1&&m.t2&&m.t1.name!=='BYE'&&m.t2.name!=='BYE'){
+        simMatch(m);
+        if(m.winner){ changed=true; propagateLower(lri,mi,m.winner); }
+      }
+    }));
+    // Gran Final
+    if(!state.gf.winner&&state.gf.t1&&state.gf.t2){
+      simMatch(state.gf);
+      if(state.gf.winner){ changed=true; }
+    }
+    // Upper final → Gran Final t1
+    const lastR=state.rounds[state.rounds.length-1];
+    if(lastR[0]?.winner&&!state.gf.t1) state.gf.t1=lastR[0].winner;
+  }
+  if(state.gf.winner){
+    $('champion-name').textContent=state.gf.winner.name;
+    $('champion-banner').classList.add('visible');
+  }
+  saveCurrentTournament(); renderBracket(); updateProgress();
+  toast('🎲 Simulación completada');
+});
 
 $('btn-start-bracket').onclick=()=>{
   const selects=[...document.querySelectorAll('.group-pairing-select')], groupIndices=selects.map(s=>parseInt(s.value));
@@ -3184,22 +3226,60 @@ function renderBracketDisplay(data){
     upperWrap.appendChild(svg);
     wrap.appendChild(upperWrap);
 
-    // Lower bracket — ligeramente más pequeño para dar prioridad al upper
+    // Lower bracket — dividido en 2 mitades para aprovechar la verticalidad
     if(data.lRounds?.length){
       const div1=document.createElement('div'); div1.className='bracket-divider'; wrap.appendChild(div1);
       const lowerLabel=document.createElement('div'); lowerLabel.className='bracket-section-label'; lowerLabel.textContent='▼ Lower Bracket';
       wrap.appendChild(lowerLabel);
+
+      const lRounds = data.lRounds;
+      const total = lRounds.length;
+      const half = Math.ceil(total / 2);
+
       const lowerOuter=document.createElement('div');
       lowerOuter.style.cssText='transform-origin:top left;transform:scale(0.78);';
-      const lowerWrap=document.createElement('div'); lowerWrap.className='lower-bracket-wrap';
-      renderLowerInto(lowerWrap);
-      lowerOuter.appendChild(lowerWrap);
-      // Ajustar altura del outer para que no deje espacio vacío
+
+      // Contenedor horizontal: mitad izquierda | espacio central | mitad derecha (invertida)
+      const lowerDual = document.createElement('div');
+      lowerDual.style.cssText='display:flex;align-items:flex-start;gap:2rem;';
+
+      // Mitad izquierda (rondas 0..half-1)
+      const lLeft = document.createElement('div');
+      lLeft.style.cssText='display:flex;gap:1rem;align-items:flex-start;';
+      for(let lr=0; lr<half; lr++){
+        const round=lRounds[lr];
+        const col=document.createElement('div'); col.className='lower-round-col';
+        const isDropIn=round[0]?.type==='drop-in', uRound=isDropIn?(round[0]?.fromUpperRound??0):null;
+        const hdr=document.createElement('div'); hdr.className='round-header';
+        hdr.textContent=isDropIn?`Perdedores R${uRound+1}`:`Lower R${lr+1}`;
+        col.appendChild(hdr);
+        const mc=document.createElement('div'); mc.className='lower-matches';
+        round.forEach((m,mi)=>{ const card=buildCard(m,`l${lr}`,mi,false); card.id=`match-l${lr}-${mi}`; mc.appendChild(card); });
+        col.appendChild(mc); lLeft.appendChild(col);
+      }
+
+      // Mitad derecha (rondas half..total-1, invertidas visualmente)
+      const lRight = document.createElement('div');
+      lRight.style.cssText='display:flex;gap:1rem;align-items:flex-start;flex-direction:row-reverse;';
+      for(let lr=half; lr<total; lr++){
+        const round=lRounds[lr];
+        const col=document.createElement('div'); col.className='lower-round-col';
+        const isDropIn=round[0]?.type==='drop-in', uRound=isDropIn?(round[0]?.fromUpperRound??0):null;
+        const hdr=document.createElement('div'); hdr.className='round-header';
+        hdr.textContent=isDropIn?`Perdedores R${uRound+1}`:`Lower R${lr+1}`;
+        col.appendChild(hdr);
+        const mc=document.createElement('div'); mc.className='lower-matches';
+        round.forEach((m,mi)=>{ const card=buildCard(m,`l${lr}`,mi,false); card.id=`match-l${lr}-${mi}`; mc.appendChild(card); });
+        col.appendChild(mc); lRight.appendChild(col);
+      }
+
+      lowerDual.appendChild(lLeft);
+      lowerDual.appendChild(lRight);
+      lowerOuter.appendChild(lowerDual);
       wrap.appendChild(lowerOuter);
-      // Después de añadir al DOM, ajustar altura
       requestAnimationFrame(()=>{
-        const h = lowerWrap.scrollHeight * 0.78;
-        lowerOuter.style.height = h + 'px';
+        const h=lowerDual.scrollHeight*0.78;
+        lowerOuter.style.height=h+'px';
       });
     }
 
