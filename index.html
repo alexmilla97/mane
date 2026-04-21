@@ -607,6 +607,17 @@
   <div class="bracket-outer" id="bracket-outer">
     <div id="bracket-scaler"><div id="bracket-container"></div></div>
   </div>
+  <!-- Panel de puntuación para partidos del cuadro -->
+  <div id="bracket-score-panel" style="display:none; position:fixed; bottom:0; left:0; right:0; z-index:200; background:var(--bg2); border-top:2px solid var(--border-strong); padding:1rem; box-shadow:0 -4px 20px rgba(0,0,0,0.4);">
+    <div style="max-width:480px; margin:0 auto;">
+      <div id="bsp-label" style="font-family:'Barlow Condensed',sans-serif; font-size:0.7rem; font-weight:700; color:var(--gold); text-transform:uppercase; letter-spacing:0.1em; margin-bottom:0.6rem; text-align:center;"></div>
+      <div class="score-row" id="bsp-row"></div>
+      <div class="score-actions" style="margin-top:0.6rem; display:flex; gap:0.5rem; justify-content:flex-end;">
+        <button class="sc-cancel" onclick="closeBracketScorePanel()">Cancelar</button>
+        <button class="sc-save" onclick="saveBracketScore()">Guardar resultado ✓</button>
+      </div>
+    </div>
+  </div>
   <div class="group-footer">
     <div></div>
     <button class="btn" id="btn-back-to-groups" onclick="goBackToGroupsFromBracket()" style="background:var(--bg3);border-color:var(--border-strong);color:var(--text-muted);">← Volver a Grupos</button>
@@ -726,7 +737,8 @@
  'ipadToggleFS','ipadMod','ipadSave','ipadStart','renderPairingScreen',
  'closeTourneysOverlay','closeConnectOverlay','goBackToGroups','goBackToGroupsFromBracket',
  'openLoginModal','closeLoginModal','doLogin','adminLogout','switchPubTab','togglePublish',
- 'showPubPanel','closePubPanel'
+ 'showPubPanel','closePubPanel',
+ 'closeBracketScorePanel','modBSP','saveBracketScore'
 ].forEach(fn => window[fn] = (...a) => window['_fn_'+fn]?.(...a));
 window.$ = id => document.getElementById(id);
 // modSc e closeScorePanel se definen directamente en window dentro del módulo
@@ -2855,52 +2867,99 @@ function buildCard(match, ri, mi, isFinal=false){
       const _ri=ri, _mi=mi, _si=si, _lri=lri, _teamName=team?.name;
       slot.addEventListener('click', (e)=>{
         e.stopPropagation();
-        if(isGF){
-          window.selectWinnerGF(_si);
-        } else if(isLower){
-          const cur = state.lRounds?.[_lri]?.[_mi];
-          if(!cur) return;
-          if(!cur.winner) window.selectWinnerLower(_lri, _mi, _si);
-        } else {
-          const cur = state.rounds?.[_ri]?.[_mi];
-          if(!cur) return;
-          if(!cur.winner) window.selectWinner(_ri, _mi, _si);
-          else if(cur.winner?.name === _teamName) window.resetWinner(_ri, _mi);
-        }
+        openBracketScorePanel(ri, mi, isGF, isLower, lri);
       });
     }
     card.appendChild(slot);
   });
 
-  // Botón de cola — solo si ambos equipos están definidos, no hay ganador, no hay BYE, y es admin
-  if(!IS_DISPLAY && !IS_BRACKET && match.t1 && match.t2 &&
-     match.t1.name!=='BYE' && match.t2.name!=='BYE' && !match.winner){
-    const bType = isGF?'gf':isLower?'lower':'upper';
-    const bRi   = isGF?0:isLower?lri:ri;
-    const bMi   = mi;
-    const live    = isBracketMatchLive(bType,bRi,bMi);
-    const queued  = isBracketMatchQueued(bType,bRi,bMi);
-    const pos     = queued?getBracketMatchQueuePos(bType,bRi,bMi):null;
-    const qBtn = document.createElement('button');
-    qBtn.style.cssText='width:100%;margin-top:4px;padding:3px 6px;font-size:0.65rem;border-radius:4px;border:1px solid;cursor:pointer;font-family:inherit;';
-    if(live){
-      qBtn.textContent='▶ En juego'; qBtn.disabled=true;
-      qBtn.style.cssText+=`background:rgba(46,204,113,0.1);border-color:var(--win);color:var(--win);cursor:default;`;
-    } else if(queued){
-      qBtn.textContent=`📋 Cola #${pos}`;
-      qBtn.style.cssText+=`background:rgba(255,193,7,0.1);border-color:var(--gold);color:var(--gold);`;
-      qBtn.onclick=(e)=>{e.stopPropagation();removeBracketMatchFromQueue(bType,bRi,bMi);};
-    } else {
-      qBtn.textContent='➕ Añadir a cola';
-      qBtn.style.cssText+=`background:rgba(255,255,255,0.04);border-color:var(--border);color:var(--text-muted);`;
-      qBtn.onclick=(e)=>{e.stopPropagation();addBracketMatchToQueue(bType,bRi,bMi);};
-    }
-    card.appendChild(qBtn);
-  }
 
   return card;
 }
 
+
+function renderBracketSendToSection(bType, bRi, bMi, container){
+  const section = document.createElement('div'); section.className='send-to-section';
+  const live   = isBracketMatchLive(bType, bRi, bMi);
+  const queued = isBracketMatchQueued(bType, bRi, bMi);
+  const pos    = queued ? getBracketMatchQueuePos(bType, bRi, bMi) : null;
+  const btn = document.createElement('button');
+  if(live){
+    btn.className='send-to-btn sent'; btn.textContent='▶ En juego'; btn.disabled=true;
+  } else if(queued){
+    btn.className='send-to-btn queued'; btn.textContent=`📋 En cola #${pos}`;
+    btn.addEventListener('click', ()=>{ removeBracketMatchFromQueue(bType,bRi,bMi); openBracketScorePanel(_bsp.ri,_bsp.mi,_bsp.isGF,_bsp.isLower,_bsp.lri); });
+  } else {
+    btn.className='send-to-btn'; btn.textContent='➕ Añadir a cola';
+    btn.addEventListener('click', ()=>{ addBracketMatchToQueue(bType,bRi,bMi); openBracketScorePanel(_bsp.ri,_bsp.mi,_bsp.isGF,_bsp.isLower,_bsp.lri); });
+  }
+  section.appendChild(btn); container.appendChild(section);
+}
+
+// ── Panel de puntuación del cuadro ───────────────────────────
+let _bsp = null; // {ri, mi, isGF, isLower, lri, s1, s2}
+
+function openBracketScorePanel(ri, mi, isGF, isLower, lri){
+  const match = isGF ? state.gf
+    : isLower ? state.lRounds?.[lri]?.[mi]
+    : state.rounds?.[ri]?.[mi];
+  if(!match || !match.t1 || !match.t2 || match.winner) return;
+
+  _bsp = {ri, mi, isGF, isLower, lri, s1:0, s2:0};
+
+  const label = isGF ? 'Gran Final'
+    : isLower ? `Lower R${lri+1}` : `Upper R${ri+1}`;
+  $('bsp-label').textContent = label;
+
+  $('bsp-row').innerHTML = `
+    <div class="sc-lbl">${match.t1.name}</div>
+    <div class="sc-grp">
+      <button class="sc-btn" onclick="modBSP(-1,1)">-</button>
+      <div class="sc-num" id="bsp-s1">0</div>
+      <button class="sc-btn" onclick="modBSP(1,1)">+</button>
+    </div>
+    <div class="sc-sep">:</div>
+    <div class="sc-grp">
+      <button class="sc-btn" onclick="modBSP(-1,2)">-</button>
+      <div class="sc-num" id="bsp-s2">0</div>
+      <button class="sc-btn" onclick="modBSP(1,2)">+</button>
+    </div>
+    <div class="sc-lbl">${match.t2.name}</div>`;
+
+  // Botón de cola — igual que en grupos
+  const bType = isGF?'gf':isLower?'lower':'upper';
+  const bRi   = isGF?0:isLower?lri:ri;
+  const qSection = document.createElement('div');
+  renderBracketSendToSection(bType, bRi, mi, qSection);
+  const existingQ = $('bsp-queue-section');
+  if(existingQ) existingQ.remove();
+  qSection.id = 'bsp-queue-section';
+  $('bsp-row').after(qSection);
+
+  $('bracket-score-panel').style.display = 'block';
+}
+
+window.closeBracketScorePanel = () => {
+  $('bracket-score-panel').style.display = 'none';
+  _bsp = null;
+};
+
+window.modBSP = (v, n) => {
+  if(!_bsp) return;
+  if(n===1){ _bsp.s1 = Math.max(0, _bsp.s1+v); $('bsp-s1').textContent = _bsp.s1; }
+  else     { _bsp.s2 = Math.max(0, _bsp.s2+v); $('bsp-s2').textContent = _bsp.s2; }
+};
+
+window.saveBracketScore = () => {
+  if(!_bsp) return;
+  const {ri, mi, isGF, isLower, lri, s1, s2} = _bsp;
+  if(s1 === s2){ toast('⚠️ El resultado no puede ser un empate'); return; }
+  const winnerSi = s1 > s2 ? 0 : 1;
+  closeBracketScorePanel();
+  if(isGF) window.selectWinnerGF(winnerSi);
+  else if(isLower) window.selectWinnerLower(lri, mi, winnerSi);
+  else window.selectWinner(ri, mi, winnerSi);
+};
 
 function selectWinner(ri, mi, si){
   const match = state.rounds[ri][mi];
