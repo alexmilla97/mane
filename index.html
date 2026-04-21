@@ -1391,7 +1391,7 @@ if(IS_DEVICE && DEVICE_ID){
     const done=curMatch; curMatch=null;
     const sid=done.sessionId;
     try {
-      const isBracket = done.type==='bracket';
+      const isBracket = done.matchType==='bracket' || done.type==='bracket';
       const scoreId = String(done.matchId||`${done.sessionId}_${done.gi}_${done.mi}`);
       const winnerName = isBracket ? (sc.s1>=sc.s2 ? done.t1 : done.t2) : null;
       const payload = {
@@ -1656,18 +1656,21 @@ async function getNextMatchId(){
 // ── Envío a dispositivos ──────────────────────────────────────
 
 async function _sendMatchNow(dev, qItem){
-  const {gi, mi, sid, t1, t2, group, torneoName, matchId} = qItem;
-  // Marcar ocupado INMEDIATAMENTE antes de cualquier await
+  const {gi, mi, sid, t1, t2, group, torneoName, matchId,
+         type, bType, bRi, bMi} = qItem;
+  const isBracket = type === 'bracket';
   dev.busy = true;
-  dev.currentMatch = {gi, mi, sid, matchId, t1, t2, group, torneoName, assignedAt: Date.now()};
+  dev.currentMatch = {gi, mi, sid, matchId, t1, t2, group, torneoName, assignedAt: Date.now(),
+    ...(isBracket ? {type:'bracket', bType, bRi, bMi} : {})};
   const payload = {type:'match', gi, mi, t1, t2, group,
-    target:dev.clientId, startAt:Date.now(), sessionId:sid, torneoName, matchId};
+    target:dev.clientId, startAt:Date.now(), sessionId:sid, torneoName, matchId,
+    ...(isBracket ? {matchType:'bracket', bType, bRi, bMi} : {})};
   try{
     await sendToDevice(sid, dev.clientId, {match:payload});
     await setDoc(doc(db,'devices',dev.clientId), {busy:true, currentMatch:payload}, {merge:true});
     if(sid===sessionId){
-      if(activePanel?.gi===gi&&activePanel?.mi===mi){closeScorePanel(gi);activePanel=null;}
-      renderGroups();
+      if(!isBracket && activePanel?.gi===gi&&activePanel?.mi===mi){closeScorePanel(gi);activePanel=null;}
+      isBracket ? renderBracket() : renderGroups();
     }
     toast(`📱 ${t1} vs ${t2} → ${dev.name}`);
   }catch(e){
@@ -1694,7 +1697,8 @@ async function dispatchNextFromQueue(){
         free.busy = true;
         free.currentMatch = {gi:item.gi, mi:item.mi, sid:item.sid, matchId:item.matchId,
           t1:item.t1, t2:item.t2, group:item.group, torneoName:item.torneoName,
-          assignedAt:Date.now()};
+          assignedAt:Date.now(),
+          ...(item.type==='bracket' ? {type:'bracket', bType:item.bType, bRi:item.bRi, bMi:item.bMi} : {})};
         await saveGlobalQueue(); // listener dispara: item no está + dev.busy=true → status:'live' ✓
         try{
           await _sendMatchNow(free, item);
