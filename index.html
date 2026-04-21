@@ -3118,98 +3118,68 @@ function renderBracketDisplay(data){
   cont.innerHTML = '';
   cont.style.cssText = 'flex:1;overflow:hidden;position:relative;background:var(--bg);';
 
-  const scaler = document.createElement('div');
-  scaler.style.cssText = 'transform-origin:top left;position:absolute;top:0;left:0;';
+  // Crear un contenedor temporal fuera de pantalla para medir
+  const measurer = document.createElement('div');
+  measurer.id = 'bracket-container';
+  measurer.style.cssText = 'position:fixed;top:-9999px;left:-9999px;visibility:hidden;min-height:600px;';
 
-  const wrap = document.createElement('div');
-  wrap.style.cssText = 'display:flex;flex-direction:column;gap:0;padding:1.2rem 1.5rem;min-width:max-content;position:relative;';
+  // Guardar el contenedor admin si existe y renombrarlo temporalmente
+  const adminC = document.getElementById('bracket-container');
+  if(adminC) adminC.id = 'bracket-container-hidden';
+  document.body.appendChild(measurer);
 
   const savedState = state;
   state = data;
-  try{
-    const {rounds} = state, total = rounds.length, halfR = total - 1;
-
-    // ── Upper bracket ──
-    const upperWrap = document.createElement('div');
-    upperWrap.style.cssText = 'display:flex;gap:0;align-items:flex-start;position:relative;';
-
-    const left = document.createElement('div'); left.className='bracket-half-left';
-    for(let ri=0; ri<halfR; ri++){
-      const h = Math.ceil(rounds[ri].length/2);
-      left.appendChild(makeCol(roundLabel(total,ri), rounds[ri].slice(0,h), ri, 0, 'left'));
-    }
-    // Centro: "Final Upper" alineado con otros round-headers
-    const center = document.createElement('div'); center.className='bracket-center';
-    center.style.cssText = 'display:flex;flex-direction:column;align-items:center;justify-content:flex-start;min-width:200px;';
-    const ch = document.createElement('div'); ch.className='round-header'; ch.textContent='Final Upper'; center.appendChild(ch);
-    const ca = document.createElement('div'); ca.className='center-match-area';
-    ca.style.cssText='padding:1rem;display:flex;align-items:center;flex:1;';
-    const finalMatch = buildCard(rounds[total-1][0], total-1, 0, false);
-    finalMatch.id=`match-${total-1}-0`; ca.appendChild(finalMatch); center.appendChild(ca);
-    const right = document.createElement('div'); right.className='bracket-half-right';
-    for(let ri=0; ri<halfR; ri++){
-      const h = Math.ceil(rounds[ri].length/2);
-      right.appendChild(makeCol(roundLabel(total,ri), rounds[ri].slice(h), ri, h, 'right'));
-    }
-    upperWrap.appendChild(left); upperWrap.appendChild(center); upperWrap.appendChild(right);
-    // SVG líneas upper
-    const upperSvg = document.createElementNS('http://www.w3.org/2000/svg','svg');
-    upperSvg.style.cssText='position:absolute;top:0;left:0;pointer-events:none;overflow:visible;';
-    upperSvg.id='bracket-svg';
-    upperWrap.appendChild(upperSvg);
-    wrap.appendChild(upperWrap);
-
-    // ── Lower bracket ──
-    if(data.lRounds?.length){
-      const sep = document.createElement('div'); sep.style.cssText='height:1px;background:var(--border);opacity:0.3;margin:0.6rem 0;'; wrap.appendChild(sep);
-      const lowerWrap = document.createElement('div'); lowerWrap.className='lower-bracket-wrap';
-      renderLowerInto(lowerWrap); wrap.appendChild(lowerWrap);
-    }
-
-    // ── Gran Final — solo si ambos decididos ──
-    if(data.gf?.t1 && data.gf?.t2){
-      const sep2 = document.createElement('div'); sep2.style.cssText='height:1px;background:var(--gold);opacity:0.3;margin:0.6rem 0;'; wrap.appendChild(sep2);
-      const gfWrap = document.createElement('div'); gfWrap.className='grand-final-wrap';
-      const gfLabel = document.createElement('div'); gfLabel.className='grand-final-label'; gfLabel.textContent='🏆 Gran Final'; gfWrap.appendChild(gfLabel);
-      const gfCard = buildCard(data.gf,'gf',0,false); gfCard.id='match-gf-0-pub'; gfWrap.appendChild(gfCard);
-      wrap.appendChild(gfWrap);
-    }
+  try {
+    renderBracket();
   } catch(e){ console.error('renderBracketDisplay error',e); }
   state = savedState;
 
-  scaler.appendChild(wrap);
+  // Medir el contenido renderizado
+  const bW = measurer.scrollWidth || measurer.offsetWidth || 800;
+  const bH = measurer.scrollHeight || measurer.offsetHeight || 600;
+
+  // Mover al scaler visible
+  const scaler = document.createElement('div');
+  scaler.style.cssText = 'position:absolute;transform-origin:top left;';
+  scaler.style.width = bW + 'px';
+  scaler.style.height = bH + 'px';
+
+  // Mover todos los hijos de measurer a scaler
+  while(measurer.firstChild) scaler.appendChild(measurer.firstChild);
+  document.body.removeChild(measurer);
+  // Restaurar ID del contenedor admin
+  const hiddenC = document.getElementById('bracket-container-hidden');
+  if(hiddenC) hiddenC.id = 'bracket-container';
+
+  // Reasignar IDs del SVG para que drawLines funcione en scaler
+  const svg = scaler.querySelector('svg');
+  if(svg){ svg.id = 'bracket-svg-pub'; }
+
   cont.appendChild(scaler);
 
-  function drawPublicLines(){
-    const svg = document.getElementById('bracket-svg'); if(!svg) return;
-    const savedS = state; state = data;
-    try{ syncBracketOverlay(); } catch(e){}
-    state = savedS;
+  function fitScale(){
+    const vW = window.innerWidth;
+    const vH = window.innerHeight;
+    if(!bW || !bH) return;
+    const sc = Math.min(vW / bW, vH / bH) * 0.97; // 3% margen
+    const scaledW = bW * sc, scaledH = bH * sc;
+    scaler.style.transform = `scale(${sc})`;
+    scaler.style.left = Math.max(0, (vW - scaledW) / 2) + 'px';
+    scaler.style.top  = Math.max(0, (vH - scaledH) / 2) + 'px';
+    cont.style.height = vH + 'px';
   }
 
-  function fitScale(){
-    const vW = window.innerWidth, vH = window.innerHeight;
-    const bW = wrap.scrollWidth || wrap.offsetWidth || 1;
-    const bH = wrap.scrollHeight || wrap.offsetHeight || 1;
-    if(!bW||!bH) return;
-    const sc = Math.min(vW/bW, vH/bH);
-    scaler.style.transform = `scale(${sc})`;
-    scaler.style.width = bW+'px'; scaler.style.height = bH+'px';
-    scaler.style.left = Math.max(0,(vW - bW*sc)/2)+'px';
-    scaler.style.top  = Math.max(0,(vH - bH*sc)/2)+'px';
-    cont.style.height = vH+'px';
-    setTimeout(drawPublicLines, 60);
-  }
-  setTimeout(fitScale, 200);
-  setTimeout(fitScale, 700);
+  setTimeout(fitScale, 100);
+  setTimeout(fitScale, 500);
   window.addEventListener('resize', fitScale);
 
-  const uP=data.rounds.flat().filter(m=>m.winner).length;
-  const lP=(data.lRounds||[]).flat().filter(m=>m.winner).length;
-  const gfP=data.gf?.winner?1:0;
-  const played=uP+lP+gfP, total2=data.totalMatches||1;
-  $('dv-progress-text').textContent=`${played} / ${total2} partidos jugados`;
-  $('dv-progress-fill').style.width=Math.round(played/total2*100)+'%';
+  const uP = data.rounds.flat().filter(m=>m.winner).length;
+  const lP = (data.lRounds||[]).flat().filter(m=>m.winner).length;
+  const gfP = data.gf?.winner ? 1 : 0;
+  const played = uP+lP+gfP, total = data.totalMatches||1;
+  $('dv-progress-text').textContent = `${played} / ${total} partidos jugados`;
+  $('dv-progress-fill').style.width = Math.round(played/total*100)+'%';
 }
 
 // ── Fullscreen ────────────────────────────────────────
