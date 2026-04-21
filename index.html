@@ -3171,7 +3171,6 @@ function renderBracketDisplay(data){
   const scaler = document.createElement('div');
   scaler.style.cssText = 'position:absolute;transform-origin:top left;';
 
-  // Contenedor del cuadro público — mismas clases que admin pero con overrides
   const pubC = document.createElement('div');
   pubC.id = 'pub-bracket-container';
   pubC.className = data.numTeams===32 ? 'size-32' : '';
@@ -3182,12 +3181,11 @@ function renderBracketDisplay(data){
   try{
     const wrap = document.createElement('div'); wrap.className='bracket-full-wrap';
 
-    // Upper bracket
+    // ── Upper bracket ──
     const upperLabel = document.createElement('div'); upperLabel.className='bracket-section-label'; upperLabel.textContent='▲ Upper Bracket';
     wrap.appendChild(upperLabel);
     const upperWrap = document.createElement('div'); upperWrap.style.cssText='display:flex;gap:2rem;align-items:flex-start;position:relative;';
 
-    // Construir upper con round-headers alineados
     const {rounds} = state, total = rounds.length, halfR = total-1;
     const left = document.createElement('div'); left.className='bracket-half-left';
     for(let ri=0;ri<halfR;ri++){
@@ -3200,18 +3198,12 @@ function renderBracketDisplay(data){
     const ca=document.createElement('div'); ca.className='center-match-area';
     const finalM=buildCard(rounds[total-1][0],total-1,0,false); finalM.id=`match-${total-1}-0`;
     ca.appendChild(finalM); center.appendChild(ca);
-
-    // Gran Final integrada en el centro, justo debajo de Final Upper
+    // Gran Final integrada bajo Final Upper
     if(data.gf?.t1 && data.gf?.t2){
-      const gfSep=document.createElement('div');
-      gfSep.style.cssText='height:1px;background:var(--gold);opacity:0.3;margin:0.4rem 0;width:80%;align-self:center;';
-      center.appendChild(gfSep);
-      const gfHeader=document.createElement('div'); gfHeader.className='round-header';
-      gfHeader.textContent='🏆 Gran Final'; gfHeader.style.cssText='color:var(--gold);';
-      center.appendChild(gfHeader);
+      const gfSep=document.createElement('div'); gfSep.style.cssText='height:1px;background:var(--gold);opacity:0.3;margin:0.4rem 0;width:80%;align-self:center;'; center.appendChild(gfSep);
+      const gfHdr=document.createElement('div'); gfHdr.className='round-header'; gfHdr.textContent='🏆 Gran Final'; gfHdr.style.cssText='color:var(--gold);'; center.appendChild(gfHdr);
       const gfArea=document.createElement('div'); gfArea.style.cssText='padding:0.5rem;display:flex;justify-content:center;';
-      const gfCard=buildCard(data.gf,'gf',0,false); gfCard.id='match-gf-0-pub';
-      gfArea.appendChild(gfCard); center.appendChild(gfArea);
+      const gfCard=buildCard(data.gf,'gf',0,false); gfCard.id='match-gf-0-pub'; gfArea.appendChild(gfCard); center.appendChild(gfArea);
     }
     const right=document.createElement('div'); right.className='bracket-half-right';
     for(let ri=0;ri<halfR;ri++){
@@ -3219,56 +3211,61 @@ function renderBracketDisplay(data){
       right.appendChild(makeCol(roundLabel(total,ri),rounds[ri].slice(h),ri,h,'right'));
     }
     upperWrap.appendChild(left); upperWrap.appendChild(center); upperWrap.appendChild(right);
-    // SVG para líneas
     const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
     svg.setAttribute('class','bracket-svg'); svg.id='pub-bracket-svg';
     svg.style.cssText='position:absolute;top:0;left:0;pointer-events:none;overflow:visible;';
     upperWrap.appendChild(svg);
     wrap.appendChild(upperWrap);
 
-    // Lower bracket — cada ronda dividida en mitad superior (izq) e inferior (der)
+    // ── Lower bracket — dividido en 2 mitades igual que upper ──
     if(data.lRounds?.length){
       const div1=document.createElement('div'); div1.className='bracket-divider'; wrap.appendChild(div1);
       const lowerLabel=document.createElement('div'); lowerLabel.className='bracket-section-label'; lowerLabel.textContent='▼ Lower Bracket';
       wrap.appendChild(lowerLabel);
 
-      const lowerOuter=document.createElement('div');
-      lowerOuter.style.cssText='transform-origin:top left;transform:scale(0.78);';
-
       const lowerDual=document.createElement('div');
-      lowerDual.style.cssText='display:flex;align-items:flex-start;gap:2rem;';
+      lowerDual.style.cssText='display:flex;align-items:flex-start;gap:1.5rem;';
 
       const lLeft=document.createElement('div'); lLeft.style.cssText='display:flex;gap:1rem;align-items:flex-start;';
+      const lCenter=document.createElement('div'); lCenter.style.cssText='display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:180px;flex-shrink:0;';
       const lRight=document.createElement('div'); lRight.style.cssText='display:flex;gap:1rem;align-items:flex-start;flex-direction:row-reverse;';
 
       data.lRounds.forEach((round, lr)=>{
-        const isDropIn=round[0]?.type==='drop-in', uRound=isDropIn?(round[0]?.fromUpperRound??0):null;
+        const isDropIn=round[0]?.type==='drop-in';
+        const uRound=isDropIn?(round[0]?.fromUpperRound??0):null;
         const label=isDropIn?`Perdedores R${uRound+1}`:`Lower R${lr+1}`;
-        const half=Math.ceil(round.length/2);
+        const n=round.length;
+        const half=Math.ceil(n/2);
 
-        // Columna izquierda (primera mitad)
-        const colL=document.createElement('div'); colL.className='lower-round-col';
-        const hdrL=document.createElement('div'); hdrL.className='round-header'; hdrL.textContent=label; colL.appendChild(hdrL);
-        const mcL=document.createElement('div'); mcL.className='lower-matches';
-        round.slice(0,half).forEach((m,mi)=>{ const card=buildCard(m,`l${lr}`,mi,false); card.id=`match-l${lr}-${mi}`; mcL.appendChild(card); });
-        colL.appendChild(mcL); lLeft.appendChild(colL);
+        if(n===1){
+          // Final del lower — va al centro
+          const col=document.createElement('div'); col.className='lower-round-col';
+          const hdr=document.createElement('div'); hdr.className='round-header'; hdr.textContent=label; col.appendChild(hdr);
+          const mc=document.createElement('div'); mc.className='lower-matches';
+          const card=buildCard(round[0],`l${lr}`,0,false); card.id=`match-l${lr}-0`; mc.appendChild(card);
+          col.appendChild(mc); lCenter.appendChild(col);
+        } else {
+          // Mitad izquierda
+          const colL=document.createElement('div'); colL.className='lower-round-col';
+          const hdrL=document.createElement('div'); hdrL.className='round-header'; hdrL.textContent=label; colL.appendChild(hdrL);
+          const mcL=document.createElement('div'); mcL.className='lower-matches';
+          round.slice(0,half).forEach((m,mi)=>{ const card=buildCard(m,`l${lr}`,mi,false); card.id=`match-l${lr}-${mi}`; mcL.appendChild(card); });
+          colL.appendChild(mcL); lLeft.appendChild(colL);
 
-        // Columna derecha (segunda mitad)
-        const colR=document.createElement('div'); colR.className='lower-round-col';
-        const hdrR=document.createElement('div'); hdrR.className='round-header'; hdrR.textContent=label; colR.appendChild(hdrR);
-        const mcR=document.createElement('div'); mcR.className='lower-matches';
-        round.slice(half).forEach((m,mi)=>{ const card=buildCard(m,`l${lr}`,half+mi,false); card.id=`match-l${lr}-${half+mi}`; mcR.appendChild(card); });
-        colR.appendChild(mcR); lRight.appendChild(colR);
+          // Mitad derecha
+          const colR=document.createElement('div'); colR.className='lower-round-col';
+          const hdrR=document.createElement('div'); hdrR.className='round-header'; hdrR.textContent=label; colR.appendChild(hdrR);
+          const mcR=document.createElement('div'); mcR.className='lower-matches';
+          round.slice(half).forEach((m,mi)=>{ const card=buildCard(m,`l${lr}`,half+mi,false); card.id=`match-l${lr}-${half+mi}`; mcR.appendChild(card); });
+          colR.appendChild(mcR); lRight.appendChild(colR);
+        }
       });
 
       lowerDual.appendChild(lLeft);
+      lowerDual.appendChild(lCenter);
       lowerDual.appendChild(lRight);
-      lowerOuter.appendChild(lowerDual);
-      wrap.appendChild(lowerOuter);
-      requestAnimationFrame(()=>{ lowerOuter.style.height=lowerDual.scrollHeight*0.78+'px'; });
+      wrap.appendChild(lowerDual);
     }
-
-    // Gran Final — integrada en el bracket-center (ver arriba)
 
     pubC.appendChild(wrap);
   } catch(e){ console.error('renderBracketDisplay error',e); }
@@ -3277,20 +3274,16 @@ function renderBracketDisplay(data){
   scaler.appendChild(pubC);
   cont.appendChild(scaler);
 
-  // Dibujar líneas con SVG propio — implementación directa sin depender de drawLines
   function drawPubLines(){
     const svg = document.getElementById('pub-bracket-svg'); if(!svg) return;
     svg.innerHTML = '';
     const {rounds} = data, totalRounds = rounds.length;
-    // Escala actual del scaler
     let sc = 1;
     const tr = scaler.style.transform.match(/scale\(([^)]+)\)/);
     if(tr) sc = parseFloat(tr[1]);
-    // Dimensiones del contenedor sin escala
     const bW = pubC.scrollWidth, bH = pubC.scrollHeight;
     svg.setAttribute('width', bW); svg.setAttribute('height', bH);
     svg.style.width = bW+'px'; svg.style.height = bH+'px';
-    // Rect del SVG en coordenadas de pantalla (escaladas)
     const svgRect = svg.getBoundingClientRect();
     const dpr = window.devicePixelRatio || 1;
     for(let ri = 0; ri < totalRounds-1; ri++){
@@ -3300,43 +3293,36 @@ function renderBracketDisplay(data){
         if(!startEl || !endEl) return;
         const sR = startEl.getBoundingClientRect();
         const eR = endEl.getBoundingClientRect();
-        let x1 = (sR.right  - svgRect.left) / dpr / sc;
-        let y1 = (sR.top + sR.height/2 - svgRect.top) / dpr / sc;
-        let x2 = (eR.left   - svgRect.left) / dpr / sc;
-        let y2 = (eR.top + eR.height/2 - svgRect.top) / dpr / sc;
-        if(x2 < x1){ x1=(sR.left-svgRect.left)/dpr/sc; x2=(eR.right-svgRect.left)/dpr/sc; }
-        const midX = x1 + (x2-x1)/2;
-        const path = document.createElementNS('http://www.w3.org/2000/svg','path');
-        path.setAttribute('d', `M ${x1} ${y1} L ${midX} ${y1} L ${midX} ${y2} L ${x2} ${y2}`);
-        path.setAttribute('class', 'bracket-line'+(m.winner?' active':''));
+        let x1=(sR.right-svgRect.left)/dpr/sc, y1=(sR.top+sR.height/2-svgRect.top)/dpr/sc;
+        let x2=(eR.left-svgRect.left)/dpr/sc,   y2=(eR.top+eR.height/2-svgRect.top)/dpr/sc;
+        if(x2<x1){x1=(sR.left-svgRect.left)/dpr/sc;x2=(eR.right-svgRect.left)/dpr/sc;}
+        const midX=x1+(x2-x1)/2;
+        const path=document.createElementNS('http://www.w3.org/2000/svg','path');
+        path.setAttribute('d',`M ${x1} ${y1} L ${midX} ${y1} L ${midX} ${y2} L ${x2} ${y2}`);
+        path.setAttribute('class','bracket-line'+(m.winner?' active':''));
         svg.appendChild(path);
       });
     }
   }
 
   function fitScale(){
-    // Reset transform first to get accurate natural dimensions
-    scaler.style.transform = 'scale(1)';
-    scaler.style.left = '0px';
-    scaler.style.top = '0px';
-    // Force layout
+    // Reset para medir dimensiones naturales
+    scaler.style.transform='scale(1)'; scaler.style.left='0'; scaler.style.top='0';
     const bW = pubC.scrollWidth || 1;
     const bH = pubC.scrollHeight || 1;
-    if(!bW||!bH) return;
     const vW = window.innerWidth, vH = window.innerHeight;
-    const sc = Math.min(vW/bW, vH/bH) * 0.98;
-    const scaledW = bW * sc, scaledH = bH * sc;
-    scaler.style.transform = `scale(${sc})`;
-    scaler.style.width  = bW+'px';
-    scaler.style.height = bH+'px';
-    scaler.style.left   = Math.max(0, (vW - scaledW) / 2) + 'px';
-    scaler.style.top    = Math.max(0, (vH - scaledH) / 2) + 'px';
-    cont.style.height = vH+'px';
+    const sc = Math.min(vW/bW, vH/bH) * 0.99;
+    const scaledW=bW*sc, scaledH=bH*sc;
+    scaler.style.transform=`scale(${sc})`;
+    scaler.style.width=bW+'px'; scaler.style.height=bH+'px';
+    scaler.style.left=Math.max(0,(vW-scaledW)/2)+'px';
+    scaler.style.top=Math.max(0,(vH-scaledH)/2)+'px';
+    cont.style.height=vH+'px';
     requestAnimationFrame(drawPubLines);
   }
 
   setTimeout(fitScale, 200);
-  setTimeout(fitScale, 600);
+  setTimeout(fitScale, 700);
   window.addEventListener('resize', fitScale);
 
   const uP=data.rounds.flat().filter(m=>m.winner).length;
