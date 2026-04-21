@@ -2476,8 +2476,13 @@ function autoAdvanceLowerByes(){
       if(m.winner) return;
       const t1IsBye = m.t1?.name==='BYE';
       const t2IsBye = m.t2?.name==='BYE';
-      // Solo avanzar si exactamente uno es BYE y el otro es un jugador real
-      if(t1IsBye && m.t2 && !t2IsBye){
+      if(t1IsBye && t2IsBye){
+        // BYE vs BYE — propagar BYE para que la siguiente ronda también se resuelva
+        const byeTeam = {name:'BYE', seed:0};
+        m.winner = byeTeam; m.loser = byeTeam;
+        propagateLower(lri, mi, byeTeam);
+        advanced = true;
+      } else if(t1IsBye && m.t2 && !t2IsBye){
         m.winner = m.t2; m.loser = m.t1;
         propagateLower(lri, mi, m.t2);
         advanced = true;
@@ -2488,7 +2493,6 @@ function autoAdvanceLowerByes(){
       }
     });
   });
-  // Repetir si avanzamos alguno (puede crear nuevos BYEs en rondas siguientes)
   if(advanced) autoAdvanceLowerByes();
 }
 
