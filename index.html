@@ -3168,13 +3168,23 @@ function renderBracketDisplay(data){
     upperWrap.appendChild(svg);
     wrap.appendChild(upperWrap);
 
-    // Lower bracket
+    // Lower bracket — ligeramente más pequeño para dar prioridad al upper
     if(data.lRounds?.length){
       const div1=document.createElement('div'); div1.className='bracket-divider'; wrap.appendChild(div1);
       const lowerLabel=document.createElement('div'); lowerLabel.className='bracket-section-label'; lowerLabel.textContent='▼ Lower Bracket';
       wrap.appendChild(lowerLabel);
+      const lowerOuter=document.createElement('div');
+      lowerOuter.style.cssText='transform-origin:top left;transform:scale(0.78);';
       const lowerWrap=document.createElement('div'); lowerWrap.className='lower-bracket-wrap';
-      renderLowerInto(lowerWrap); wrap.appendChild(lowerWrap);
+      renderLowerInto(lowerWrap);
+      lowerOuter.appendChild(lowerWrap);
+      // Ajustar altura del outer para que no deje espacio vacío
+      wrap.appendChild(lowerOuter);
+      // Después de añadir al DOM, ajustar altura
+      requestAnimationFrame(()=>{
+        const h = lowerWrap.scrollHeight * 0.78;
+        lowerOuter.style.height = h + 'px';
+      });
     }
 
     // Gran Final — solo si ambos decididos
