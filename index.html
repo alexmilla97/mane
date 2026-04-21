@@ -792,7 +792,7 @@ function showAdminView(){
           existing.currentMatch = null;
           setTimeout(async ()=>{
             await dispatchNextFromQueue();
-            if(sessionId && groupData.groups){ await buildAndSaveQueue(); updateDeviceUI(); }
+            if(sessionId && (groupData.groups || state.rounds)){ await buildAndSaveQueue(); updateDeviceUI(); }
           }, 2000);
         }
         // Dispositivo acaba de señalar ready:true — despachar si está libre
@@ -800,7 +800,7 @@ function showAdminView(){
           existing.ready = true;
           setTimeout(async ()=>{
             await dispatchNextFromQueue();
-            if(sessionId && groupData.groups){ await buildAndSaveQueue(); updateDeviceUI(); }
+            if(sessionId && (groupData.groups || state.rounds)){ await buildAndSaveQueue(); updateDeviceUI(); }
             // También actualizar cola de otros torneos con dispositivos activos
             const activeSids = [...new Set(connectedDevices.filter(x=>x.busy&&x.currentMatch?.sid).map(x=>x.currentMatch.sid))];
             for(const sid of activeSids) if(sid!==sessionId) await buildAndSaveQueueForSid(sid);
@@ -823,7 +823,7 @@ function showAdminView(){
         if(!d.busy && d.ready){
           setTimeout(async ()=>{
             await dispatchNextFromQueue();
-            if(sessionId && groupData.groups){ await buildAndSaveQueue(); updateDeviceUI(); }
+            if(sessionId && (groupData.groups || state.rounds)){ await buildAndSaveQueue(); updateDeviceUI(); }
           }, 500);
         }
       }
@@ -835,12 +835,11 @@ function showAdminView(){
   onSnapshot(QUEUE_REF(), snap=>{
     if(!snap.exists()) return;
     globalQueue = snap.data().queue||[];
-    if(sessionId && groupData.groups){
-      renderGroups();
+    if(sessionId && (groupData.groups || state.rounds)){
+      if(groupData.groups) renderGroups();
+      if(state.rounds) renderBracket();
       updateDeviceUI();
-      // Actualizar cola pública del torneo activo
       buildAndSaveQueue().catch(()=>{});
-      // Actualizar cola pública de otros torneos con items
       const otherSids = [...new Set(globalQueue.filter(q=>q.sid!==sessionId).map(q=>q.sid))];
       otherSids.forEach(sid=>buildAndSaveQueueForSid(sid).catch(()=>{}));
     }
@@ -1703,7 +1702,7 @@ async function dispatchNextFromQueue(){
         try{
           await _sendMatchNow(free, item);
           // Actualizar cola pública con status live (listener puede no haber disparado aún)
-          if(sessionId && groupData.groups) buildAndSaveQueue().catch(()=>{});
+          if(sessionId && (groupData.groups || state.rounds)) buildAndSaveQueue().catch(()=>{});
         }
         catch(e){
           free.busy = false;
@@ -1846,7 +1845,7 @@ function renderSendToSection(gi,mi,container){
 // COLA PÚBLICA (vista para espectadores)
 // ════════════════════════════════════════════════════════════════
 async function buildAndSaveQueue(){
-  if(!sessionId||!groupData.groups) return;
+  if(!sessionId || (!groupData.groups && !state.rounds)) return;
   const items=[];
   // Partidos de grupos
   groupData.groups.forEach((g,gi)=>{
