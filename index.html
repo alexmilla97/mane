@@ -2399,13 +2399,14 @@ function generateProfessionalNames(pairings){
   // Para 4 grupos: usar tabla de seeding fija que mantiene la estructura
   // independientemente del número de jugadores por grupo (con BYEs como últimos)
   if(nGroups === 4){
-    // pairings define qué grupo es A, B, C, D según el cruce elegido
-    // pairings[0]=[gA,gC], pairings[1]=[gB,gD] (o el orden que elija el usuario)
-    const G = pairings.flatMap(([a,b]) => [fullOf(a), fullOf(b)]);
-    // G[0]=gA, G[1]=gC, G[2]=gB, G[3]=gD  (según orden de pairings)
-    const A=G[0], B=G[2], C=G[1], D=G[3];
-    const n = A.length; // jugadores efectivos por grupo (reales + BYEs)
-    const last = n-1;
+    // pairings = [[gA_idx, gC_idx], [gB_idx, gD_idx]]
+    // Primer cruce → A y C, segundo cruce → B y D
+    const A = fullOf(pairings[0][0]);
+    const C = fullOf(pairings[0][1]);
+    const B = fullOf(pairings[1][0]);
+    const D = fullOf(pairings[1][1]);
+    const n = A.length;
+    const last = n - 1;
 
     // Tabla de seeding estándar para 4 grupos:
     // Partido 1:  1ºA vs nºD,   4ºC vs (n-3)ºB
