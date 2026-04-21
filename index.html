@@ -3348,7 +3348,10 @@ function renderBracketDisplay(data){
     if(upperDual) upperDual.style.minHeight='600px';
 
     requestAnimationFrame(()=>{
-      const uW=upperC.scrollWidth||1, uH=upperC.scrollHeight||1;
+      // Medir el contenido real (uWrap) no solo el contenedor
+      const uInner = upperC.querySelector(':scope > div'); // uWrap
+      const uW = (uInner ? uInner.offsetWidth : upperC.scrollWidth) || 1;
+      const uH = upperC.scrollHeight || 1;
       const lW=lowerC.scrollWidth||1, lH=lowerC.scrollHeight||1;
 
       // 1. Upper primero: usar TODO el ancho disponible
@@ -3356,10 +3359,12 @@ function renderBracketDisplay(data){
       _uSc = uSc;
       const upperVisH = uH * uSc;
 
-      // Aplicar upper — centrado arriba
+      // Aplicar upper — centrado arriba (left negativo si hace falta para compensar padding asimétrico)
       upperC.style.transform=`scale(${uSc})`;
-      upperC.style.width=uW+'px'; upperC.style.height=uH+'px';
-      upperC.style.left=Math.max(0,(vW-uW*uSc)/2)+'px';
+      upperC.style.width='auto'; upperC.style.height=uH+'px';
+      // Centrar: el contenido real (uW) debe quedar centrado en vW
+      const upperActualW = upperC.scrollWidth * uSc;
+      upperC.style.left = ((vW - upperActualW) / 2) + 'px';
       upperC.style.top='0px';
 
       // 2. Lower: aprovechar el espacio restante
