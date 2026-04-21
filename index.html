@@ -3349,9 +3349,9 @@ function renderBracketDisplay(data){
       const uW=upperC.scrollWidth||1, uH=upperC.scrollHeight||1;
       const lW=lowerC.scrollWidth||1, lH=lowerC.scrollHeight||1;
 
-      // 1. Lower: aprovechar todo el espacio restante (~55% del alto)
+      // 1. Lower: aprovechar todo el espacio restante (~70% del alto)
       const lScW = vW/lW;
-      const lScH = availH*0.55/lH;
+      const lScH = availH*0.70/lH;
       const lSc  = Math.min(lScW, lScH);
       const lowerVisW = lW*lSc;
       const lowerVisH = lH*lSc;
