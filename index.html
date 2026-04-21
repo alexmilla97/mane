@@ -2521,9 +2521,29 @@ function generateProfessionalNames(pairings){
     return [...real, ...byes];
   };
 
-  // Cruce L/R respetando los pairings del usuario:
-  // 1º gA vs último gB, 2º gA vs penúltimo gB...
-  // Los BYEs al final de cada grupo hacen que los mejores seeds los reciban
+  // Para 4 grupos: tabla de seeding fija que respeta los cruces elegidos por el usuario
+  // A y C = primer cruce, B y D = segundo cruce
+  if(nGroups === 4){
+    const A = fullOf(pairings[0][0]);
+    const C = fullOf(pairings[0][1]);
+    const B = fullOf(pairings[1][0]);
+    const D = fullOf(pairings[1][1]);
+    const n = A.length;
+    const last = n - 1;
+    const slots = [
+      A[0], D[last],   C[3], B[last-3],
+      B[1], C[last-1], A[2], D[last-2],
+      C[0], B[last],   A[3], D[last-3],
+      D[1], A[last-1], C[2], B[last-2],
+      B[0], C[last],   D[3], A[last-3],
+      A[1], D[last-1], B[2], C[last-2],
+      D[0], A[last],   B[3], C[last-3],
+      C[1], B[last-1], D[2], A[last-2],
+    ];
+    return slots.map(s => s ?? 'BYE');
+  }
+
+  // Fallback para otros números de grupos: L/R intercalado
   const L = [], R = [];
   pairings.forEach(([a, b]) => {
     const gA = fullOf(a);
