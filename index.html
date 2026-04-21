@@ -183,11 +183,11 @@
   /* ── DUAL BRACKET ─────────────────────────────────── */
   .bracket-dual { display: flex; align-items: stretch; gap: 3rem; height: 100%; min-height: 600px; }
   .bracket-half-left, .bracket-half-right { display: flex; gap: 3rem; align-items: stretch; }
-  /* Vista pública — altura automática basada en contenido */
-  #pub-bracket-container .bracket-dual { height: auto; min-height: 0; }
+  #pub-bracket-container .bracket-dual { height: auto; min-height: 0; align-items: stretch; }
   #pub-bracket-container .round-col { height: auto; min-height: 400px; }
   #pub-bracket-container .match-col { min-height: 400px; }
-  #pub-bracket-container .bracket-center { justify-content: flex-start; }
+  #pub-bracket-container .bracket-center { flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; }
+  #pub-bracket-container .center-match-area { flex: 1; display: flex; align-items: center; justify-content: center; }
   .bracket-half-right { flex-direction: row-reverse; }
   .bracket-center { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1.5rem; min-width: 240px; position: relative; }
   .center-match-area { padding: 1.5rem; border-radius: var(--radius-lg); }
@@ -3150,10 +3150,9 @@ function renderBracketDisplay(data){
       left.appendChild(makeCol(roundLabel(total,ri),rounds[ri].slice(0,h),ri,0,'left'));
     }
     const center = document.createElement('div'); center.className='bracket-center';
-    center.style.cssText='display:flex;flex-direction:column;align-items:center;min-width:200px;';
+    center.style.cssText='min-width:200px;';
     const ch=document.createElement('div'); ch.className='round-header'; ch.textContent='Final Upper'; center.appendChild(ch);
     const ca=document.createElement('div'); ca.className='center-match-area';
-    ca.style.cssText='padding:1rem;margin:auto 0;';
     const finalM=buildCard(rounds[total-1][0],total-1,0,false); finalM.id=`match-${total-1}-0`;
     ca.appendChild(finalM); center.appendChild(ca);
     const right=document.createElement('div'); right.className='bracket-half-right';
@@ -3196,20 +3195,20 @@ function renderBracketDisplay(data){
 
   // Dibujar líneas con SVG propio — implementación directa sin depender de drawLines
   function drawPubLines(){
-    const svg = document.getElementById('pub-bracket-svg');
-    if(!svg) return;
-    const container = document.getElementById('pub-bracket-container');
-    if(!container) return;
-    const cRect = container.getBoundingClientRect();
-    const w = container.scrollWidth, h = container.scrollHeight;
-    svg.setAttribute('width', w); svg.setAttribute('height', h);
-    svg.style.width = w+'px'; svg.style.height = h+'px';
+    const svg = document.getElementById('pub-bracket-svg'); if(!svg) return;
     svg.innerHTML = '';
     const {rounds} = data, totalRounds = rounds.length;
-    // Calcular escala actual del scaler
+    // Escala actual del scaler
     let sc = 1;
     const tr = scaler.style.transform.match(/scale\(([^)]+)\)/);
     if(tr) sc = parseFloat(tr[1]);
+    // Dimensiones del contenedor sin escala
+    const bW = pubC.scrollWidth, bH = pubC.scrollHeight;
+    svg.setAttribute('width', bW); svg.setAttribute('height', bH);
+    svg.style.width = bW+'px'; svg.style.height = bH+'px';
+    // Rect del SVG en coordenadas de pantalla (escaladas)
+    const svgRect = svg.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
     for(let ri = 0; ri < totalRounds-1; ri++){
       rounds[ri].forEach((m, mi)=>{
         const startEl = document.getElementById(`match-${ri}-${mi}`);
@@ -3217,12 +3216,11 @@ function renderBracketDisplay(data){
         if(!startEl || !endEl) return;
         const sR = startEl.getBoundingClientRect();
         const eR = endEl.getBoundingClientRect();
-        // Convertir coordenadas de pantalla a coordenadas del SVG (sin escala)
-        let x1 = (sR.right  - cRect.left) / sc;
-        let y1 = (sR.top + sR.height/2 - cRect.top) / sc;
-        let x2 = (eR.left   - cRect.left) / sc;
-        let y2 = (eR.top + eR.height/2 - cRect.top) / sc;
-        if(x2 < x1){ x1=(sR.left-cRect.left)/sc; x2=(eR.right-cRect.left)/sc; }
+        let x1 = (sR.right  - svgRect.left) / dpr / sc;
+        let y1 = (sR.top + sR.height/2 - svgRect.top) / dpr / sc;
+        let x2 = (eR.left   - svgRect.left) / dpr / sc;
+        let y2 = (eR.top + eR.height/2 - svgRect.top) / dpr / sc;
+        if(x2 < x1){ x1=(sR.left-svgRect.left)/dpr/sc; x2=(eR.right-svgRect.left)/dpr/sc; }
         const midX = x1 + (x2-x1)/2;
         const path = document.createElementNS('http://www.w3.org/2000/svg','path');
         path.setAttribute('d', `M ${x1} ${y1} L ${midX} ${y1} L ${midX} ${y2} L ${x2} ${y2}`);
