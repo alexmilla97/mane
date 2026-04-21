@@ -171,6 +171,9 @@
   .lower-bracket-wrap { display: flex; gap: 2rem; align-items: flex-start; }
   .lower-round-col { display: flex; flex-direction: column; min-width: 200px; gap: 0.6rem; }
   .lower-matches { display: flex; flex-direction: column; gap: 1rem; }
+  .size-32 .lower-round-col { min-width: 160px; gap: 0.2rem; }
+  .size-32 .lower-matches { gap: 0.3rem; }
+  .size-32 .lower-bracket-wrap { gap: 1rem; }
   .grand-final-wrap { display: flex; flex-direction: column; align-items: center; gap: 0.5rem; }
   .grand-final-label { font-family: 'Barlow Condensed', sans-serif; font-size: 0.85rem; font-weight: 800; color: var(--gold); letter-spacing: 0.12em; text-transform: uppercase; text-align: center; margin-bottom: 0.5rem; }
   .bracket-full-wrap { display: flex; flex-direction: column; gap: 0; width: 100%; }
@@ -3155,6 +3158,19 @@ function renderBracketDisplay(data){
     const ca=document.createElement('div'); ca.className='center-match-area';
     const finalM=buildCard(rounds[total-1][0],total-1,0,false); finalM.id=`match-${total-1}-0`;
     ca.appendChild(finalM); center.appendChild(ca);
+
+    // Gran Final integrada en el centro, justo debajo de Final Upper
+    if(data.gf?.t1 && data.gf?.t2){
+      const gfSep=document.createElement('div');
+      gfSep.style.cssText='height:1px;background:var(--gold);opacity:0.3;margin:0.4rem 0;width:80%;align-self:center;';
+      center.appendChild(gfSep);
+      const gfHeader=document.createElement('div'); gfHeader.className='round-header';
+      gfHeader.textContent='🏆 Gran Final'; gfHeader.style.cssText='color:var(--gold);';
+      center.appendChild(gfHeader);
+      const gfArea=document.createElement('div'); gfArea.style.cssText='padding:0.5rem;display:flex;justify-content:center;';
+      const gfCard=buildCard(data.gf,'gf',0,false); gfCard.id='match-gf-0-pub';
+      gfArea.appendChild(gfCard); center.appendChild(gfArea);
+    }
     const right=document.createElement('div'); right.className='bracket-half-right';
     for(let ri=0;ri<halfR;ri++){
       const h=Math.ceil(rounds[ri].length/2);
@@ -3187,14 +3203,7 @@ function renderBracketDisplay(data){
       });
     }
 
-    // Gran Final — solo si ambos decididos
-    if(data.gf?.t1 && data.gf?.t2){
-      const div2=document.createElement('div'); div2.className='bracket-divider'; wrap.appendChild(div2);
-      const gfWrap=document.createElement('div'); gfWrap.className='grand-final-wrap';
-      const gfLbl=document.createElement('div'); gfLbl.className='grand-final-label'; gfLbl.textContent='🏆 Gran Final'; gfWrap.appendChild(gfLbl);
-      const gfCard=buildCard(data.gf,'gf',0,false); gfCard.id='match-gf-0-pub'; gfWrap.appendChild(gfCard);
-      wrap.appendChild(gfWrap);
-    }
+    // Gran Final — integrada en el bracket-center (ver arriba)
 
     pubC.appendChild(wrap);
   } catch(e){ console.error('renderBracketDisplay error',e); }
@@ -3241,15 +3250,22 @@ function renderBracketDisplay(data){
   }
 
   function fitScale(){
-    const vW = window.innerWidth, vH = window.innerHeight;
-    const bW = pubC.scrollWidth || pubC.offsetWidth || 1;
-    const bH = pubC.scrollHeight || pubC.offsetHeight || 1;
+    // Reset transform first to get accurate natural dimensions
+    scaler.style.transform = 'scale(1)';
+    scaler.style.left = '0px';
+    scaler.style.top = '0px';
+    // Force layout
+    const bW = pubC.scrollWidth || 1;
+    const bH = pubC.scrollHeight || 1;
     if(!bW||!bH) return;
+    const vW = window.innerWidth, vH = window.innerHeight;
     const sc = Math.min(vW/bW, vH/bH) * 0.98;
+    const scaledW = bW * sc, scaledH = bH * sc;
     scaler.style.transform = `scale(${sc})`;
-    scaler.style.width = bW+'px'; scaler.style.height = bH+'px';
-    scaler.style.left = Math.max(0,(vW - bW*sc)/2)+'px';
-    scaler.style.top  = Math.max(0,(vH - bH*sc)/2)+'px';
+    scaler.style.width  = bW+'px';
+    scaler.style.height = bH+'px';
+    scaler.style.left   = Math.max(0, (vW - scaledW) / 2) + 'px';
+    scaler.style.top    = Math.max(0, (vH - scaledH) / 2) + 'px';
     cont.style.height = vH+'px';
     requestAnimationFrame(drawPubLines);
   }
