@@ -2395,44 +2395,32 @@ $('btn-start-bracket').onclick=()=>{
 function generateProfessionalNames(pairings){
   const nGroups = groupData.groups.length;
   const sortedGroups = groupData.groups.map(g => calcStandings(g));
-
-  // Jugadores reales + BYEs de relleno al final de cada grupo
   const nextPow2 = n => { let p=1; while(p<n) p*=2; return p; };
+
+  // Jugadores reales por grupo (sin BYEs de fase de grupos)
   const realOf = gIdx => sortedGroups[gIdx]
     .filter(s => s.team.name !== 'BYE')
     .map(s => s.team.name);
-  const tpg = realOf(0).length;
-  const totalReal = nGroups * tpg;
-  const bracketSize = nextPow2(totalReal);
-  const byesPerGroup = (bracketSize - totalReal) / nGroups;
 
-  // Clasificación extendida con BYEs al final como últimos clasificados
-  const fullOf = gIdx => [
-    ...realOf(gIdx),
-    ...Array(byesPerGroup).fill('BYE')
-  ];
+  // Tamaño objetivo por grupo = bracketSize / nGroups
+  const totalReal = groupData.groups.reduce((sum, _, i) => sum + realOf(i).length, 0);
+  const targetBracket = nextPow2(totalReal);
+  const slotPerGroup = targetBracket / nGroups; // ej: 32/4 = 8
 
-  // Para 4 grupos: usar tabla de seeding fija que mantiene la estructura
-  // independientemente del número de jugadores por grupo (con BYEs como últimos)
+  // Cada grupo se rellena hasta slotPerGroup con BYEs al final
+  const fullOf = gIdx => {
+    const real = realOf(gIdx);
+    const byes = Array(Math.max(0, slotPerGroup - real.length)).fill('BYE');
+    return [...real, ...byes];
+  };
+
   if(nGroups === 4){
-    // pairings = [[gA_idx, gC_idx], [gB_idx, gD_idx]]
-    // Primer cruce → A y C, segundo cruce → B y D
     const A = fullOf(pairings[0][0]);
     const C = fullOf(pairings[0][1]);
     const B = fullOf(pairings[1][0]);
     const D = fullOf(pairings[1][1]);
     const n = A.length;
     const last = n - 1;
-
-    // Tabla de seeding estándar para 4 grupos:
-    // Partido 1:  1ºA vs nºD,   4ºC vs (n-3)ºB
-    // Partido 2:  2ºB vs (n-1)ºC, 3ºA vs (n-2)ºD
-    // Partido 3:  1ºC vs nºB,   4ºA vs (n-3)ºD
-    // Partido 4:  2ºD vs (n-1)ºA, 3ºC vs (n-2)ºB
-    // Partido 5:  1ºB vs nºC,   4ºD vs (n-3)ºA
-    // Partido 6:  2ºA vs (n-1)ºD, 3ºB vs (n-2)ºC
-    // Partido 7:  1ºD vs nºA,   4ºB vs (n-3)ºC
-    // Partido 8:  2ºC vs (n-1)ºB, 3ºD vs (n-2)ºA
     const slots = [
       A[0], D[last],   C[3], B[last-3],
       B[1], C[last-1], A[2], D[last-2],
@@ -2446,7 +2434,7 @@ function generateProfessionalNames(pairings){
     return slots.map(s => s ?? 'BYE');
   }
 
-  // Fallback para otros números de grupos: L/R intercalado
+  // Fallback para otros números de grupos
   const L = [], R = [];
   pairings.forEach(([a, b]) => {
     const gA = fullOf(a);
@@ -2463,8 +2451,6 @@ function generateProfessionalNames(pairings){
   return [...L, ...R];
 }
 
-
-// ── Knockout — Double Elimination ─────────────────────
 function launchTournament(title, names){
   const rounds = buildUpperRounds(names);
   const lRounds = buildLowerRounds(rounds);
