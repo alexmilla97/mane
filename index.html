@@ -183,6 +183,10 @@
   /* ── DUAL BRACKET ─────────────────────────────────── */
   .bracket-dual { display: flex; align-items: stretch; gap: 3rem; height: 100%; min-height: 600px; }
   .bracket-half-left, .bracket-half-right { display: flex; gap: 3rem; align-items: stretch; }
+  /* Vista pública — altura automática basada en contenido */
+  #pub-bracket-container .bracket-dual { height: auto; min-height: 0; }
+  #pub-bracket-container .round-col { height: auto; min-height: 400px; }
+  #pub-bracket-container .match-col { min-height: 400px; }
   .bracket-half-right { flex-direction: row-reverse; }
   .bracket-center { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1.5rem; min-width: 240px; position: relative; }
   .center-match-area { padding: 1.5rem; border-radius: var(--radius-lg); }
@@ -3118,68 +3122,120 @@ function renderBracketDisplay(data){
   cont.innerHTML = '';
   cont.style.cssText = 'flex:1;overflow:hidden;position:relative;background:var(--bg);';
 
-  // Crear un contenedor temporal fuera de pantalla para medir
-  const measurer = document.createElement('div');
-  measurer.id = 'bracket-container';
-  measurer.style.cssText = 'position:fixed;top:-9999px;left:-9999px;visibility:hidden;min-height:600px;';
+  const scaler = document.createElement('div');
+  scaler.style.cssText = 'position:absolute;transform-origin:top left;';
 
-  // Guardar el contenedor admin si existe y renombrarlo temporalmente
-  const adminC = document.getElementById('bracket-container');
-  if(adminC) adminC.id = 'bracket-container-hidden';
-  document.body.appendChild(measurer);
+  // Contenedor del cuadro público — mismas clases que admin pero con overrides
+  const pubC = document.createElement('div');
+  pubC.id = 'pub-bracket-container';
+  pubC.className = data.numTeams===32 ? 'size-32' : '';
+  pubC.style.cssText = 'min-width:max-content;padding:1rem;';
 
   const savedState = state;
   state = data;
-  try {
-    renderBracket();
+  try{
+    const wrap = document.createElement('div'); wrap.className='bracket-full-wrap';
+
+    // Upper bracket
+    const upperLabel = document.createElement('div'); upperLabel.className='bracket-section-label'; upperLabel.textContent='▲ Upper Bracket';
+    wrap.appendChild(upperLabel);
+    const upperWrap = document.createElement('div'); upperWrap.style.cssText='display:flex;gap:2rem;align-items:flex-start;position:relative;';
+
+    // Construir upper con round-headers alineados
+    const {rounds} = state, total = rounds.length, halfR = total-1;
+    const left = document.createElement('div'); left.className='bracket-half-left';
+    for(let ri=0;ri<halfR;ri++){
+      const h=Math.ceil(rounds[ri].length/2);
+      left.appendChild(makeCol(roundLabel(total,ri),rounds[ri].slice(0,h),ri,0,'left'));
+    }
+    const center = document.createElement('div'); center.className='bracket-center';
+    center.style.cssText='display:flex;flex-direction:column;align-items:center;justify-content:flex-start;min-width:200px;';
+    const ch=document.createElement('div'); ch.className='round-header'; ch.textContent='Final Upper'; center.appendChild(ch);
+    const ca=document.createElement('div'); ca.className='center-match-area';
+    const finalM=buildCard(rounds[total-1][0],total-1,0,false); finalM.id=`match-${total-1}-0`;
+    ca.appendChild(finalM); center.appendChild(ca);
+    const right=document.createElement('div'); right.className='bracket-half-right';
+    for(let ri=0;ri<halfR;ri++){
+      const h=Math.ceil(rounds[ri].length/2);
+      right.appendChild(makeCol(roundLabel(total,ri),rounds[ri].slice(h),ri,h,'right'));
+    }
+    upperWrap.appendChild(left); upperWrap.appendChild(center); upperWrap.appendChild(right);
+    // SVG para líneas
+    const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
+    svg.setAttribute('class','bracket-svg'); svg.id='pub-bracket-svg';
+    svg.style.cssText='position:absolute;top:0;left:0;pointer-events:none;overflow:visible;';
+    upperWrap.appendChild(svg);
+    wrap.appendChild(upperWrap);
+
+    // Lower bracket
+    if(data.lRounds?.length){
+      const div1=document.createElement('div'); div1.className='bracket-divider'; wrap.appendChild(div1);
+      const lowerLabel=document.createElement('div'); lowerLabel.className='bracket-section-label'; lowerLabel.textContent='▼ Lower Bracket';
+      wrap.appendChild(lowerLabel);
+      const lowerWrap=document.createElement('div'); lowerWrap.className='lower-bracket-wrap';
+      renderLowerInto(lowerWrap); wrap.appendChild(lowerWrap);
+    }
+
+    // Gran Final — solo si ambos decididos
+    if(data.gf?.t1 && data.gf?.t2){
+      const div2=document.createElement('div'); div2.className='bracket-divider'; wrap.appendChild(div2);
+      const gfWrap=document.createElement('div'); gfWrap.className='grand-final-wrap';
+      const gfLbl=document.createElement('div'); gfLbl.className='grand-final-label'; gfLbl.textContent='🏆 Gran Final'; gfWrap.appendChild(gfLbl);
+      const gfCard=buildCard(data.gf,'gf',0,false); gfCard.id='match-gf-0-pub'; gfWrap.appendChild(gfCard);
+      wrap.appendChild(gfWrap);
+    }
+
+    pubC.appendChild(wrap);
   } catch(e){ console.error('renderBracketDisplay error',e); }
   state = savedState;
 
-  // Medir el contenido renderizado
-  const bW = measurer.scrollWidth || measurer.offsetWidth || 800;
-  const bH = measurer.scrollHeight || measurer.offsetHeight || 600;
-
-  // Mover al scaler visible
-  const scaler = document.createElement('div');
-  scaler.style.cssText = 'position:absolute;transform-origin:top left;';
-  scaler.style.width = bW + 'px';
-  scaler.style.height = bH + 'px';
-
-  // Mover todos los hijos de measurer a scaler
-  while(measurer.firstChild) scaler.appendChild(measurer.firstChild);
-  document.body.removeChild(measurer);
-  // Restaurar ID del contenedor admin
-  const hiddenC = document.getElementById('bracket-container-hidden');
-  if(hiddenC) hiddenC.id = 'bracket-container';
-
-  // Reasignar IDs del SVG para que drawLines funcione en scaler
-  const svg = scaler.querySelector('svg');
-  if(svg){ svg.id = 'bracket-svg-pub'; }
-
+  scaler.appendChild(pubC);
   cont.appendChild(scaler);
 
-  function fitScale(){
-    const vW = window.innerWidth;
-    const vH = window.innerHeight;
-    if(!bW || !bH) return;
-    const sc = Math.min(vW / bW, vH / bH) * 0.97; // 3% margen
-    const scaledW = bW * sc, scaledH = bH * sc;
-    scaler.style.transform = `scale(${sc})`;
-    scaler.style.left = Math.max(0, (vW - scaledW) / 2) + 'px';
-    scaler.style.top  = Math.max(0, (vH - scaledH) / 2) + 'px';
-    cont.style.height = vH + 'px';
+  // Dibujar líneas con SVG propio
+  function drawPubLines(){
+    const svg = document.getElementById('pub-bracket-svg');
+    if(!svg) return;
+    const w = Math.max(pubC.scrollWidth,1), h = Math.max(pubC.scrollHeight,1);
+    svg.setAttribute('width',w); svg.setAttribute('height',h);
+    svg.style.width=w+'px'; svg.style.height=h+'px';
+    svg.innerHTML='';
+    // Llamar drawLines con bracket-svg apuntando a nuestro SVG
+    const realSvg = document.getElementById('bracket-svg');
+    const realC   = document.getElementById('bracket-container');
+    if(realSvg) realSvg.id='bracket-svg-bak';
+    if(realC)   realC.id='bracket-container-bak';
+    svg.id='bracket-svg'; pubC.id='bracket-container';
+    try{ drawLines(); } catch(e){}
+    svg.id='pub-bracket-svg'; pubC.id='pub-bracket-container';
+    if(realSvg) realSvg.id='bracket-svg';
+    if(realC)   realC.id='bracket-container';
   }
 
-  setTimeout(fitScale, 100);
-  setTimeout(fitScale, 500);
+  function fitScale(){
+    const vW = window.innerWidth, vH = window.innerHeight;
+    const bW = pubC.scrollWidth || pubC.offsetWidth || 1;
+    const bH = pubC.scrollHeight || pubC.offsetHeight || 1;
+    if(!bW||!bH) return;
+    const sc = Math.min(vW/bW, vH/bH) * 0.98;
+    scaler.style.transform = `scale(${sc})`;
+    scaler.style.width = bW+'px'; scaler.style.height = bH+'px';
+    scaler.style.left = Math.max(0,(vW - bW*sc)/2)+'px';
+    scaler.style.top  = Math.max(0,(vH - bH*sc)/2)+'px';
+    cont.style.height = vH+'px';
+    requestAnimationFrame(drawPubLines);
+  }
+
+  setTimeout(fitScale, 200);
+  setTimeout(fitScale, 600);
   window.addEventListener('resize', fitScale);
 
-  const uP = data.rounds.flat().filter(m=>m.winner).length;
-  const lP = (data.lRounds||[]).flat().filter(m=>m.winner).length;
-  const gfP = data.gf?.winner ? 1 : 0;
-  const played = uP+lP+gfP, total = data.totalMatches||1;
-  $('dv-progress-text').textContent = `${played} / ${total} partidos jugados`;
-  $('dv-progress-fill').style.width = Math.round(played/total*100)+'%';
+  const uP=data.rounds.flat().filter(m=>m.winner).length;
+  const lP=(data.lRounds||[]).flat().filter(m=>m.winner).length;
+  const gfP=data.gf?.winner?1:0;
+  const played=uP+lP+gfP, total2=data.totalMatches||1;
+  $('dv-progress-text').textContent=`${played} / ${total2} partidos jugados`;
+  $('dv-progress-fill').style.width=Math.round(played/total2*100)+'%';
 }
 
 // ── Fullscreen ────────────────────────────────────────
