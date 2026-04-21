@@ -2380,40 +2380,69 @@ function generateProfessionalNames(pairings){
   const nGroups = groupData.groups.length;
   const sortedGroups = groupData.groups.map(g => calcStandings(g));
 
-  // Jugadores reales (sin BYE de grupos), ordenados por clasificación
+  // Jugadores reales + BYEs de relleno al final de cada grupo
+  const nextPow2 = n => { let p=1; while(p<n) p*=2; return p; };
   const realOf = gIdx => sortedGroups[gIdx]
     .filter(s => s.team.name !== 'BYE')
     .map(s => s.team.name);
-
-  // Calcular BYEs de relleno por grupo
-  const nextPow2 = n => { let p=1; while(p<n) p*=2; return p; };
   const tpg = realOf(0).length;
   const totalReal = nGroups * tpg;
   const bracketSize = nextPow2(totalReal);
-  const byesPerGroup = (bracketSize - totalReal) / nGroups; // ej: 2
+  const byesPerGroup = (bracketSize - totalReal) / nGroups;
 
-  // Clasificación extendida: reales + BYEs al final
-  // [1º,2º,3º,4º,5º,6º,BYE,BYE] — BYEs son los "últimos clasificados"
+  // Clasificación extendida con BYEs al final como últimos clasificados
   const fullOf = gIdx => [
     ...realOf(gIdx),
     ...Array(byesPerGroup).fill('BYE')
   ];
 
-  // Cruce con la misma lógica L/R intercalada del fallback original
+  // Para 4 grupos: usar tabla de seeding fija que mantiene la estructura
+  // independientemente del número de jugadores por grupo (con BYEs como últimos)
+  if(nGroups === 4){
+    // pairings define qué grupo es A, B, C, D según el cruce elegido
+    // pairings[0]=[gA,gC], pairings[1]=[gB,gD] (o el orden que elija el usuario)
+    const G = pairings.flatMap(([a,b]) => [fullOf(a), fullOf(b)]);
+    // G[0]=gA, G[1]=gC, G[2]=gB, G[3]=gD  (según orden de pairings)
+    const A=G[0], B=G[2], C=G[1], D=G[3];
+    const n = A.length; // jugadores efectivos por grupo (reales + BYEs)
+    const last = n-1;
+
+    // Tabla de seeding estándar para 4 grupos:
+    // Partido 1:  1ºA vs nºD,   4ºC vs (n-3)ºB
+    // Partido 2:  2ºB vs (n-1)ºC, 3ºA vs (n-2)ºD
+    // Partido 3:  1ºC vs nºB,   4ºA vs (n-3)ºD
+    // Partido 4:  2ºD vs (n-1)ºA, 3ºC vs (n-2)ºB
+    // Partido 5:  1ºB vs nºC,   4ºD vs (n-3)ºA
+    // Partido 6:  2ºA vs (n-1)ºD, 3ºB vs (n-2)ºC
+    // Partido 7:  1ºD vs nºA,   4ºB vs (n-3)ºC
+    // Partido 8:  2ºC vs (n-1)ºB, 3ºD vs (n-2)ºA
+    const slots = [
+      A[0], D[last],   C[3], B[last-3],
+      B[1], C[last-1], A[2], D[last-2],
+      C[0], B[last],   A[3], D[last-3],
+      D[1], A[last-1], C[2], B[last-2],
+      B[0], C[last],   D[3], A[last-3],
+      A[1], D[last-1], B[2], C[last-2],
+      D[0], A[last],   B[3], C[last-3],
+      C[1], B[last-1], D[2], A[last-2],
+    ];
+    return slots.map(s => s ?? 'BYE');
+  }
+
+  // Fallback para otros números de grupos: L/R intercalado
   const L = [], R = [];
   pairings.forEach(([a, b]) => {
     const gA = fullOf(a);
     const gB = fullOf(b);
-    const n = gA.length; // tpg + byesPerGroup
+    const n = gA.length;
     for(let i = 0; i < n/2; i++){
       const top = i, bot = n-1-i;
-      const m1 = [gA[top], gB[bot]]; // 1ºA vs últB(BYE), 2ºA vs penB(BYE)...
-      const m2 = [gB[top], gA[bot]]; // 1ºB vs últA(BYE), 2ºB vs penA(BYE)...
+      const m1 = [gA[top], gB[bot]];
+      const m2 = [gB[top], gA[bot]];
       if(i % 2 === 0){ L.push(...m1); R.push(...m2); }
       else            { R.push(...m1); L.push(...m2); }
     }
   });
-
   return [...L, ...R];
 }
 
