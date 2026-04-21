@@ -3266,7 +3266,7 @@ function renderBracketDisplay(data){
   // ── Contenedor LOWER ──
   const lowerC=document.createElement('div');
   lowerC.id='pub-lower-c'; lowerC.className=cls;
-  lowerC.style.cssText='position:absolute;bottom:0;left:0;transform-origin:bottom left;min-width:max-content;padding:0.4rem 1rem 0.6rem;';
+  lowerC.style.cssText='position:absolute;bottom:0;left:0;transform-origin:bottom left;min-width:max-content;padding:0 1rem 0.2rem;';
 
   if(data.lRounds?.length){
     try{
@@ -3342,9 +3342,9 @@ function renderBracketDisplay(data){
       const uW=upperC.scrollWidth||1, uH=upperC.scrollHeight||1;
       const lW=lowerC.scrollWidth||1, lH=lowerC.scrollHeight||1;
 
-      // 1. Lower: aprovechar todo el espacio restante (~58% del alto)
+      // 1. Lower: aprovechar todo el espacio restante (~65% del alto)
       const lScW = vW/lW;
-      const lScH = availH*0.58/lH;
+      const lScH = availH*0.65/lH;
       const lSc  = Math.min(lScW, lScH);
       const lowerVisW = lW*lSc;
       const lowerVisH = lH*lSc;
