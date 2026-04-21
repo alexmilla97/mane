@@ -3332,6 +3332,13 @@ function renderBracketDisplay(data){
   }
 
   function fitScale(){
+    // Leer dimensiones del viewport en vivo (cambian con fullscreen)
+    const vW = window.innerWidth;
+    const vH = window.innerHeight;
+    const footH = $('dv-footer')?.offsetHeight||36;
+    const availH = vH - footH;
+    cont.style.height = availH+'px';
+
     // Dar altura mínima al upper para que se renderice correctamente antes de medir
     upperC.style.transform='scale(1)'; lowerC.style.transform='scale(1)';
     upperC.style.height='auto'; upperC.style.minHeight='600px';
@@ -3368,13 +3375,19 @@ function renderBracketDisplay(data){
       lowerC.style.left=Math.max(0,(vW-lowerVisW)/2)+'px';
       lowerC.style.bottom='0px'; lowerC.style.top='auto';
 
-      cont.style.height=availH+'px';
       requestAnimationFrame(drawPubLines);
     });
   }
 
   setTimeout(fitScale,200); setTimeout(fitScale,700);
   window.addEventListener('resize',fitScale);
+  // F11 y otros cambios de fullscreen cambian el viewport asíncronamente
+  ['fullscreenchange','webkitfullscreenchange','mozfullscreenchange'].forEach(ev=>{
+    document.addEventListener(ev, ()=>{
+      setTimeout(fitScale, 100);
+      setTimeout(fitScale, 400);
+    });
+  });
 
   const uP=data.rounds.flat().filter(m=>m.winner).length;
   const lP=(data.lRounds||[]).flat().filter(m=>m.winner).length;
