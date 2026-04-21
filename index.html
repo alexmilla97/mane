@@ -3226,61 +3226,46 @@ function renderBracketDisplay(data){
     upperWrap.appendChild(svg);
     wrap.appendChild(upperWrap);
 
-    // Lower bracket — dividido en 2 mitades para aprovechar la verticalidad
+    // Lower bracket — cada ronda dividida en mitad superior (izq) e inferior (der)
     if(data.lRounds?.length){
       const div1=document.createElement('div'); div1.className='bracket-divider'; wrap.appendChild(div1);
       const lowerLabel=document.createElement('div'); lowerLabel.className='bracket-section-label'; lowerLabel.textContent='▼ Lower Bracket';
       wrap.appendChild(lowerLabel);
 
-      const lRounds = data.lRounds;
-      const total = lRounds.length;
-      const half = Math.ceil(total / 2);
-
       const lowerOuter=document.createElement('div');
       lowerOuter.style.cssText='transform-origin:top left;transform:scale(0.78);';
 
-      // Contenedor horizontal: mitad izquierda | espacio central | mitad derecha (invertida)
-      const lowerDual = document.createElement('div');
+      const lowerDual=document.createElement('div');
       lowerDual.style.cssText='display:flex;align-items:flex-start;gap:2rem;';
 
-      // Mitad izquierda (rondas 0..half-1)
-      const lLeft = document.createElement('div');
-      lLeft.style.cssText='display:flex;gap:1rem;align-items:flex-start;';
-      for(let lr=0; lr<half; lr++){
-        const round=lRounds[lr];
-        const col=document.createElement('div'); col.className='lower-round-col';
-        const isDropIn=round[0]?.type==='drop-in', uRound=isDropIn?(round[0]?.fromUpperRound??0):null;
-        const hdr=document.createElement('div'); hdr.className='round-header';
-        hdr.textContent=isDropIn?`Perdedores R${uRound+1}`:`Lower R${lr+1}`;
-        col.appendChild(hdr);
-        const mc=document.createElement('div'); mc.className='lower-matches';
-        round.forEach((m,mi)=>{ const card=buildCard(m,`l${lr}`,mi,false); card.id=`match-l${lr}-${mi}`; mc.appendChild(card); });
-        col.appendChild(mc); lLeft.appendChild(col);
-      }
+      const lLeft=document.createElement('div'); lLeft.style.cssText='display:flex;gap:1rem;align-items:flex-start;';
+      const lRight=document.createElement('div'); lRight.style.cssText='display:flex;gap:1rem;align-items:flex-start;flex-direction:row-reverse;';
 
-      // Mitad derecha (rondas half..total-1, invertidas visualmente)
-      const lRight = document.createElement('div');
-      lRight.style.cssText='display:flex;gap:1rem;align-items:flex-start;flex-direction:row-reverse;';
-      for(let lr=half; lr<total; lr++){
-        const round=lRounds[lr];
-        const col=document.createElement('div'); col.className='lower-round-col';
+      data.lRounds.forEach((round, lr)=>{
         const isDropIn=round[0]?.type==='drop-in', uRound=isDropIn?(round[0]?.fromUpperRound??0):null;
-        const hdr=document.createElement('div'); hdr.className='round-header';
-        hdr.textContent=isDropIn?`Perdedores R${uRound+1}`:`Lower R${lr+1}`;
-        col.appendChild(hdr);
-        const mc=document.createElement('div'); mc.className='lower-matches';
-        round.forEach((m,mi)=>{ const card=buildCard(m,`l${lr}`,mi,false); card.id=`match-l${lr}-${mi}`; mc.appendChild(card); });
-        col.appendChild(mc); lRight.appendChild(col);
-      }
+        const label=isDropIn?`Perdedores R${uRound+1}`:`Lower R${lr+1}`;
+        const half=Math.ceil(round.length/2);
+
+        // Columna izquierda (primera mitad)
+        const colL=document.createElement('div'); colL.className='lower-round-col';
+        const hdrL=document.createElement('div'); hdrL.className='round-header'; hdrL.textContent=label; colL.appendChild(hdrL);
+        const mcL=document.createElement('div'); mcL.className='lower-matches';
+        round.slice(0,half).forEach((m,mi)=>{ const card=buildCard(m,`l${lr}`,mi,false); card.id=`match-l${lr}-${mi}`; mcL.appendChild(card); });
+        colL.appendChild(mcL); lLeft.appendChild(colL);
+
+        // Columna derecha (segunda mitad)
+        const colR=document.createElement('div'); colR.className='lower-round-col';
+        const hdrR=document.createElement('div'); hdrR.className='round-header'; hdrR.textContent=label; colR.appendChild(hdrR);
+        const mcR=document.createElement('div'); mcR.className='lower-matches';
+        round.slice(half).forEach((m,mi)=>{ const card=buildCard(m,`l${lr}`,half+mi,false); card.id=`match-l${lr}-${half+mi}`; mcR.appendChild(card); });
+        colR.appendChild(mcR); lRight.appendChild(colR);
+      });
 
       lowerDual.appendChild(lLeft);
       lowerDual.appendChild(lRight);
       lowerOuter.appendChild(lowerDual);
       wrap.appendChild(lowerOuter);
-      requestAnimationFrame(()=>{
-        const h=lowerDual.scrollHeight*0.78;
-        lowerOuter.style.height=h+'px';
-      });
+      requestAnimationFrame(()=>{ lowerOuter.style.height=lowerDual.scrollHeight*0.78+'px'; });
     }
 
     // Gran Final — integrada en el bracket-center (ver arriba)
