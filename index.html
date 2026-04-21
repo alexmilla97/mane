@@ -1707,6 +1707,7 @@ async function dispatchNextFromQueue(){
       _dispatchPending = false;
       while(true){
         const free = connectedDevices.find(d=>!d.busy && d.ready !== false);
+        console.log('[dispatch] free:', free?.name, '| queue:', globalQueue.length, '| devices:', connectedDevices.map(d=>({n:d.name,busy:d.busy,ready:d.ready})));
         if(!free || !globalQueue.length) break;
         const item = globalQueue.shift();
         // Marcar busy ANTES de guardar — así buildAndSaveQueue verá live=true
