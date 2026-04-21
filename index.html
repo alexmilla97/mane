@@ -3114,95 +3114,102 @@ function renderDisplayScreen(data){
 function renderBracketDisplay(data){
   if(!data?.rounds) return;
 
-  $('dv-title').textContent = data.title||'—';
-  $('dv-badge-text').textContent = '🏆 Cuadro Eliminatorio';
-
   const cont = $('dv-groups');
   cont.innerHTML = '';
-  cont.style.cssText = 'flex:1;overflow:hidden;position:relative;';
+  cont.style.cssText = 'flex:1;overflow:hidden;position:relative;background:var(--bg);';
 
-  // Contenedor escalable
   const scaler = document.createElement('div');
   scaler.style.cssText = 'transform-origin:top left;position:absolute;top:0;left:0;';
 
   const wrap = document.createElement('div');
-  wrap.style.cssText = 'display:flex;flex-direction:column;gap:0.8rem;padding:1rem;min-width:max-content;';
+  wrap.style.cssText = 'display:flex;flex-direction:column;gap:0;padding:1.2rem 1.5rem;min-width:max-content;position:relative;';
 
-  // Renderizar usando state temporal
   const savedState = state;
   state = data;
   try{
-    // Upper bracket
-    const upperLabel = document.createElement('div');
-    upperLabel.style.cssText = 'font-family:"Barlow Condensed",sans-serif;font-size:0.7rem;font-weight:700;color:var(--gold);text-transform:uppercase;letter-spacing:0.1em;opacity:0.8;';
-    upperLabel.textContent = '▲ Upper Bracket';
-    wrap.appendChild(upperLabel);
+    const {rounds} = state, total = rounds.length, halfR = total - 1;
+
+    // ── Upper bracket ──
     const upperWrap = document.createElement('div');
-    upperWrap.style.cssText = 'display:flex;gap:1.5rem;align-items:center;';
-    renderUpperInto(upperWrap);
+    upperWrap.style.cssText = 'display:flex;gap:0;align-items:flex-start;position:relative;';
+
+    const left = document.createElement('div'); left.className='bracket-half-left';
+    for(let ri=0; ri<halfR; ri++){
+      const h = Math.ceil(rounds[ri].length/2);
+      left.appendChild(makeCol(roundLabel(total,ri), rounds[ri].slice(0,h), ri, 0, 'left'));
+    }
+    // Centro: "Final Upper" alineado con otros round-headers
+    const center = document.createElement('div'); center.className='bracket-center';
+    center.style.cssText = 'display:flex;flex-direction:column;align-items:center;justify-content:flex-start;min-width:200px;';
+    const ch = document.createElement('div'); ch.className='round-header'; ch.textContent='Final Upper'; center.appendChild(ch);
+    const ca = document.createElement('div'); ca.className='center-match-area';
+    ca.style.cssText='padding:1rem;display:flex;align-items:center;flex:1;';
+    const finalMatch = buildCard(rounds[total-1][0], total-1, 0, false);
+    finalMatch.id=`match-${total-1}-0`; ca.appendChild(finalMatch); center.appendChild(ca);
+    const right = document.createElement('div'); right.className='bracket-half-right';
+    for(let ri=0; ri<halfR; ri++){
+      const h = Math.ceil(rounds[ri].length/2);
+      right.appendChild(makeCol(roundLabel(total,ri), rounds[ri].slice(h), ri, h, 'right'));
+    }
+    upperWrap.appendChild(left); upperWrap.appendChild(center); upperWrap.appendChild(right);
+    // SVG líneas upper
+    const upperSvg = document.createElementNS('http://www.w3.org/2000/svg','svg');
+    upperSvg.style.cssText='position:absolute;top:0;left:0;pointer-events:none;overflow:visible;';
+    upperSvg.id='bracket-svg';
+    upperWrap.appendChild(upperSvg);
     wrap.appendChild(upperWrap);
 
-    // Lower bracket
+    // ── Lower bracket ──
     if(data.lRounds?.length){
-      const div1 = document.createElement('div');
-      div1.style.cssText = 'height:1px;background:var(--border);opacity:0.4;';
-      wrap.appendChild(div1);
-      const lowerLabel = document.createElement('div');
-      lowerLabel.style.cssText = 'font-family:"Barlow Condensed",sans-serif;font-size:0.7rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.1em;opacity:0.7;';
-      lowerLabel.textContent = '▼ Lower Bracket';
-      wrap.appendChild(lowerLabel);
-      const lowerWrap = document.createElement('div');
-      lowerWrap.className = 'lower-bracket-wrap';
-      renderLowerInto(lowerWrap);
-      wrap.appendChild(lowerWrap);
+      const sep = document.createElement('div'); sep.style.cssText='height:1px;background:var(--border);opacity:0.3;margin:0.6rem 0;'; wrap.appendChild(sep);
+      const lowerWrap = document.createElement('div'); lowerWrap.className='lower-bracket-wrap';
+      renderLowerInto(lowerWrap); wrap.appendChild(lowerWrap);
     }
 
-    // Gran Final — solo mostrar cuando ambos jugadores están decididos
-    if(data.gf && data.gf.t1 && data.gf.t2){
-      const div2 = document.createElement('div');
-      div2.style.cssText = 'height:1px;background:var(--border);opacity:0.4;';
-      wrap.appendChild(div2);
-      const gfWrap = document.createElement('div');
-      gfWrap.className = 'grand-final-wrap';
-      const gfLabel = document.createElement('div');
-      gfLabel.className = 'grand-final-label';
-      gfLabel.textContent = '🏆 Gran Final';
-      gfWrap.appendChild(gfLabel);
-      const gfCard = buildCard(data.gf, 'gf', 0, true);
-      gfCard.id = 'match-gf-0-pub';
-      gfWrap.appendChild(gfCard);
+    // ── Gran Final — solo si ambos decididos ──
+    if(data.gf?.t1 && data.gf?.t2){
+      const sep2 = document.createElement('div'); sep2.style.cssText='height:1px;background:var(--gold);opacity:0.3;margin:0.6rem 0;'; wrap.appendChild(sep2);
+      const gfWrap = document.createElement('div'); gfWrap.className='grand-final-wrap';
+      const gfLabel = document.createElement('div'); gfLabel.className='grand-final-label'; gfLabel.textContent='🏆 Gran Final'; gfWrap.appendChild(gfLabel);
+      const gfCard = buildCard(data.gf,'gf',0,false); gfCard.id='match-gf-0-pub'; gfWrap.appendChild(gfCard);
       wrap.appendChild(gfWrap);
     }
-  } catch(e){ console.error('renderBracketDisplay error', e); }
+  } catch(e){ console.error('renderBracketDisplay error',e); }
   state = savedState;
 
   scaler.appendChild(wrap);
   cont.appendChild(scaler);
 
-  // Escalar para que quepa en pantalla
-  function fitScale(){
-    const cW = window.innerWidth;
-    const cH = window.innerHeight - ($('dv-header')?.offsetHeight||60) - ($('dv-footer')?.offsetHeight||36);
-    const bW = wrap.scrollWidth || wrap.offsetWidth;
-    const bH = wrap.scrollHeight || wrap.offsetHeight;
-    if(!bW || !bH) return;
-    const sc = Math.min(cW/bW, cH/bH, 1);
-    scaler.style.transform = `scale(${sc})`;
-    scaler.style.width  = bW + 'px';
-    scaler.style.height = bH + 'px';
-    cont.style.height   = Math.round(bH * sc) + 'px';
+  function drawPublicLines(){
+    const svg = document.getElementById('bracket-svg'); if(!svg) return;
+    const savedS = state; state = data;
+    try{ syncBracketOverlay(); } catch(e){}
+    state = savedS;
   }
-  setTimeout(fitScale, 150);
-  setTimeout(fitScale, 600);
+
+  function fitScale(){
+    const vW = window.innerWidth, vH = window.innerHeight;
+    const bW = wrap.scrollWidth || wrap.offsetWidth || 1;
+    const bH = wrap.scrollHeight || wrap.offsetHeight || 1;
+    if(!bW||!bH) return;
+    const sc = Math.min(vW/bW, vH/bH);
+    scaler.style.transform = `scale(${sc})`;
+    scaler.style.width = bW+'px'; scaler.style.height = bH+'px';
+    scaler.style.left = Math.max(0,(vW - bW*sc)/2)+'px';
+    scaler.style.top  = Math.max(0,(vH - bH*sc)/2)+'px';
+    cont.style.height = vH+'px';
+    setTimeout(drawPublicLines, 60);
+  }
+  setTimeout(fitScale, 200);
+  setTimeout(fitScale, 700);
   window.addEventListener('resize', fitScale);
 
-  // Progreso
-  const uP = data.rounds.flat().filter(m=>m.winner).length;
-  const lP = (data.lRounds||[]).flat().filter(m=>m.winner).length;
-  const gfP = data.gf?.winner ? 1 : 0;
-  const played = uP+lP+gfP, total = data.totalMatches||1;
-  $('dv-progress-text').textContent = `${played} / ${total} partidos jugados`;
-  $('dv-progress-fill').style.width = Math.round(played/total*100)+'%';
+  const uP=data.rounds.flat().filter(m=>m.winner).length;
+  const lP=(data.lRounds||[]).flat().filter(m=>m.winner).length;
+  const gfP=data.gf?.winner?1:0;
+  const played=uP+lP+gfP, total2=data.totalMatches||1;
+  $('dv-progress-text').textContent=`${played} / ${total2} partidos jugados`;
+  $('dv-progress-fill').style.width=Math.round(played/total2*100)+'%';
 }
 
 // ── Fullscreen ────────────────────────────────────────
