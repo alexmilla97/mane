@@ -2385,38 +2385,36 @@ function generateProfessionalNames(pairings){
     .filter(s => s.team.name !== 'BYE')
     .map(s => s.team.name);
 
-  // Calcular cuántos BYEs de relleno necesita cada grupo
+  // Calcular BYEs de relleno por grupo
   const nextPow2 = n => { let p=1; while(p<n) p*=2; return p; };
-  const tpg = realOf(0).length; // jugadores reales por grupo
+  const tpg = realOf(0).length;
   const totalReal = nGroups * tpg;
   const bracketSize = nextPow2(totalReal);
-  const byesNeeded = bracketSize - totalReal;
-  const byesPerGroup = byesNeeded / nGroups; // ej: 8/4 = 2 BYEs por grupo
+  const byesPerGroup = (bracketSize - totalReal) / nGroups; // ej: 2
 
-  // Construir clasificación extendida de cada grupo: reales + BYEs al final
-  const fullOf = gIdx => {
-    const real = realOf(gIdx);
-    const byes = Array(byesPerGroup).fill('BYE');
-    return [...real, ...byes]; // ej: [1º,2º,3º,4º,5º,6º,BYE,BYE]
-  };
+  // Clasificación extendida: reales + BYEs al final
+  // [1º,2º,3º,4º,5º,6º,BYE,BYE] — BYEs son los "últimos clasificados"
+  const fullOf = gIdx => [
+    ...realOf(gIdx),
+    ...Array(byesPerGroup).fill('BYE')
+  ];
 
-  // Cruzar grupos: 1º gA vs último gB, 2º gA vs penúltimo gB, etc.
-  // Así 1º y 2º de cada grupo (que están arriba) se cruzan con BYEs (que están abajo)
-  const result = [];
+  // Cruce con la misma lógica L/R intercalada del fallback original
+  const L = [], R = [];
   pairings.forEach(([a, b]) => {
-    const gA = fullOf(a); // [1º,2º,3º,4º,5º,6º,BYE,BYE]
+    const gA = fullOf(a);
     const gB = fullOf(b);
-    const n = gA.length;   // = tpg + byesPerGroup = 8
-    // Cruce estándar: posición i de gA vs posición (n-1-i) de gB
-    // → 1ºA vs últimogB(BYE), 2ºA vs penúltimogB(BYE)
-    // → BYEgA vs 1ºB, BYEgA vs 2ºB  (pero esto se auto-avanza)
+    const n = gA.length; // tpg + byesPerGroup
     for(let i = 0; i < n/2; i++){
-      result.push(gA[i],       gB[n-1-i]); // par superior: mejor A vs peor B
-      result.push(gB[i],       gA[n-1-i]); // par inferior: mejor B vs peor A
+      const top = i, bot = n-1-i;
+      const m1 = [gA[top], gB[bot]]; // 1ºA vs últB(BYE), 2ºA vs penB(BYE)...
+      const m2 = [gB[top], gA[bot]]; // 1ºB vs últA(BYE), 2ºB vs penA(BYE)...
+      if(i % 2 === 0){ L.push(...m1); R.push(...m2); }
+      else            { R.push(...m1); L.push(...m2); }
     }
   });
 
-  return result;
+  return [...L, ...R];
 }
 
 
