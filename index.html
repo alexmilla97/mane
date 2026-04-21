@@ -1672,15 +1672,14 @@ async function getNextMatchId(){
 // ── Envío a dispositivos ──────────────────────────────────────
 
 async function _sendMatchNow(dev, qItem){
-  const {gi, mi, sid, t1, t2, group, torneoName, matchId,
-         type, bType, bRi, bMi} = qItem;
+  const {sid, t1, t2, group, torneoName, matchId, type, bType, bRi, bMi, gi, mi} = qItem;
   const isBracket = type === 'bracket';
   dev.busy = true;
-  dev.currentMatch = {gi, mi, sid, matchId, t1, t2, group, torneoName, assignedAt: Date.now(),
-    ...(isBracket ? {type:'bracket', bType, bRi, bMi} : {})};
-  const payload = {type:'match', gi, mi, t1, t2, group,
+  dev.currentMatch = {sid, matchId, t1, t2, group, torneoName, assignedAt: Date.now(),
+    ...(isBracket ? {type:'bracket', bType, bRi, bMi} : {gi, mi})};
+  const payload = {type:'match', t1, t2, group,
     target:dev.clientId, startAt:Date.now(), sessionId:sid, torneoName, matchId,
-    ...(isBracket ? {matchType:'bracket', bType, bRi, bMi} : {})};
+    ...(isBracket ? {matchType:'bracket', bType, bRi, bMi} : {gi, mi})};
   try{
     await sendToDevice(sid, dev.clientId, {match:payload});
     await setDoc(doc(db,'devices',dev.clientId), {busy:true, currentMatch:payload}, {merge:true});
@@ -1707,7 +1706,6 @@ async function dispatchNextFromQueue(){
       _dispatchPending = false;
       while(true){
         const free = connectedDevices.find(d=>!d.busy && d.ready !== false);
-        console.log('[dispatch] free:', free?.name, '| queue:', globalQueue.length, '| devices:', connectedDevices.map(d=>({n:d.name,busy:d.busy,ready:d.ready})));
         if(!free || !globalQueue.length) break;
         const item = globalQueue.shift();
         // Marcar busy ANTES de guardar — así buildAndSaveQueue verá live=true
