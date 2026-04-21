@@ -160,6 +160,11 @@
   .team-slot.winner .slot-win-icon { opacity: 1; }
   .team-slot.empty { cursor: default; color: var(--text-muted); font-style: italic; }
   .team-slot.bye { background: rgba(255,255,255,0.02); }
+  .match-queued { outline: 2px solid var(--gold); outline-offset: 2px; }
+  .match-queued .team-slot { background: rgba(255,193,7,0.05); }
+  .match-live { outline: 2px solid var(--win); outline-offset: 2px; }
+  .match-live .team-slot { background: rgba(46,204,113,0.07); }
+  .match-selected { outline: 2px solid #4fc3f7; outline-offset: 2px; box-shadow: 0 0 10px rgba(79,195,247,0.3); }
   .final-match { border: 2px solid var(--gold); transform: scale(1.1); }
   .bracket-section-label { font-family: 'Barlow Condensed', sans-serif; font-size: 0.75rem; font-weight: 800; letter-spacing: 0.18em; text-transform: uppercase; color: var(--text-muted); opacity: 0.5; text-align: center; padding: 0.4rem 1rem; border-radius: 4px; white-space: nowrap; }
   .bracket-divider { width: 100%; height: 2px; background: linear-gradient(to right, transparent, var(--border-strong), transparent); margin: 1.5rem 0; flex-shrink: 0; }
@@ -1701,7 +1706,7 @@ async function dispatchNextFromQueue(){
     do{
       _dispatchPending = false;
       while(true){
-        const free = connectedDevices.find(d=>!d.busy);
+        const free = connectedDevices.find(d=>!d.busy && d.ready !== false);
         if(!free || !globalQueue.length) break;
         const item = globalQueue.shift();
         // Marcar busy ANTES de guardar — así buildAndSaveQueue verá live=true
@@ -2851,6 +2856,23 @@ function buildCard(match, ri, mi, isFinal=false){
   const isLower = typeof ri === 'string' && ri.startsWith('l');
   const isGF = ri === 'gf';
   const lri = isLower ? parseInt(ri.slice(1)) : null;
+
+  // Estado de cola — resaltar visualmente igual que grupos
+  if(!IS_DISPLAY && !IS_BRACKET && !match.winner &&
+     match.t1 && match.t2 && match.t1.name!=='BYE' && match.t2.name!=='BYE'){
+    const bType = isGF?'gf':isLower?'lower':'upper';
+    const bRi   = isGF?0:isLower?lri:ri;
+    if(isBracketMatchLive(bType, bRi, mi)){
+      card.classList.add('match-live');
+    } else if(isBracketMatchQueued(bType, bRi, mi)){
+      card.classList.add('match-queued');
+    }
+    // Resaltar si es el partido abierto en el panel
+    if(_bsp && _bsp.isGF===isGF && _bsp.isLower===isLower &&
+       _bsp.lri===lri && _bsp.ri===ri && _bsp.mi===mi){
+      card.classList.add('match-selected');
+    }
+  }
   [match.t1, match.t2].forEach((team, si)=>{
     const slot=document.createElement('div');
     const isBye=team&&team.name==='BYE';
