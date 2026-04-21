@@ -1389,14 +1389,23 @@ if(IS_DEVICE && DEVICE_ID){
     stopTimer();
     const btn=$('ipad-btn-save'); btn.disabled=true; btn.textContent='Enviando…';
     const done=curMatch; curMatch=null;
-    const sid=done.sessionId; // cada partido lleva el sessionId de su torneo
+    const sid=done.sessionId;
     try {
-      await setDoc(doc(db,'scores',String(done.matchId||`${done.sessionId}_${done.gi}_${done.mi}`)),{
-        matchId:done.matchId, sid:done.sessionId, gi:done.gi, mi:done.mi,
+      const isBracket = done.type==='bracket';
+      const scoreId = String(done.matchId||`${done.sessionId}_${done.gi}_${done.mi}`);
+      // Para bracket: el ganador es quien tiene más puntos (s1 > s2 → t1 gana)
+      const winnerName = isBracket ? (sc.s1>=sc.s2 ? done.t1 : done.t2) : null;
+      await setDoc(doc(db,'scores', scoreId),{
+        matchId:done.matchId, sid:done.sessionId,
+        // Datos de grupos
+        gi:done.gi, mi:done.mi,
         s1:sc.s1, s2:sc.s2,
+        // Datos de bracket
+        type: isBracket?'bracket':undefined,
+        bType: done.bType, bRi: done.bRi, bMi: done.bMi,
+        winner: winnerName,
         from:DEVICE_ID, elapsed:startTs?Date.now()-startTs:0, ts:serverTimestamp()
       });
-      // Limpiar partido activo de Firestore
       await setDoc(doc(db,'devices',DEVICE_ID), { currentMatch: null, busy: false }, { merge: true });
       $('ipad-sent-msg').style.display='block';
       btn.style.display='none';
@@ -1408,9 +1417,7 @@ if(IS_DEVICE && DEVICE_ID){
             <div class="ipad-waiting-sub">Esperando el próximo partido…</div>
           </div>`;
       },2500);
-      // Recargar cada 10s hasta que llegue un partido — garantiza conexión fresca
       const reloadInterval = setInterval(()=>{ if(!curMatch) location.reload(); }, 10000);
-      // Si llega un partido antes, cancelar el interval (showMatch actualiza curMatch)
       const cancelReload = setInterval(()=>{ if(curMatch) clearInterval(reloadInterval); }, 500);
     } catch(e){
       curMatch=done; btn.disabled=false; btn.textContent='Guardar resultado ✓';
@@ -1727,6 +1734,55 @@ function getMatchQueuePos(gi,mi){
   return pos>=0?pos+1:null;
 }
 
+// ── Estado de cola para partidos de bracket ───────────────────
+function isBracketMatchLive(bType,bRi,bMi){
+  return connectedDevices.some(d=>d.busy&&d.currentMatch?.type==='bracket'&&d.currentMatch?.bType===bType&&d.currentMatch?.bRi===bRi&&d.currentMatch?.bMi===bMi&&d.currentMatch?.sid===sessionId);
+}
+function getBracketMatchDeviceName(bType,bRi,bMi){
+  return connectedDevices.find(d=>d.busy&&d.currentMatch?.type==='bracket'&&d.currentMatch?.bType===bType&&d.currentMatch?.bRi===bRi&&d.currentMatch?.bMi===bMi&&d.currentMatch?.sid===sessionId)?.name||null;
+}
+function isBracketMatchQueued(bType,bRi,bMi){
+  return globalQueue.some(q=>q.type==='bracket'&&q.bType===bType&&q.bRi===bRi&&q.bMi===bMi&&q.sid===sessionId);
+}
+function getBracketMatchQueuePos(bType,bRi,bMi){
+  const pos=globalQueue.findIndex(q=>q.type==='bracket'&&q.bType===bType&&q.bRi===bRi&&q.bMi===bMi&&q.sid===sessionId);
+  return pos>=0?pos+1:null;
+}
+
+async function addBracketMatchToQueue(bType,bRi,bMi){
+  if(isBracketMatchLive(bType,bRi,bMi)){ toast('⚠️ Este partido ya está en juego'); return; }
+  if(isBracketMatchQueued(bType,bRi,bMi)){ toast('⚠️ Ya está en la cola'); return; }
+  // Obtener el partido del state
+  let match;
+  if(bType==='upper') match=state.rounds?.[bRi]?.[bMi];
+  else if(bType==='lower') match=state.lRounds?.[bRi]?.[bMi];
+  else if(bType==='gf') match=state.gf;
+  if(!match||!match.t1||!match.t2||match.winner){ toast('⚠️ Partido no disponible'); return; }
+  const matchId = await getNextMatchId();
+  const roundLabel = bType==='gf'?'Gran Final':bType==='upper'?`Upper R${bRi+1}`:`Lower R${bRi+1}`;
+  const item = {matchId, type:'bracket', bType, bRi, bMi, sid:sessionId,
+    t1:match.t1.name, t2:match.t2.name,
+    group:roundLabel, torneoName:groupData.title||state.title,
+    assignedAt:Date.now()};
+  globalQueue.push(item);
+  await dispatchNextFromQueue();
+  await saveGlobalQueue();
+  renderBracket();
+  await buildAndSaveQueue();
+  updateDeviceUI();
+}
+
+async function removeBracketMatchFromQueue(bType,bRi,bMi){
+  const idx=globalQueue.findIndex(q=>q.type==='bracket'&&q.bType===bType&&q.bRi===bRi&&q.bMi===bMi&&q.sid===sessionId);
+  if(idx<0) return;
+  globalQueue.splice(idx,1);
+  toast('✕ Partido eliminado de la cola');
+  await saveGlobalQueue();
+  renderBracket();
+  await buildAndSaveQueue();
+  updateDeviceUI();
+}
+
 // ── Añadir / quitar de la cola ────────────────────────────────
 
 async function addToGlobalQueue(gi,mi){
@@ -1784,9 +1840,10 @@ function renderSendToSection(gi,mi,container){
 async function buildAndSaveQueue(){
   if(!sessionId||!groupData.groups) return;
   const items=[];
+  // Partidos de grupos
   groupData.groups.forEach((g,gi)=>{
     g.matches.forEach((m,mi)=>{
-      if(m.played) return;
+      if(m.played||m.t1.name==='BYE'||m.t2.name==='BYE') return;
       const dev=connectedDevices.find(d=>d.busy&&d.currentMatch?.gi===gi&&d.currentMatch?.mi===mi&&d.currentMatch?.sid===sessionId);
       const qPos=globalQueue.findIndex(q=>q.gi===gi&&q.mi===mi&&q.sid===sessionId);
       items.push({gi,mi,t1:m.t1.name,t2:m.t2.name,group:g.name,torneoName:groupData.title,
@@ -1795,8 +1852,24 @@ async function buildAndSaveQueue(){
         assignedAt:dev?.currentMatch?.assignedAt||(qPos>=0?globalQueue[qPos].assignedAt:null)});
     });
   });
+  // Partidos de bracket (solo los que están en cola o en juego)
+  if(state.rounds){
+    const addBracketItem = (match, bType, bRi, bMi, label) => {
+      if(!match||!match.t1||!match.t2||match.winner||match.t1.name==='BYE'||match.t2.name==='BYE') return;
+      const dev=connectedDevices.find(d=>d.busy&&d.currentMatch?.type==='bracket'&&d.currentMatch?.bType===bType&&d.currentMatch?.bRi===bRi&&d.currentMatch?.bMi===bMi&&d.currentMatch?.sid===sessionId);
+      const qPos=globalQueue.findIndex(q=>q.type==='bracket'&&q.bType===bType&&q.bRi===bRi&&q.bMi===bMi&&q.sid===sessionId);
+      if(!dev&&qPos<0) return; // solo incluir si está en cola o en juego
+      items.push({bType,bRi,bMi,t1:match.t1.name,t2:match.t2.name,group:label,torneoName:groupData.title||state.title,
+        status:dev?'live':qPos>=0?'queued':'pending',
+        devName:dev?dev.name:null, queuePos:qPos>=0?qPos+1:null,
+        assignedAt:dev?.currentMatch?.assignedAt||(qPos>=0?globalQueue[qPos].assignedAt:null)});
+    };
+    state.rounds.forEach((round,ri)=>round.forEach((m,mi)=>addBracketItem(m,'upper',ri,mi,`Upper R${ri+1}`)));
+    (state.lRounds||[]).forEach((round,lri)=>round.forEach((m,mi)=>addBracketItem(m,'lower',lri,mi,`Lower R${lri+1}`)));
+    if(state.gf) addBracketItem(state.gf,'gf',0,0,'Gran Final');
+  }
   items.sort((a,b)=>{ const r={live:0,queued:1,pending:2}; if(r[a.status]!==r[b.status]) return r[a.status]-r[b.status]; return (a.assignedAt||0)-(b.assignedAt||0); });
-  try{ await saveQueueMeta(sessionId,items,groupData.title); broadcastQueueRefresh(); }catch(e){}
+  try{ await saveQueueMeta(sessionId,items,groupData.title||state.title); broadcastQueueRefresh(); }catch(e){}
 }
 
 // Reconstruir cola pública de cualquier torneo usando globalQueue + connectedDevices
@@ -1894,11 +1967,38 @@ function subscribeToSession(){
       if(d.from) setDoc(doc(db,'devices',d.from),{busy:false,currentMatch:null},{merge:true}).catch(()=>{});
       // Aplicar resultado solo si es del torneo activo
       if(d.sid===sessionId){
-        const match=groupData.groups?.[d.gi]?.matches?.[d.mi];
-        if(match&&!match.played){
-          applyScore(d.gi,d.mi,+d.s1,+d.s2);
-          toast(`📱 ${match.t1.name} ${d.s1}–${d.s2} ${match.t2.name}${dev?' · '+dev.name:''}`);
-        } else { renderGroups(); }
+        if(d.type==='bracket'){
+          // Resultado de partido de bracket
+          const winner = d.winner; // nombre del ganador
+          if(d.bType==='gf'){
+            if(!state.gf?.winner && state.gf?.t1 && state.gf?.t2){
+              const si = state.gf.t1.name===winner ? 0 : 1;
+              selectWinnerGF(si);
+              toast(`📱 🏆 ${winner} campeón${dev?' · '+dev.name:''}`);
+            }
+          } else if(d.bType==='lower'){
+            const match = state.lRounds?.[d.bRi]?.[d.bMi];
+            if(match && !match.winner && match.t1 && match.t2){
+              const si = match.t1.name===winner ? 0 : 1;
+              selectWinnerLower(d.bRi, d.bMi, si);
+              toast(`📱 ${winner} avanza en lower${dev?' · '+dev.name:''}`);
+            }
+          } else {
+            const match = state.rounds?.[d.bRi]?.[d.bMi];
+            if(match && !match.winner && match.t1 && match.t2){
+              const si = match.t1.name===winner ? 0 : 1;
+              selectWinner(d.bRi, d.bMi, si);
+              toast(`📱 ${winner} avanza${dev?' · '+dev.name:''}`);
+            }
+          }
+        } else {
+          // Resultado de partido de grupos
+          const match=groupData.groups?.[d.gi]?.matches?.[d.mi];
+          if(match&&!match.played){
+            applyScore(d.gi,d.mi,+d.s1,+d.s2);
+            toast(`📱 ${match.t1.name} ${d.s1}–${d.s2} ${match.t2.name}${dev?' · '+dev.name:''}`);
+          } else { renderGroups(); }
+        }
         // Borrar score del torneo activo — ya procesado
         deleteDoc(change.doc.ref).catch(()=>{});
       } else {
@@ -2702,7 +2802,6 @@ function buildCard(match, ri, mi, isFinal=false){
     const isLos=match.winner&&team&&match.winner.name!==team.name;
     slot.className='team-slot'+(isBye?' bye empty':'')+((!team)?' empty':'')+(isWin?' winner':'')+(isLos?' loser':'');
     if(isBye){
-      // BYE invisible — slot vacío sin texto ni seed
       slot.innerHTML='<span class="slot-seed"></span><span class="slot-name" style="color:transparent;user-select:none;">—</span><span class="slot-win-icon"></span>';
       slot.style.cssText='cursor:default;pointer-events:none;opacity:0.15;';
     } else {
@@ -2728,6 +2827,33 @@ function buildCard(match, ri, mi, isFinal=false){
     }
     card.appendChild(slot);
   });
+
+  // Botón de cola — solo si ambos equipos están definidos, no hay ganador, no hay BYE, y es admin
+  if(!IS_DISPLAY && !IS_BRACKET && match.t1 && match.t2 &&
+     match.t1.name!=='BYE' && match.t2.name!=='BYE' && !match.winner){
+    const bType = isGF?'gf':isLower?'lower':'upper';
+    const bRi   = isGF?0:isLower?lri:ri;
+    const bMi   = mi;
+    const live    = isBracketMatchLive(bType,bRi,bMi);
+    const queued  = isBracketMatchQueued(bType,bRi,bMi);
+    const pos     = queued?getBracketMatchQueuePos(bType,bRi,bMi):null;
+    const qBtn = document.createElement('button');
+    qBtn.style.cssText='width:100%;margin-top:4px;padding:3px 6px;font-size:0.65rem;border-radius:4px;border:1px solid;cursor:pointer;font-family:inherit;';
+    if(live){
+      qBtn.textContent='▶ En juego'; qBtn.disabled=true;
+      qBtn.style.cssText+=`background:rgba(46,204,113,0.1);border-color:var(--win);color:var(--win);cursor:default;`;
+    } else if(queued){
+      qBtn.textContent=`📋 Cola #${pos}`;
+      qBtn.style.cssText+=`background:rgba(255,193,7,0.1);border-color:var(--gold);color:var(--gold);`;
+      qBtn.onclick=(e)=>{e.stopPropagation();removeBracketMatchFromQueue(bType,bRi,bMi);};
+    } else {
+      qBtn.textContent='➕ Añadir a cola';
+      qBtn.style.cssText+=`background:rgba(255,255,255,0.04);border-color:var(--border);color:var(--text-muted);`;
+      qBtn.onclick=(e)=>{e.stopPropagation();addBracketMatchToQueue(bType,bRi,bMi);};
+    }
+    card.appendChild(qBtn);
+  }
+
   return card;
 }
 
@@ -2974,6 +3100,7 @@ const _fns = {
   applyScore, clearScore,
   removeDevice, clearAllDevices, generateDeviceQR, copyConnectURL, openConnectModal,
   addToGlobalQueue, removeFromGlobalQueue,
+  addBracketMatchToQueue, removeBracketMatchFromQueue,
   selectWinner, selectWinnerLower, selectWinnerGF, resetWinner,
   ipadToggleFS, ipadMod: window.ipadMod, ipadSave: window.ipadSave, ipadStart: window.ipadStart,
   renderPairingScreen,
