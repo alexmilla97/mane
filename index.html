@@ -191,6 +191,12 @@
   #pub-bracket-container .match-col { min-height: 400px; }
   #pub-bracket-container .bracket-center { flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; }
   #pub-bracket-container .center-match-area { flex: 1; display: flex; align-items: center; justify-content: center; }
+  /* Upper en vista pública */
+  #pub-upper-c .bracket-dual { min-height: 600px; }
+  #pub-upper-c .round-col { min-height: 600px; }
+  #pub-upper-c .match-col { min-height: 600px; }
+  #pub-upper-c .bracket-center { flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; }
+  #pub-upper-c .center-match-area { flex: 1; display: flex; align-items: center; justify-content: center; }
   .bracket-half-right { flex-direction: row-reverse; }
   .bracket-center { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1.5rem; min-width: 240px; position: relative; }
   .center-match-area { padding: 1.5rem; border-radius: var(--radius-lg); }
@@ -3245,12 +3251,13 @@ function renderBracketDisplay(data){
   state=savedState;
   cont.appendChild(upperC); cont.appendChild(lowerC);
 
+  let _uSc = 1; // escala actual del upper, usada por drawPubLines
+
   function drawPubLines(){
     const svg=document.getElementById('pub-bracket-svg'); if(!svg) return;
     svg.innerHTML='';
     const {rounds}=data, totalRounds=rounds.length;
-    const scStr=upperC.style.transform.match(/scale\(([^)]+)\)/);
-    const sc=scStr?parseFloat(scStr[1]):1;
+    const sc = _uSc;
     const bW=upperC.scrollWidth, bH=upperC.scrollHeight;
     svg.setAttribute('width',bW); svg.setAttribute('height',bH);
     svg.style.width=bW+'px'; svg.style.height=bH+'px';
@@ -3273,31 +3280,44 @@ function renderBracketDisplay(data){
   }
 
   function fitScale(){
-    // Reset transforms
+    // Dar altura mínima al upper para que se renderice correctamente antes de medir
     upperC.style.transform='scale(1)'; lowerC.style.transform='scale(1)';
+    upperC.style.height='auto'; upperC.style.minHeight='600px';
+    const upperDual = upperC.querySelector('.bracket-dual');
+    if(upperDual) upperDual.style.minHeight='600px';
 
-    const uW=upperC.scrollWidth||1, uH=upperC.scrollHeight||1;
-    const lW=lowerC.scrollWidth||1, lH=lowerC.scrollHeight||1;
-    const totalW=Math.max(uW,lW);
+    requestAnimationFrame(()=>{
+      const uW=upperC.scrollWidth||1, uH=upperC.scrollHeight||1;
+      const lW=lowerC.scrollWidth||1, lH=lowerC.scrollHeight||1;
 
-    // Upper: prioridad 62% alto, full ancho
-    const uSc = Math.min(vW/uW, availH*0.62/uH);
-    upperC.style.transform=`scale(${uSc})`;
-    upperC.style.width=uW+'px'; upperC.style.height=uH+'px';
-    upperC.style.left=Math.max(0,(vW-uW*uSc)/2)+'px';
-    upperC.style.top='0px';
+      // 1. Lower: calcular su escala perfecta
+      const lScW = vW/lW;
+      const lScH = availH*0.35/lH; // lower ocupa ~35% del alto
+      const lSc  = Math.min(lScW, lScH);
+      const lowerVisW = lW*lSc;
 
-    const upperVisH = uH*uSc;
+      // 2. Upper: mismo ancho visual que el lower, limitado por el alto disponible
+      const remainH = availH - lH*lSc;
+      const uScW = lowerVisW/uW; // escala que da el mismo ancho visual que el lower
+      const uScH = remainH*0.98/uH;
+      const uSc  = Math.min(uScW, uScH);
+      _uSc = uSc;
 
-    // Lower: restante hacia abajo, pegado al fondo
-    const lSc = Math.min(vW/lW, (availH-upperVisH)*0.98/lH);
-    lowerC.style.transform=`scale(${lSc})`;
-    lowerC.style.width=lW+'px'; lowerC.style.height=lH+'px';
-    lowerC.style.left=Math.max(0,(vW-lW*lSc)/2)+'px';
-    lowerC.style.bottom='0px'; lowerC.style.top='auto';
+      // Aplicar upper
+      upperC.style.transform=`scale(${uSc})`;
+      upperC.style.width=uW+'px'; upperC.style.height=uH+'px';
+      upperC.style.left=Math.max(0,(vW-uW*uSc)/2)+'px';
+      upperC.style.top='0px';
 
-    cont.style.height=availH+'px';
-    requestAnimationFrame(drawPubLines);
+      // Aplicar lower
+      lowerC.style.transform=`scale(${lSc})`;
+      lowerC.style.width=lW+'px'; lowerC.style.height=lH+'px';
+      lowerC.style.left=Math.max(0,(vW-lowerVisW)/2)+'px';
+      lowerC.style.bottom='0px'; lowerC.style.top='auto';
+
+      cont.style.height=availH+'px';
+      requestAnimationFrame(drawPubLines);
+    });
   }
 
   setTimeout(fitScale,200); setTimeout(fitScale,700);
