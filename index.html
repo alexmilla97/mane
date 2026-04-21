@@ -2204,8 +2204,21 @@ function makeRR(teams){
 function calcStandings(group){
   if(group.manualOrder) return group.manualOrder;
   const mp={};
-  group.teams.forEach(t=>{ mp[t.name]={team:t,P:0,W:0,D:0,L:0,GF:0,GA:0,Pts:0}; });
-  group.matches.forEach(m=>{ if(!m.played) return; const a=mp[m.t1.name],b=mp[m.t2.name]; a.P++;b.P++;a.GF+=m.s1;a.GA+=m.s2;b.GF+=m.s2;b.GA+=m.s1; if(m.s1>m.s2){a.W++;a.Pts+=3;b.L++;}else if(m.s1<m.s2){b.W++;b.Pts+=3;a.L++;}else{a.D++;a.Pts++;b.D++;b.Pts++;} });
+  group.teams.forEach((t,idx)=>{
+    // Usar key única para BYEs múltiples (BYE_0, BYE_1...) pero mantener name='BYE'
+    const key = t.name==='BYE' ? `BYE_${idx}` : t.name;
+    mp[key]={team:t,P:0,W:0,D:0,L:0,GF:0,GA:0,Pts:0};
+  });
+  group.matches.forEach(m=>{
+    if(!m.played) return;
+    const keyA = m.t1.name==='BYE' ? Object.keys(mp).find(k=>k.startsWith('BYE_')&&mp[k].team===m.t1) : m.t1.name;
+    const keyB = m.t2.name==='BYE' ? Object.keys(mp).find(k=>k.startsWith('BYE_')&&mp[k].team===m.t2) : m.t2.name;
+    const a=mp[keyA],b=mp[keyB]; if(!a||!b) return;
+    a.P++;b.P++;a.GF+=m.s1;a.GA+=m.s2;b.GF+=m.s2;b.GA+=m.s1;
+    if(m.s1>m.s2){a.W++;a.Pts+=3;b.L++;}
+    else if(m.s1<m.s2){b.W++;b.Pts+=3;a.L++;}
+    else{a.D++;a.Pts++;b.D++;b.Pts++;}
+  });
   return Object.values(mp).sort((a,b)=>a.team.name==='BYE'?1:b.team.name==='BYE'?-1:b.Pts-a.Pts||(b.GF-b.GA)-(a.GF-a.GA)||b.GF-a.GF);
 }
 
@@ -2246,7 +2259,8 @@ function moveTeam(gi,fromIdx,toIdx){
 }
 
 function buildGroupCard(group,gi){
-  const allM=group.matches.length,doneM=group.matches.filter(m=>m.played).length;
+  const realMatches=group.matches.filter(m=>m.t1.name!=='BYE'&&m.t2.name!=='BYE');
+  const allM=realMatches.length, doneM=realMatches.filter(m=>m.played).length;
   const card=document.createElement('div'); card.className='group-card'; card.id=`gc-${gi}`;
   const hdr=document.createElement('div'); hdr.className='group-card-title';
   hdr.innerHTML=`<span>${group.name}</span><span class="gcard-counter">${doneM}/${allM}</span>`;
@@ -2256,6 +2270,7 @@ function buildGroupCard(group,gi){
   table.innerHTML=`<thead><tr><th style="width:1.2rem">#</th><th style="text-align:left">Equipo</th><th>PJ</th><th>Pts</th><th style="width:2.5rem"></th></tr></thead>`;
   const tbody=document.createElement('tbody');
   calcStandings(group).forEach((s,i)=>{
+    if(s.team.name==='BYE') return; // no mostrar BYEs en la tabla
     const tr=document.createElement('tr');
     tr.innerHTML=`<td><span class="rank">${i+1}</span></td><td>${s.team.name}</td><td>${s.P>0?s.P:'—'}</td><td class="pts-col">${s.P>0?s.Pts:'—'}</td><td><button class="move-btn" onclick="moveTeam(${gi},${i},${i-1})">▲</button><button class="move-btn" onclick="moveTeam(${gi},${i},${i+1})">▼</button></td>`;
     tbody.appendChild(tr);
@@ -2263,6 +2278,7 @@ function buildGroupCard(group,gi){
   table.appendChild(tbody); wrap.appendChild(table); card.appendChild(wrap);
   const lbl=document.createElement('div'); lbl.className='group-matches-lbl'; lbl.textContent='Partidos'; card.appendChild(lbl);
   group.matches.forEach((m,mi)=>{
+    if(m.t1.name==='BYE'||m.t2.name==='BYE') return; // no mostrar partidos contra BYE
     const live=isMatchLive(gi,mi), qPos=!live?getMatchQueuePos(gi,mi):null;
     let cls='group-match-item'; if(m.played) cls+=' played'; if(live) cls+=' live'; else if(qPos) cls+=' queued-match';
     const item=document.createElement('div'); item.className=cls;
@@ -2311,7 +2327,7 @@ function _commitScore(gi){
 $('btn-simulate-gs').onclick=()=>{ groupData.groups.forEach((g,gi)=>{ g.matches.forEach((m,mi)=>{ if(!m.played){ applyScore(gi,mi,Math.floor(Math.random()*5),Math.floor(Math.random()*5)); } }); }); toast('🎲 Resultados simulados'); };
 
 function updateGroupProgress(){
-  const all=groupData.groups.flatMap(g=>g.matches), done=all.filter(m=>m.played).length;
+  const all=groupData.groups.flatMap(g=>g.matches).filter(m=>m.t1.name!=='BYE'&&m.t2.name!=='BYE'), done=all.filter(m=>m.played).length;
   $('gs-fill').style.width=(all.length?Math.round(done/all.length*100):100)+'%';
   $('gs-progress-text').textContent=`${done} / ${all.length} partidos`;
   const complete=done===all.length;
