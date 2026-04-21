@@ -1172,7 +1172,7 @@ function renderPublicStandings(data, body){
   const n=data.groups.length, topCount=Math.ceil(n/2), botCount=Math.floor(n/2);
   const cardW=`calc((100% - 1rem) / ${Math.min(topCount,3)})`;
   function buildCard(g){
-    const st=calcStandings(g);
+    const st=calcStandings(g).filter(s=>s.team.name!=='BYE'); // ocultar BYEs
     const rows=st.map((s,rank)=>{
       const gd=s.GF-s.GA;
       return `<tr${rank===0?' class="dv-row-first"':''}><td><span class="dv-rank${rank===0?' top':''}">${rank+1}</span></td><td class="td-name">${s.team.name}</td><td>${s.P>0?s.P:'—'}</td><td class="${gd>0?'dv-dg-pos':gd<0?'dv-dg-neg':''}">${s.P>0?(gd>0?'+'+gd:gd):'—'}</td><td><span class="dv-pts">${s.P>0?s.Pts:'—'}</span></td></tr>`;
@@ -2862,14 +2862,14 @@ function renderDisplayScreen(data){
   if(!data?.groups) return;
   $('dv-title').textContent=data.title||'—';
   const cont=$('dv-groups'); cont.innerHTML='';
-  const allM=data.groups.flatMap(g=>g.matches), played=allM.filter(m=>m.played).length, total=allM.length;
+  const allM=data.groups.flatMap(g=>g.matches).filter(m=>m.t1.name!=='BYE'&&m.t2.name!=='BYE'), played=allM.filter(m=>m.played).length, total=allM.length;
   $('dv-progress-text').textContent=`${played} / ${total} partidos jugados`;
   $('dv-progress-fill').style.width=total?Math.round(played/total*100)+'%':'0%';
   const n=data.groups.length, topCount=Math.ceil(n/2), botCount=Math.floor(n/2);
   const contW=cont.clientWidth||window.innerWidth, gapPx=Math.round(Math.min(contW*0.012,10));
   const cardW=`calc((100% - ${(topCount-1)*gapPx}px) / ${topCount})`;
   function buildDvCard(g){
-    const st=calcStandings(g);
+    const st=calcStandings(g).filter(s=>s.team.name!=='BYE'); // ocultar BYEs
     const rows=st.map((s,rank)=>{
       const gd=s.GF-s.GA, gdTxt=s.P>0?(gd>0?`+${gd}`:`${gd}`):'—', gdCls=gd>0?'dv-dg-pos':gd<0?'dv-dg-neg':'';
       const pj=s.P>0?s.P:'—', pts=s.P>0?s.Pts:'—';
