@@ -2530,16 +2530,33 @@ function generateProfessionalNames(pairings){
     const D = fullOf(pairings[1][1]);
     const n = A.length;
     const last = n - 1;
-    const slots = [
-      A[0], D[last],   C[3], B[last-3],
-      B[1], C[last-1], A[2], D[last-2],
-      C[0], B[last],   A[3], D[last-3],
-      D[1], A[last-1], C[2], B[last-2],
-      B[0], C[last],   D[3], A[last-3],
-      A[1], D[last-1], B[2], C[last-2],
-      D[0], A[last],   B[3], C[last-3],
-      C[1], B[last-1], D[2], A[last-2],
-    ];
+
+    let slots;
+    if(n === 4){
+      // Bracket de 16: 4 jugadores por grupo
+      slots = [
+        A[0], D[last],
+        B[1], C[last-1],
+        C[0], B[last],
+        D[1], A[last-1],
+        B[0], C[last],
+        A[1], D[last-1],
+        D[0], A[last],
+        C[1], B[last-1],
+      ];
+    } else {
+      // Bracket de 32: 8 jugadores por grupo
+      slots = [
+        A[0], D[last],   C[3], B[last-3],
+        B[1], C[last-1], A[2], D[last-2],
+        C[0], B[last],   A[3], D[last-3],
+        D[1], A[last-1], C[2], B[last-2],
+        B[0], C[last],   D[3], A[last-3],
+        A[1], D[last-1], B[2], C[last-2],
+        D[0], A[last],   B[3], C[last-3],
+        C[1], B[last-1], D[2], A[last-2],
+      ];
+    }
     return slots.map(s => s ?? 'BYE');
   }
 
