@@ -3240,7 +3240,6 @@ function renderBracketDisplay(data){
 
   try{
     const {rounds}=state, total=rounds.length, halfR=total-1;
-    const uLabel=document.createElement('div'); uLabel.className='bracket-section-label'; uLabel.textContent='▲ Upper Bracket'; upperC.appendChild(uLabel);
     const uWrap=document.createElement('div'); uWrap.style.cssText='display:flex;gap:2rem;align-items:flex-start;position:relative;';
     const left=document.createElement('div'); left.className='bracket-half-left';
     for(let ri=0;ri<halfR;ri++){ const h=Math.ceil(rounds[ri].length/2); left.appendChild(makeCol(roundLabel(total,ri),rounds[ri].slice(0,h),ri,0,'left')); }
@@ -3271,11 +3270,12 @@ function renderBracketDisplay(data){
 
   if(data.lRounds?.length){
     try{
-      const lLabel=document.createElement('div'); lLabel.className='bracket-section-label'; lLabel.textContent='▼ Lower Bracket'; lowerC.appendChild(lLabel);
-      const lDual=document.createElement('div'); lDual.style.cssText='display:flex;align-items:flex-start;gap:1.5rem;';
-      const lLeft=document.createElement('div'); lLeft.style.cssText='display:flex;gap:0.6rem;align-items:flex-start;';
+      const lDual=document.createElement('div'); lDual.style.cssText='display:flex;align-items:flex-start;gap:0.8rem;';
+      const lLeft=document.createElement('div'); lLeft.style.cssText='display:flex;gap:0.3rem;align-items:flex-start;';
       const lCenter=document.createElement('div'); lCenter.style.cssText='display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:160px;flex-shrink:0;';
-      const lRight=document.createElement('div'); lRight.style.cssText='display:flex;gap:0.6rem;align-items:flex-start;flex-direction:row-reverse;';
+      const lRight=document.createElement('div'); lRight.style.cssText='display:flex;gap:0.3rem;align-items:flex-start;flex-direction:row-reverse;';
+      // Estilo inline para aumentar gap vertical entre partidos del lower (más alto)
+      const matchGap = '1.2rem';
       data.lRounds.forEach((round,lr)=>{
         const isDropIn=round[0]?.type==='drop-in', uRound=isDropIn?(round[0]?.fromUpperRound??0):null;
         const label=isDropIn?`Perdedores R${uRound+1}`:`Lower R${lr+1}`;
@@ -3283,16 +3283,16 @@ function renderBracketDisplay(data){
         if(n===1){
           const col=document.createElement('div'); col.className='lower-round-col';
           const hdr=document.createElement('div'); hdr.className='round-header'; hdr.textContent=label; col.appendChild(hdr);
-          const mc=document.createElement('div'); mc.className='lower-matches';
+          const mc=document.createElement('div'); mc.className='lower-matches'; mc.style.gap=matchGap;
           const card=buildCard(round[0],`l${lr}`,0,false); card.id=`match-l${lr}-0`; mc.appendChild(card); col.appendChild(mc); lCenter.appendChild(col);
         } else {
           const colL=document.createElement('div'); colL.className='lower-round-col';
           const hdrL=document.createElement('div'); hdrL.className='round-header'; hdrL.textContent=label; colL.appendChild(hdrL);
-          const mcL=document.createElement('div'); mcL.className='lower-matches';
+          const mcL=document.createElement('div'); mcL.className='lower-matches'; mcL.style.gap=matchGap;
           round.slice(0,half).forEach((m,mi)=>{ const card=buildCard(m,`l${lr}`,mi,false); card.id=`match-l${lr}-${mi}`; mcL.appendChild(card); }); colL.appendChild(mcL); lLeft.appendChild(colL);
           const colR=document.createElement('div'); colR.className='lower-round-col';
           const hdrR=document.createElement('div'); hdrR.className='round-header'; hdrR.textContent=label; colR.appendChild(hdrR);
-          const mcR=document.createElement('div'); mcR.className='lower-matches';
+          const mcR=document.createElement('div'); mcR.className='lower-matches'; mcR.style.gap=matchGap;
           round.slice(half).forEach((m,mi)=>{ const card=buildCard(m,`l${lr}`,half+mi,false); card.id=`match-l${lr}-${half+mi}`; mcR.appendChild(card); }); colR.appendChild(mcR); lRight.appendChild(colR);
         }
       });
@@ -3342,9 +3342,9 @@ function renderBracketDisplay(data){
       const uW=upperC.scrollWidth||1, uH=upperC.scrollHeight||1;
       const lW=lowerC.scrollWidth||1, lH=lowerC.scrollHeight||1;
 
-      // 1. Lower: aprovechar más espacio vertical (~42% del alto)
+      // 1. Lower: aprovechar todo el espacio restante (~50% del alto)
       const lScW = vW/lW;
-      const lScH = availH*0.42/lH;
+      const lScH = availH*0.50/lH;
       const lSc  = Math.min(lScW, lScH);
       const lowerVisW = lW*lSc;
       const lowerVisH = lH*lSc;
