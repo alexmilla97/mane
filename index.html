@@ -3110,72 +3110,92 @@ function renderDisplayScreen(data){
 function renderBracketDisplay(data){
   if(!data?.rounds) return;
 
-  // Actualizar header
   $('dv-title').textContent = data.title||'—';
   $('dv-badge-text').textContent = '🏆 Cuadro Eliminatorio';
 
-  // El contenedor principal
   const cont = $('dv-groups');
   cont.innerHTML = '';
-  cont.style.cssText = 'flex:1;overflow:auto;padding:1rem;box-sizing:border-box;';
+  cont.style.cssText = 'flex:1;overflow:hidden;position:relative;';
 
-  // Usar renderBracket() reutilizando el #bracket-container del admin
-  // pero creando un contenedor propio en dv-groups
-  const fakeContainer = document.createElement('div');
-  fakeContainer.id = 'bracket-container'; // temp — necesario para renderBracket
-  fakeContainer.style.cssText = 'min-width:max-content;';
+  // Contenedor escalable
+  const scaler = document.createElement('div');
+  scaler.style.cssText = 'transform-origin:top left;position:absolute;top:0;left:0;';
 
-  // Guardar y reemplazar el contenedor original si existe
-  const origContainer = document.getElementById('bracket-container');
-  if(origContainer) origContainer.id = 'bracket-container-admin';
-  document.body.appendChild(fakeContainer);
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'display:flex;flex-direction:column;gap:0.8rem;padding:1rem;min-width:max-content;';
 
-  // Guardar SVG si existe
-  const origSvg = document.getElementById('bracket-svg');
-  if(origSvg) origSvg.id = 'bracket-svg-admin';
-
-  // Renderizar con el state del cuadro
+  // Renderizar usando state temporal
   const savedState = state;
   state = data;
-  try{ renderBracket(); }catch(e){ console.error('renderBracketDisplay error',e); }
+  try{
+    // Upper bracket
+    const upperLabel = document.createElement('div');
+    upperLabel.style.cssText = 'font-family:"Barlow Condensed",sans-serif;font-size:0.7rem;font-weight:700;color:var(--gold);text-transform:uppercase;letter-spacing:0.1em;opacity:0.8;';
+    upperLabel.textContent = '▲ Upper Bracket';
+    wrap.appendChild(upperLabel);
+    const upperWrap = document.createElement('div');
+    upperWrap.style.cssText = 'display:flex;gap:1.5rem;align-items:center;';
+    renderUpperInto(upperWrap);
+    wrap.appendChild(upperWrap);
+
+    // Lower bracket
+    if(data.lRounds?.length){
+      const div1 = document.createElement('div');
+      div1.style.cssText = 'height:1px;background:var(--border);opacity:0.4;';
+      wrap.appendChild(div1);
+      const lowerLabel = document.createElement('div');
+      lowerLabel.style.cssText = 'font-family:"Barlow Condensed",sans-serif;font-size:0.7rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.1em;opacity:0.7;';
+      lowerLabel.textContent = '▼ Lower Bracket';
+      wrap.appendChild(lowerLabel);
+      const lowerWrap = document.createElement('div');
+      lowerWrap.className = 'lower-bracket-wrap';
+      renderLowerInto(lowerWrap);
+      wrap.appendChild(lowerWrap);
+    }
+
+    // Gran Final
+    if(data.gf){
+      const div2 = document.createElement('div');
+      div2.style.cssText = 'height:1px;background:var(--border);opacity:0.4;';
+      wrap.appendChild(div2);
+      const gfWrap = document.createElement('div');
+      gfWrap.className = 'grand-final-wrap';
+      const gfLabel = document.createElement('div');
+      gfLabel.className = 'grand-final-label';
+      gfLabel.textContent = '🏆 Gran Final';
+      gfWrap.appendChild(gfLabel);
+      const gfCard = buildCard(data.gf, 'gf', 0, true);
+      gfCard.id = 'match-gf-0-pub';
+      gfWrap.appendChild(gfCard);
+      wrap.appendChild(gfWrap);
+    }
+  } catch(e){ console.error('renderBracketDisplay error', e); }
   state = savedState;
 
-  // Tomar el contenido renderizado
-  const rendered = document.getElementById('bracket-container');
-  if(rendered){
-    // Mover al contenedor visible
-    cont.appendChild(rendered);
-    rendered.style.cssText = 'min-width:max-content;transform-origin:top left;';
-    // Escalar para que quepa
-    function fitScale(){
-      rendered.style.transform = 'scale(1)';
-      requestAnimationFrame(()=>{
-        const cW = cont.clientWidth  || window.innerWidth;
-        const cH = cont.clientHeight || (window.innerHeight - 80);
-        const bW = rendered.scrollWidth;
-        const bH = rendered.scrollHeight;
-        if(!bW||!bH) return;
-        const sc = Math.min(cW/bW, cH/bH, 1);
-        rendered.style.transform = `scale(${sc})`;
-        rendered.style.width  = bW+'px';
-        rendered.style.height = bH+'px';
-        cont.style.minHeight  = Math.round(bH*sc)+'px';
-      });
-    }
-    setTimeout(fitScale, 100);
-    setTimeout(fitScale, 500);
-    window.addEventListener('resize', fitScale);
-  }
+  scaler.appendChild(wrap);
+  cont.appendChild(scaler);
 
-  // Restaurar IDs originales
-  fakeContainer.remove();
-  if(origContainer) origContainer.id = 'bracket-container';
-  if(origSvg) origSvg.id = 'bracket-svg';
+  // Escalar para que quepa en pantalla
+  function fitScale(){
+    const cW = window.innerWidth;
+    const cH = window.innerHeight - ($('dv-header')?.offsetHeight||60) - ($('dv-footer')?.offsetHeight||36);
+    const bW = wrap.scrollWidth || wrap.offsetWidth;
+    const bH = wrap.scrollHeight || wrap.offsetHeight;
+    if(!bW || !bH) return;
+    const sc = Math.min(cW/bW, cH/bH, 1);
+    scaler.style.transform = `scale(${sc})`;
+    scaler.style.width  = bW + 'px';
+    scaler.style.height = bH + 'px';
+    cont.style.height   = Math.round(bH * sc) + 'px';
+  }
+  setTimeout(fitScale, 150);
+  setTimeout(fitScale, 600);
+  window.addEventListener('resize', fitScale);
 
   // Progreso
   const uP = data.rounds.flat().filter(m=>m.winner).length;
   const lP = (data.lRounds||[]).flat().filter(m=>m.winner).length;
-  const gfP = data.gf?.winner?1:0;
+  const gfP = data.gf?.winner ? 1 : 0;
   const played = uP+lP+gfP, total = data.totalMatches||1;
   $('dv-progress-text').textContent = `${played} / ${total} partidos jugados`;
   $('dv-progress-fill').style.width = Math.round(played/total*100)+'%';
