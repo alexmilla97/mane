@@ -1393,19 +1393,23 @@ if(IS_DEVICE && DEVICE_ID){
     try {
       const isBracket = done.type==='bracket';
       const scoreId = String(done.matchId||`${done.sessionId}_${done.gi}_${done.mi}`);
-      // Para bracket: el ganador es quien tiene más puntos (s1 > s2 → t1 gana)
       const winnerName = isBracket ? (sc.s1>=sc.s2 ? done.t1 : done.t2) : null;
-      await setDoc(doc(db,'scores', scoreId),{
+      const payload = {
         matchId:done.matchId, sid:done.sessionId,
-        // Datos de grupos
-        gi:done.gi, mi:done.mi,
         s1:sc.s1, s2:sc.s2,
-        // Datos de bracket
-        type: isBracket?'bracket':undefined,
-        bType: done.bType, bRi: done.bRi, bMi: done.bMi,
-        winner: winnerName,
         from:DEVICE_ID, elapsed:startTs?Date.now()-startTs:0, ts:serverTimestamp()
-      });
+      };
+      if(isBracket){
+        payload.type = 'bracket';
+        payload.bType = done.bType;
+        payload.bRi   = done.bRi;
+        payload.bMi   = done.bMi;
+        payload.winner = winnerName;
+      } else {
+        payload.gi = done.gi;
+        payload.mi = done.mi;
+      }
+      await setDoc(doc(db,'scores', scoreId), payload);
       await setDoc(doc(db,'devices',DEVICE_ID), { currentMatch: null, busy: false }, { merge: true });
       $('ipad-sent-msg').style.display='block';
       btn.style.display='none';
