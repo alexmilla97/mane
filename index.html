@@ -3236,7 +3236,7 @@ function renderBracketDisplay(data){
   // ── Contenedor UPPER ──
   const upperC=document.createElement('div');
   upperC.id='pub-upper-c'; upperC.className=cls;
-  upperC.style.cssText='position:absolute;top:0;left:0;transform-origin:top left;min-width:max-content;padding:0.6rem 1rem 0.4rem;';
+  upperC.style.cssText='position:absolute;top:0;left:0;transform-origin:top left;min-width:max-content;padding:0.6rem 0 0.4rem;';
 
   try{
     const {rounds}=state, total=rounds.length, halfR=total-1;
@@ -3266,7 +3266,7 @@ function renderBracketDisplay(data){
   // ── Contenedor LOWER ──
   const lowerC=document.createElement('div');
   lowerC.id='pub-lower-c'; lowerC.className=cls;
-  lowerC.style.cssText='position:absolute;bottom:0;left:0;transform-origin:bottom left;min-width:max-content;padding:0 1rem 0.2rem;';
+  lowerC.style.cssText='position:absolute;bottom:0;left:0;transform-origin:bottom left;min-width:max-content;padding:0 0 0.2rem;';
 
   if(data.lRounds?.length){
     try{
