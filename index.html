@@ -3351,27 +3351,24 @@ function renderBracketDisplay(data){
       const uW=upperC.scrollWidth||1, uH=upperC.scrollHeight||1;
       const lW=lowerC.scrollWidth||1, lH=lowerC.scrollHeight||1;
 
-      // 1. Lower: aprovechar todo el espacio restante (~70% del alto)
-      const lScW = vW/lW;
-      const lScH = availH*0.70/lH;
-      const lSc  = Math.min(lScW, lScH);
-      const lowerVisW = lW*lSc;
-      const lowerVisH = lH*lSc;
-
-      // 2. Upper: usa TODO el ancho disponible y TODO el alto restante
-      const remainH = availH - lowerVisH;
-      const uScW = vW/uW;
-      const uScH = remainH/uH;
-      const uSc  = Math.min(uScW, uScH);
+      // 1. Upper primero: usar TODO el ancho disponible
+      const uSc = vW/uW;
       _uSc = uSc;
+      const upperVisH = uH * uSc;
 
-      // Aplicar upper
+      // Aplicar upper — centrado arriba
       upperC.style.transform=`scale(${uSc})`;
       upperC.style.width=uW+'px'; upperC.style.height=uH+'px';
       upperC.style.left=Math.max(0,(vW-uW*uSc)/2)+'px';
       upperC.style.top='0px';
 
-      // Aplicar lower — centrado abajo
+      // 2. Lower: aprovechar el espacio restante
+      const remainH = availH - upperVisH;
+      const lScW = vW/lW;
+      const lScH = remainH/lH;
+      const lSc  = Math.min(lScW, lScH);
+      const lowerVisW = lW*lSc;
+
       lowerC.style.transform=`scale(${lSc})`;
       lowerC.style.width=lW+'px'; lowerC.style.height=lH+'px';
       lowerC.style.left=Math.max(0,(vW-lowerVisW)/2)+'px';
