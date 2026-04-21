@@ -2909,10 +2909,10 @@ function renderBracketSendToSection(bType, bRi, bMi, container){
     btn.className='send-to-btn sent'; btn.textContent='▶ En juego'; btn.disabled=true;
   } else if(queued){
     btn.className='send-to-btn queued'; btn.textContent=`📋 En cola #${pos}`;
-    btn.addEventListener('click', ()=>{ removeBracketMatchFromQueue(bType,bRi,bMi); openBracketScorePanel(_bsp.ri,_bsp.mi,_bsp.isGF,_bsp.isLower,_bsp.lri); });
+    btn.addEventListener('click', ()=>{ removeBracketMatchFromQueue(bType,bRi,bMi); closeBracketScorePanel(); });
   } else {
     btn.className='send-to-btn'; btn.textContent='➕ Añadir a cola';
-    btn.addEventListener('click', ()=>{ addBracketMatchToQueue(bType,bRi,bMi); openBracketScorePanel(_bsp.ri,_bsp.mi,_bsp.isGF,_bsp.isLower,_bsp.lri); });
+    btn.addEventListener('click', ()=>{ addBracketMatchToQueue(bType,bRi,bMi); closeBracketScorePanel(); });
   }
   section.appendChild(btn); container.appendChild(section);
 }
@@ -2963,6 +2963,7 @@ function openBracketScorePanel(ri, mi, isGF, isLower, lri){
 window.closeBracketScorePanel = () => {
   $('bracket-score-panel').style.display = 'none';
   _bsp = null;
+  renderBracket();
 };
 
 window.modBSP = (v, n) => {
