@@ -743,6 +743,11 @@
 </div>
 
 <div class="toast" id="toast"></div>
+<!-- Overlay para mostrar el cuadro en móvil forzado en horizontal -->
+<div id="bracket-overlay" style="display:none;position:fixed;inset:0;background:#000;z-index:9999;">
+  <button id="bracket-overlay-close" onclick="closeBracketOverlay()" style="position:fixed;top:12px;right:12px;z-index:10001;width:36px;height:36px;border-radius:50%;border:2px solid var(--gold);background:rgba(0,0,0,0.7);color:var(--gold);font-size:1.2rem;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;padding:0;">✕</button>
+  <iframe id="bracket-overlay-frame" style="position:absolute;border:0;background:#000;" allowfullscreen></iframe>
+</div>
 <div id="fs-hint">F11 — Pantalla completa</div>
 
 <!DOCTYPE html>
@@ -1114,8 +1119,7 @@ function buildPublicCard(sid, tData){
     (st?.rounds ? `<span class="pub-card-stat">🏅 Cuadro: ${st.rounds.flat().filter(m=>m.winner).length}/${st.totalMatches||0}</span>` : '');
 
   const bracketBtn = st?.rounds
-    ? `<button class="pub-action-btn bracket" onclick="showPubPanel('${sid}','upper')">🏆 Ganadores</button>
-       <button class="pub-action-btn bracket" onclick="showPubPanel('${sid}','lower')">💀 Perdedores</button>`
+    ? `<button class="pub-action-btn bracket" onclick="openBracketOverlay('${sid}')">🏅 Cuadro</button>`
     : '';
 
   card.innerHTML =
@@ -1130,6 +1134,52 @@ function buildPublicCard(sid, tData){
       ${bracketBtn}
     </div>`;
   return card;
+}
+
+window.openBracketOverlay = (sid) => {
+  const overlay = $('bracket-overlay');
+  const frame = $('bracket-overlay-frame');
+  // Cargar el cuadro público en el iframe
+  frame.src = `${location.pathname}?mode=bracket&session=${sid}`;
+  overlay.style.display = 'block';
+  document.body.style.overflow = 'hidden';
+  applyBracketOverlaySize();
+  window.addEventListener('resize', applyBracketOverlaySize);
+};
+
+window.closeBracketOverlay = () => {
+  const overlay = $('bracket-overlay');
+  const frame = $('bracket-overlay-frame');
+  overlay.style.display = 'none';
+  frame.src = 'about:blank';
+  document.body.style.overflow = '';
+  window.removeEventListener('resize', applyBracketOverlaySize);
+};
+
+function applyBracketOverlaySize(){
+  const frame = $('bracket-overlay-frame');
+  if(!frame) return;
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  // Si está en portrait (pantalla más alta que ancha), rotar 90° para forzar horizontal
+  if(vh > vw){
+    // El iframe ocupa el ancho = alto del viewport, y su altura = ancho del viewport
+    frame.style.width = vh + 'px';
+    frame.style.height = vw + 'px';
+    // Posicionar: origen arriba-izquierda, rotar 90° y luego trasladar
+    frame.style.transformOrigin = 'top left';
+    frame.style.transform = `rotate(90deg) translateY(-${vw}px)`;
+    frame.style.top = '0';
+    frame.style.left = '0';
+  } else {
+    // Landscape: ocupar todo sin rotar
+    frame.style.width = '100vw';
+    frame.style.height = '100vh';
+    frame.style.transform = 'none';
+    frame.style.transformOrigin = '';
+    frame.style.top = '0';
+    frame.style.left = '0';
+  }
 }
 
 window.showPubPanel = (sid, tab) => {
