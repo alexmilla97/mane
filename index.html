@@ -1390,21 +1390,31 @@ function renderPublicStandings(data, body){
   if(!data?.groups) return;
   if(!body) body = $('pub-standings-body');
   body.innerHTML='';
-  function buildCard(g){
+  function buildCard(g, width){
     const st=calcStandings(g).filter(s=>s.team.name!=='BYE');
     const rows=st.map((s,rank)=>{
       const gd=s.GF-s.GA;
       return `<tr${rank===0?' class="dv-row-first"':''}><td><span class="dv-rank${rank===0?' top':''}">${rank+1}</span></td><td class="td-name">${s.team.name}</td><td>${s.P>0?s.P:'—'}</td><td class="${gd>0?'dv-dg-pos':gd<0?'dv-dg-neg':''}">${s.P>0?(gd>0?'+'+gd:gd):'—'}</td><td><span class="dv-pts">${s.P>0?s.Pts:'—'}</span></td></tr>`;
     }).join('');
-    const card=document.createElement('div'); card.className='dv-group-card'; card.style.cssText='width:100%;flex-shrink:0;margin-bottom:1rem;';
+    const card=document.createElement('div'); card.className='dv-group-card';
+    card.style.cssText=`flex:1 1 ${width};min-width:0;flex-shrink:0;`;
     card.innerHTML=`<div class="dv-group-name">${g.name}</div><div class="dv-table-wrap"><table class="dv-table"><thead><tr><th style="width:2em">#</th><th class="th-name">Equipo</th><th>PJ</th><th>DG</th><th>Pts</th></tr></thead><tbody>${rows}</tbody></table></div>`;
     return card;
   }
-  // Todos los grupos apilados verticalmente
-  const col = document.createElement('div');
-  col.style.cssText='display:flex;flex-direction:column;gap:0;width:100%;';
-  data.groups.forEach(g=>col.appendChild(buildCard(g)));
-  body.appendChild(col);
+  const n = data.groups.length;
+  if(n === 2){
+    // 2 grupos: uno a la izquierda y otro a la derecha
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;flex-direction:row;gap:0.8rem;width:100%;';
+    data.groups.forEach(g => row.appendChild(buildCard(g, '0')));
+    body.appendChild(row);
+  } else {
+    // Más de 2: apilados verticalmente
+    const col = document.createElement('div');
+    col.style.cssText = 'display:flex;flex-direction:column;gap:0.8rem;width:100%;';
+    data.groups.forEach(g => col.appendChild(buildCard(g, '100%')));
+    body.appendChild(col);
+  }
 }
 
 window.switchPubTab = (tab) => {
