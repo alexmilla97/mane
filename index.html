@@ -3208,22 +3208,11 @@ function renderDisplayScreen(data){
   if(!data?.groups) return;
   $('dv-title').textContent=data.title||'—';
   const cont=$('dv-groups'); cont.innerHTML='';
-  // En móvil permitir scroll
-  const isMobile = window.innerWidth < 768;
-  cont.style.overflowY = isMobile ? 'auto' : 'hidden';
-  cont.style.justifyContent = isMobile ? 'flex-start' : 'center';
+  cont.style.overflowY = 'auto';
+  cont.style.justifyContent = 'flex-start';
   const allM=data.groups.flatMap(g=>g.matches).filter(m=>m.t1.name!=='BYE'&&m.t2.name!=='BYE'), played=allM.filter(m=>m.played).length, total=allM.length;
   $('dv-progress-text').textContent=`${played} / ${total} partidos jugados`;
   $('dv-progress-fill').style.width=total?Math.round(played/total*100)+'%':'0%';
-  const n=data.groups.length;
-  // En móvil: 1 columna (todos en una fila vertical). En desktop: mitad arriba y mitad abajo.
-  const perRow = isMobile ? 1 : Math.ceil(n/2);
-  const topCount = isMobile ? n : Math.ceil(n/2);
-  const botCount = isMobile ? 0 : Math.floor(n/2);
-  const contW=cont.clientWidth||window.innerWidth, gapPx=Math.round(Math.min(contW*0.012,10));
-  const cardW= isMobile
-    ? '100%'
-    : `calc((100% - ${(perRow-1)*gapPx}px) / ${perRow})`;
   function buildDvCard(g){
     const st=calcStandings(g).filter(s=>s.team.name!=='BYE');
     const rows=st.map((s,rank)=>{
@@ -3232,21 +3221,16 @@ function renderDisplayScreen(data){
       const sep=(rank===0&&st.length>1)?'<tr class="dv-sep-row"><td colspan="5"></td></tr>':'';
       return `<tr${rank===0?' class="dv-row-first"':''}><td><span class="dv-rank${rank===0?' top':''}">${rank+1}</span></td><td class="td-name">${s.team.name}</td><td>${pj}</td><td class="${gdCls}">${gdTxt}</td><td><span class="dv-pts">${pts}</span></td></tr>${sep}`;
     }).join('');
-    const card=document.createElement('div'); card.className='dv-group-card'; card.style.width=cardW; card.style.flexShrink='0';
+    const card=document.createElement('div'); card.className='dv-group-card';
+    card.style.cssText='width:100%;flex-shrink:0;';
     card.innerHTML=`<div class="dv-group-name">${g.name}</div><div class="dv-table-wrap"><table class="dv-table"><thead><tr><th style="width:2em">#</th><th class="th-name">Equipo</th><th>PJ</th><th>DG</th><th>Pts</th></tr></thead><tbody>${rows}</tbody></table></div>`;
     return card;
   }
-  if(isMobile){
-    // Una sola columna con todos los grupos apilados
-    const col = document.createElement('div');
-    col.style.cssText='display:flex;flex-direction:column;gap:1rem;width:100%;';
-    data.groups.forEach(g=>col.appendChild(buildDvCard(g)));
-    cont.appendChild(col);
-  } else {
-    const row1=document.createElement('div'); row1.className='dv-row';
-    data.groups.slice(0,topCount).forEach(g=>row1.appendChild(buildDvCard(g))); cont.appendChild(row1);
-    if(botCount>0){ const row2=document.createElement('div'); row2.className='dv-row'; data.groups.slice(topCount).forEach(g=>row2.appendChild(buildDvCard(g))); cont.appendChild(row2); }
-  }
+  // Todos los grupos apilados verticalmente — igual que el caso de 2 grupos
+  const col = document.createElement('div');
+  col.style.cssText='display:flex;flex-direction:column;gap:1.2rem;width:100%;';
+  data.groups.forEach(g=>col.appendChild(buildDvCard(g)));
+  cont.appendChild(col);
 }
 function renderBracketDisplay(data){
   if(!data?.rounds) return;
