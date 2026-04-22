@@ -319,10 +319,10 @@
   .qv-teams .vs { color: var(--text-muted); font-weight: 400; font-size: 0.6em; margin: 0 0.4em; }
   .qv-group { font-family: 'Barlow Condensed', sans-serif; font-size: clamp(0.7rem,1.5vw,0.85rem); color: var(--text-muted); letter-spacing: 0.08em; text-transform: uppercase; margin-top: 4px; }
   .qv-device { text-align: right; }
-  .qv-device-name { font-family: 'Barlow Condensed', sans-serif; font-size: clamp(0.9rem,2vw,1.2rem); font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; }
+  .qv-device-name { font-family: 'Barlow Condensed', sans-serif; font-size: clamp(1.1rem,2.2vw,1.5rem); font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; }
   .qv-device-name.live { color: var(--win); }
   .qv-device-name.queued { color: var(--gold); }
-  .qv-device-lbl { font-family: 'Barlow Condensed', sans-serif; font-size: clamp(0.62rem,1.2vw,0.72rem); color: var(--text-muted); letter-spacing: 0.1em; text-transform: uppercase; margin-top: 2px; }
+  .qv-device-lbl { display: none; }
 
   /* ── MODO IPAD ────────────────────────────────────── */
   #ipad-screen { display:none; position:fixed; inset:0; background:var(--bg); z-index:600; flex-direction:column; }
@@ -1382,7 +1382,7 @@ function renderMergedQueue(queueMap, body){
         `<div class="qv-teams">${it.t1}<span class="vs">vs</span>${it.t2}</div>`+
         `<div class="qv-group">${it.group}${it.torneoName ? ` · <span style="opacity:0.6">${it.torneoName}</span>` : ''}</div>`+
       `</div>`+
-      (it.devName?`<div class="qv-device"><div class="qv-device-name ${it.status}">📱 ${it.devName}</div><div class="qv-device-lbl">${isLive?'dispositivo':'siguiente en'}</div></div>`:'');
+      (it.devName?`<div class="qv-device"><div class="qv-device-name ${it.status}">${it.devName}</div><div class="qv-device-lbl">${isLive?'dispositivo':'siguiente en'}</div></div>`:'');
     body.appendChild(div);
   });
 }
@@ -1707,7 +1707,7 @@ if((IS_DISPLAY||IS_BRACKET||IS_QUEUE) && (SESSION_ID||IS_QUEUE)){
         div.innerHTML=`<div class="qv-indicator"><div class="qv-dot ${it.status}"></div><div class="qv-pos-num ${it.status}">${isLive?'En juego':'#'+qIdx}</div></div>`+
           `<div><div class="qv-teams">${it.t1}<span class="vs">vs</span>${it.t2}</div>`+
           `<div class="qv-group">${it.torneoName?`<span style="color:var(--gold);opacity:0.8">${it.torneoName}</span> · `:''}${it.group}</div></div>`+
-          (it.devName?`<div class="qv-device"><div class="qv-device-name ${it.status}">📱 ${it.devName}</div><div class="qv-device-lbl">${isLive?'dispositivo':'siguiente en'}</div></div>`:'');
+          (it.devName?`<div class="qv-device"><div class="qv-device-name ${it.status}">${it.devName}</div><div class="qv-device-lbl">${isLive?'dispositivo':'siguiente en'}</div></div>`:'');
         body.appendChild(div);
       });
     }
