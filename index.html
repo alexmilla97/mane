@@ -240,16 +240,16 @@
   .dv-header { background: var(--bg2); border-bottom: 2px solid var(--gold); padding: 1.2rem 2.5rem; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
   .dv-title { font-family: 'Barlow Condensed', sans-serif; font-size: 2.2rem; font-weight: 800; text-transform: uppercase; color: var(--text); letter-spacing: 0.02em; }
   .dv-badge { font-family: 'Barlow Condensed', sans-serif; font-size: 0.9rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--gold); background: rgba(212,160,23,0.12); padding: 0.3rem 0.8rem; border-radius: 4px; border: 1px solid rgba(212,160,23,0.3); }
-  .dv-groups { flex: 1; padding: 1.5rem; display: flex; flex-direction: column; gap: 1.5rem; overflow: hidden; justify-content: center; }
+  .dv-groups { flex: 1; padding: 1.5rem; display: flex; flex-direction: column; gap: 1.5rem; overflow-y: auto; overflow-x: hidden; justify-content: flex-start; }
   .dv-row { display: flex; gap: 1.2rem; justify-content: center; width: 100%; }
   .dv-group-card { background: var(--bg2); border: 1px solid var(--border-strong); border-radius: 12px; overflow: hidden; display: flex; flex-direction: column; box-shadow: 0 10px 40px rgba(0,0,0,0.4); }
   .dv-group-name { background: var(--bg3); color: var(--gold); font-family: 'Barlow Condensed', sans-serif; font-size: 1.2rem; font-weight: 800; text-transform: uppercase; padding: 0.6rem 1rem; border-bottom: 1px solid var(--border-strong); text-align: center; letter-spacing: 0.1em; }
   .dv-table-wrap { padding: 0.8rem; flex: 1; }
-  .dv-table { width: 100%; border-collapse: collapse; color: var(--text); font-size: 1rem; }
-  .dv-table th { font-family: 'Barlow Condensed', sans-serif; font-size: 0.8rem; font-weight: 700; text-transform: uppercase; color: var(--text-muted); padding: 0.5rem; text-align: center; border-bottom: 1px solid var(--border); }
+  .dv-table { width: 100%; border-collapse: collapse; color: var(--text); font-size: 1rem; table-layout: auto; }
+  .dv-table th { font-family: 'Barlow Condensed', sans-serif; font-size: 0.8rem; font-weight: 700; text-transform: uppercase; color: var(--text-muted); padding: 0.5rem 0.3rem; text-align: center; border-bottom: 1px solid var(--border); }
   .dv-table th.th-name { text-align: left; }
-  .dv-table td { padding: 0.6rem 0.5rem; text-align: center; border-bottom: 1px solid var(--border); font-weight: 500; }
-  .dv-table td.td-name { text-align: left; font-weight: 700; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dv-table td { padding: 0.6rem 0.3rem; text-align: center; border-bottom: 1px solid var(--border); font-weight: 500; }
+  .dv-table td.td-name { text-align: left; font-weight: 700; white-space: normal; word-break: break-word; }
   .dv-rank { font-family: 'Barlow Condensed', sans-serif; font-weight: 800; color: var(--text-muted); font-size: 0.9rem; }
   .dv-rank.top { color: var(--gold); font-size: 1.1rem; }
   .dv-pts { font-family: 'Barlow Condensed', sans-serif; font-weight: 800; color: var(--gold); font-size: 1.2rem; }
@@ -257,6 +257,15 @@
   .dv-dg-neg { color: #E24B4A; }
   .dv-row-first { background: rgba(212,160,23,0.05); }
   .dv-sep-row td { padding: 0 !important; height: 2px; background: rgba(212,160,23,0.28); border: none !important; }
+  /* Responsive: pantallas estrechas */
+  @media (max-width: 600px){
+    .dv-groups { padding: 0.8rem; gap: 0.8rem; }
+    .dv-table { font-size: 0.85rem; }
+    .dv-table th, .dv-table td { padding: 0.4rem 0.2rem; }
+    .dv-group-name { font-size: 1rem; padding: 0.5rem; }
+    .dv-pts { font-size: 1rem; }
+    .dv-rank.top { font-size: 1rem; }
+  }
   .dv-footer { background: var(--bg2); border-top: 1px solid var(--border); padding: 0.3rem 2rem; display: flex; align-items: center; justify-content: center; flex-shrink: 0; gap: 1rem; }
   .dv-progress-bar { height: 3px; background: var(--bg3); flex: 1; max-width: 280px; border-radius: 2px; }
   .dv-progress-fill { height: 100%; background: var(--gold); border-radius: 2px; transition: width 0.5s ease; }
