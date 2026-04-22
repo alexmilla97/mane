@@ -1114,7 +1114,8 @@ function buildPublicCard(sid, tData){
     (st?.rounds ? `<span class="pub-card-stat">🏅 Cuadro: ${st.rounds.flat().filter(m=>m.winner).length}/${st.totalMatches||0}</span>` : '');
 
   const bracketBtn = st?.rounds
-    ? `<button class="pub-action-btn bracket" onclick="showPubPanel('${sid}','bracket')">🏅 Cuadro</button>`
+    ? `<button class="pub-action-btn bracket" onclick="showPubPanel('${sid}','upper')">🏆 Ganadores</button>
+       <button class="pub-action-btn bracket" onclick="showPubPanel('${sid}','lower')">💀 Perdedores</button>`
     : '';
 
   card.innerHTML =
@@ -1136,7 +1137,7 @@ window.showPubPanel = (sid, tab) => {
   panel.style.display = 'flex';
   panel.dataset.tab = tab;
   panel.dataset.sid = sid;
-  const titles = { queue:'📋 Siguientes Partidos', standings:'📊 Clasificación', bracket:'🏅 Cuadro Eliminatorio' };
+  const titles = { queue:'📋 Siguientes Partidos', standings:'📊 Clasificación', upper:'🏆 Cuadro de Ganadores', lower:'💀 Cuadro de Perdedores' };
   $('pub-inline-title').textContent = titles[tab] || '';
   renderPubPanelContent(sid, tab);
   panel.scrollIntoView({ behavior:'smooth', block:'nearest' });
@@ -1156,23 +1157,104 @@ function renderPubPanelContent(sid, tab){
     const body = document.createElement('div'); body.className='dv-groups'; body.style.cssText='padding:1.2rem;overflow-y:auto;';
     cont.appendChild(body);
     renderPublicStandings(gd, body);
-  } else if(tab === 'bracket'){
+  } else if(tab === 'upper' || tab === 'lower'){
     const st = parseState(tData);
     if(!st?.rounds) return;
-    const wrap = document.createElement('div'); wrap.style.cssText='overflow:auto;padding:1.5rem;min-height:300px;';
+    const wrap = document.createElement('div'); wrap.style.cssText='overflow-x:auto;overflow-y:auto;padding:1rem;min-height:300px;';
     cont.appendChild(wrap);
-    const inner = document.createElement('div'); inner.style.cssText='display:flex;gap:2rem;align-items:center;';
-    wrap.appendChild(inner);
     const savedState = state;
     state = st;
-    renderDual(inner);
+    try {
+      if(tab === 'upper'){
+        renderPubUpperMobile(wrap, st);
+      } else {
+        renderPubLowerMobile(wrap, st);
+      }
+    } catch(e){ console.error('pub bracket render error',e); }
     state = savedState;
-    setTimeout(()=>{
-      const sc = Math.min((wrap.clientWidth-40)/(inner.scrollWidth||1), 1);
-      inner.style.transform = sc < 1 ? `scale(${sc})` : '';
-      inner.style.transformOrigin = 'top left';
-    }, 100);
   }
+}
+
+// Renderizar upper bracket en móvil — lista vertical por rondas
+function renderPubUpperMobile(wrap, st){
+  const {rounds, gf} = st;
+  rounds.forEach((round, ri)=>{
+    const label = roundLabel(rounds.length, ri);
+    const sec = document.createElement('div');
+    sec.style.cssText = 'margin-bottom:1.2rem;';
+    const hdr = document.createElement('div');
+    hdr.style.cssText = 'font-family:"Barlow Condensed",sans-serif;font-size:0.85rem;font-weight:800;letter-spacing:0.15em;text-transform:uppercase;color:var(--gold);padding:0.4rem 0.6rem;border-bottom:1px solid var(--border);margin-bottom:0.6rem;';
+    hdr.textContent = ri === rounds.length - 1 ? 'Final Upper' : label;
+    sec.appendChild(hdr);
+    const matches = document.createElement('div');
+    matches.style.cssText = 'display:flex;flex-direction:column;gap:0.5rem;';
+    round.forEach((m, mi)=>{
+      if(m.t1?.name === 'BYE' || m.t2?.name === 'BYE') return;
+      matches.appendChild(buildMobileMatchCard(m, mi));
+    });
+    sec.appendChild(matches);
+    wrap.appendChild(sec);
+  });
+  // Gran Final
+  if(gf?.t1 && gf?.t2){
+    const sec = document.createElement('div');
+    sec.style.cssText = 'margin-top:1.2rem;padding-top:1.2rem;border-top:2px solid var(--gold);';
+    const hdr = document.createElement('div');
+    hdr.style.cssText = 'font-family:"Barlow Condensed",sans-serif;font-size:1rem;font-weight:800;letter-spacing:0.15em;text-transform:uppercase;color:var(--gold);padding:0.4rem 0.6rem;margin-bottom:0.6rem;text-align:center;';
+    hdr.textContent = '🏆 Gran Final';
+    sec.appendChild(hdr);
+    sec.appendChild(buildMobileMatchCard(gf, 0));
+    wrap.appendChild(sec);
+  }
+}
+
+// Renderizar lower bracket en móvil — lista vertical por rondas
+function renderPubLowerMobile(wrap, st){
+  const lRounds = st.lRounds || [];
+  if(!lRounds.length){
+    wrap.innerHTML = '<div style="text-align:center;padding:2rem;color:var(--text-muted);">Sin cuadro de perdedores</div>';
+    return;
+  }
+  lRounds.forEach((round, lr)=>{
+    const isDropIn = round[0]?.type === 'drop-in';
+    const uRound = isDropIn ? (round[0]?.fromUpperRound ?? 0) : null;
+    const label = isDropIn ? `Perdedores R${uRound + 1}` : `Lower R${lr + 1}`;
+    const sec = document.createElement('div');
+    sec.style.cssText = 'margin-bottom:1.2rem;';
+    const hdr = document.createElement('div');
+    hdr.style.cssText = 'font-family:"Barlow Condensed",sans-serif;font-size:0.85rem;font-weight:800;letter-spacing:0.15em;text-transform:uppercase;color:var(--text-muted);padding:0.4rem 0.6rem;border-bottom:1px solid var(--border);margin-bottom:0.6rem;';
+    hdr.textContent = label;
+    sec.appendChild(hdr);
+    const matches = document.createElement('div');
+    matches.style.cssText = 'display:flex;flex-direction:column;gap:0.5rem;';
+    round.forEach((m, mi)=>{
+      if(m.t1?.name === 'BYE' || m.t2?.name === 'BYE') return;
+      matches.appendChild(buildMobileMatchCard(m, mi));
+    });
+    sec.appendChild(matches);
+    wrap.appendChild(sec);
+  });
+}
+
+// Tarjeta de partido compacta para móvil
+function buildMobileMatchCard(m, mi){
+  const card = document.createElement('div');
+  card.style.cssText = 'background:var(--bg2);border:1px solid var(--border);border-radius:8px;overflow:hidden;';
+  [m.t1, m.t2].forEach(team=>{
+    const row = document.createElement('div');
+    const isWin = m.winner && team && m.winner.name === team.name;
+    const isLos = m.winner && team && m.winner.name !== team.name;
+    row.style.cssText = `display:flex;justify-content:space-between;align-items:center;padding:0.55rem 0.8rem;font-size:0.9rem;${isWin?'background:rgba(46,204,113,0.12);color:var(--win);font-weight:700;':''}${isLos?'opacity:0.55;':''}`;
+    const name = document.createElement('span');
+    name.textContent = team ? team.name : 'Por decidir';
+    if(!team) name.style.fontStyle = 'italic';
+    row.appendChild(name);
+    if(isWin){ const check = document.createElement('span'); check.textContent = '✓'; check.style.cssText='color:var(--win);font-weight:800;'; row.appendChild(check); }
+    card.appendChild(row);
+  });
+  // Separador entre los dos equipos
+  card.children[0].style.borderBottom = '1px solid var(--border)';
+  return card;
 }
 
 function renderMergedQueue(queueMap, body){
