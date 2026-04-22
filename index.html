@@ -320,6 +320,7 @@
   .qv-group { font-family: 'Barlow Condensed', sans-serif; font-size: clamp(0.7rem,1.5vw,0.85rem); color: var(--text-muted); letter-spacing: 0.08em; text-transform: uppercase; margin-top: 4px; }
   .qv-device { text-align: right; }
   .qv-device-name { font-family: 'Barlow Condensed', sans-serif; font-size: clamp(1.1rem,2.2vw,1.5rem); font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; }
+  .qv-device-name--admin { font-size: clamp(1.4rem,2.8vw,2rem); }
   .qv-device-name.live { color: var(--win); }
   .qv-device-name.queued { color: var(--gold); }
   .qv-device-lbl { display: none; }
@@ -1707,7 +1708,7 @@ if((IS_DISPLAY||IS_BRACKET||IS_QUEUE) && (SESSION_ID||IS_QUEUE)){
         div.innerHTML=`<div class="qv-indicator"><div class="qv-dot ${it.status}"></div><div class="qv-pos-num ${it.status}">${isLive?'En juego':'#'+qIdx}</div></div>`+
           `<div><div class="qv-teams">${it.t1}<span class="vs">vs</span>${it.t2}</div>`+
           `<div class="qv-group">${it.torneoName?`<span style="color:var(--gold);opacity:0.8">${it.torneoName}</span> · `:''}${it.group}</div></div>`+
-          (it.devName?`<div class="qv-device"><div class="qv-device-name ${it.status}">${it.devName}</div><div class="qv-device-lbl">${isLive?'dispositivo':'siguiente en'}</div></div>`:'');
+          (it.devName?`<div class="qv-device"><div class="qv-device-name qv-device-name--admin ${it.status}">${it.devName}</div><div class="qv-device-lbl">${isLive?'dispositivo':'siguiente en'}</div></div>`:'');
         body.appendChild(div);
       });
     }
@@ -3397,12 +3398,9 @@ function renderDisplayScreen(data){
   const allM=data.groups.flatMap(g=>g.matches).filter(m=>m.t1.name!=='BYE'&&m.t2.name!=='BYE'), played=allM.filter(m=>m.played).length, total=allM.length;
   $('dv-progress-text').textContent=`${played} / ${total} partidos jugados`;
   $('dv-progress-fill').style.width=total?Math.round(played/total*100)+'%':'0%';
-  const n=data.groups.length;
-  const topCount=Math.ceil(n/2), botCount=Math.floor(n/2);
+  const n=data.groups.length, topCount=Math.ceil(n/2), botCount=Math.floor(n/2);
   const contW=cont.clientWidth||window.innerWidth, gapPx=Math.round(Math.min(contW*0.012,10));
-  // Con 2 grupos: ambos en la misma fila (lado a lado)
-  const perRow = n===2 ? 2 : topCount;
-  const cardW=`calc((100% - ${(perRow-1)*gapPx}px) / ${perRow})`;
+  const cardW=`calc((100% - ${(topCount-1)*gapPx}px) / ${topCount})`;
   function buildDvCard(g){
     const st=calcStandings(g).filter(s=>s.team.name!=='BYE');
     const rows=st.map((s,rank)=>{
@@ -3415,15 +3413,9 @@ function renderDisplayScreen(data){
     card.innerHTML=`<div class="dv-group-name">${g.name}</div><div class="dv-table-wrap"><table class="dv-table"><thead><tr><th style="width:2em">#</th><th class="th-name">Equipo</th><th>PJ</th><th>DG</th><th>Pts</th></tr></thead><tbody>${rows}</tbody></table></div>`;
     return card;
   }
-  if(n===2){
-    // Una sola fila con los 2 grupos
-    const row=document.createElement('div'); row.className='dv-row';
-    data.groups.forEach(g=>row.appendChild(buildDvCard(g))); cont.appendChild(row);
-  } else {
-    const row1=document.createElement('div'); row1.className='dv-row';
-    data.groups.slice(0,topCount).forEach(g=>row1.appendChild(buildDvCard(g))); cont.appendChild(row1);
-    if(botCount>0){ const row2=document.createElement('div'); row2.className='dv-row'; data.groups.slice(topCount).forEach(g=>row2.appendChild(buildDvCard(g))); cont.appendChild(row2); }
-  }
+  const row1=document.createElement('div'); row1.className='dv-row';
+  data.groups.slice(0,topCount).forEach(g=>row1.appendChild(buildDvCard(g))); cont.appendChild(row1);
+  if(botCount>0){ const row2=document.createElement('div'); row2.className='dv-row'; data.groups.slice(topCount).forEach(g=>row2.appendChild(buildDvCard(g))); cont.appendChild(row2); }
 }
 function renderBracketDisplay(data){
   if(!data?.rounds) return;
