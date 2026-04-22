@@ -3354,20 +3354,21 @@ function renderBracketDisplay(data){
       const uH = upperC.scrollHeight || 1;
       const lW=lowerC.scrollWidth||1, lH=lowerC.scrollHeight||1;
 
-      // 1. Upper primero: usar TODO el ancho disponible
-      const uSc = vW/uW;
+      // 1. Upper: usar todo el ancho, pero sin exceder 65% del alto (reserva espacio para lower)
+      const uScW = vW/uW;
+      const uScH = availH*0.65/uH;
+      const uSc  = Math.min(uScW, uScH);
       _uSc = uSc;
       const upperVisH = uH * uSc;
 
-      // Aplicar upper — centrado arriba (left negativo si hace falta para compensar padding asimétrico)
+      // Aplicar upper — centrado
       upperC.style.transform=`scale(${uSc})`;
       upperC.style.width='auto'; upperC.style.height=uH+'px';
-      // Centrar: el contenido real (uW) debe quedar centrado en vW
       const upperActualW = upperC.scrollWidth * uSc;
       upperC.style.left = ((vW - upperActualW) / 2) + 'px';
       upperC.style.top='0px';
 
-      // 2. Lower: aprovechar el espacio restante
+      // 2. Lower: aprovechar todo el espacio restante
       const remainH = availH - upperVisH;
       const lScW = vW/lW;
       const lScH = remainH/lH;
