@@ -3247,16 +3247,35 @@ function renderBracketDisplay(data){
   try{
     const {rounds}=state, total=rounds.length, halfR=total-1;
     const uWrap=document.createElement('div'); uWrap.style.cssText='display:flex;gap:2rem;align-items:flex-start;position:relative;';
+
+    // Títulos arriba del bracket (sobre las columnas laterales)
     const left=document.createElement('div'); left.className='bracket-half-left';
     for(let ri=0;ri<halfR;ri++){ const h=Math.ceil(rounds[ri].length/2); left.appendChild(makeCol(roundLabel(total,ri),rounds[ri].slice(0,h),ri,0,'left')); }
-    const center=document.createElement('div'); center.className='bracket-center'; center.style.cssText='min-width:200px;';
+    const center=document.createElement('div'); center.className='bracket-center'; center.style.cssText='min-width:200px;display:flex;flex-direction:column;align-items:center;';
+
+    // Nombre del torneo y Cervecería Mané — arriba, sin espaciador
+    const titleStack = document.createElement('div');
+    titleStack.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:0.3rem;margin-bottom:0.6rem;text-align:center;white-space:nowrap;';
+    const tournName = document.createElement('div');
+    tournName.textContent = data.title || '';
+    tournName.style.cssText = 'font-family:"Barlow Condensed",sans-serif;font-size:3.2rem;font-weight:800;letter-spacing:0.1em;text-transform:uppercase;color:var(--text);line-height:1;';
+    const brand = document.createElement('div');
+    brand.textContent = 'Cervecería Mané';
+    brand.style.cssText = 'font-family:"Barlow Condensed",sans-serif;font-size:1.6rem;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;color:var(--gold);line-height:1;';
+    titleStack.appendChild(tournName); titleStack.appendChild(brand);
+    center.appendChild(titleStack);
+
     const ch=document.createElement('div'); ch.className='round-header'; ch.textContent='Final Upper'; center.appendChild(ch);
     const ca=document.createElement('div'); ca.className='center-match-area';
     const finalM=buildCard(rounds[total-1][0],total-1,0,false); finalM.id=`match-${total-1}-0`; ca.appendChild(finalM); center.appendChild(ca);
+
+    // Gran Final — misma posición pero más grande
     if(data.gf?.t1&&data.gf?.t2){
-      const sep=document.createElement('div'); sep.style.cssText='height:1px;background:var(--gold);opacity:0.3;margin:0.3rem 0;width:80%;align-self:center;'; center.appendChild(sep);
-      const gfH=document.createElement('div'); gfH.className='round-header'; gfH.textContent='🏆 Gran Final'; gfH.style.cssText='color:var(--gold);'; center.appendChild(gfH);
-      const gfA=document.createElement('div'); gfA.style.cssText='padding:0.3rem;display:flex;justify-content:center;';
+      const gfSpacer = document.createElement('div');
+      gfSpacer.style.cssText = 'height:1.5rem;';
+      center.appendChild(gfSpacer);
+      const gfH=document.createElement('div'); gfH.className='round-header'; gfH.textContent='🏆 Gran Final'; gfH.style.cssText='color:var(--gold);font-size:1rem;'; center.appendChild(gfH);
+      const gfA=document.createElement('div'); gfA.style.cssText='padding:0.3rem;display:flex;justify-content:center;transform:scale(1.35);transform-origin:top center;margin-top:0.3rem;';
       const gfCard=buildCard(data.gf,'gf',0,false); gfCard.id='match-gf-0-pub'; gfA.appendChild(gfCard); center.appendChild(gfA);
     }
     const right=document.createElement('div'); right.className='bracket-half-right';
