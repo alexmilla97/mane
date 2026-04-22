@@ -1260,7 +1260,7 @@ function renderPubPanelContent(sid, tab){
     if(!gd) return;
     const body = document.createElement('div'); body.className='dv-groups'; body.style.cssText='padding:1.2rem;overflow-y:auto;';
     cont.appendChild(body);
-    renderPublicStandings(gd, body);
+    renderPublicStandings(gd, body, isAdmin);
   } else if(tab === 'upper' || tab === 'lower'){
     const st = parseState(tData);
     if(!st?.rounds) return;
@@ -1388,7 +1388,7 @@ function renderMergedQueue(queueMap, body){
   });
 }
 
-function renderPublicStandings(data, body){
+function renderPublicStandings(data, body, sideBy=false){
   if(!data?.groups) return;
   if(!body) body = $('pub-standings-body');
   body.innerHTML='';
@@ -1404,10 +1404,12 @@ function renderPublicStandings(data, body){
     return card;
   }
   const n = data.groups.length;
-  if(n === 2){
+  if(n === 2 && sideBy){
+    // Admin con 2 grupos: lado a lado
     body.classList.add('row-layout');
     data.groups.forEach(g => body.appendChild(buildCard(g, '0')));
   } else {
+    // Web pública o más de 2 grupos: apilados verticalmente
     body.classList.remove('row-layout');
     const col = document.createElement('div');
     col.style.cssText = 'display:flex;flex-direction:column;gap:0.8rem;width:100%;';
