@@ -1154,9 +1154,17 @@ window.openBracketOverlay = (sid) => {
     try {
       const doc = frame.contentDocument;
       if(doc){
+        // Ocultar líneas del bracket (se ven mal al rotar) y bloquear zoom del viewport
         const style = doc.createElement('style');
-        style.textContent = '#pub-bracket-svg, .bracket-svg { display: none !important; }';
+        style.textContent = `
+          #pub-bracket-svg, .bracket-svg { display: none !important; }
+          html, body { touch-action: pan-x pan-y !important; -webkit-text-size-adjust: 100% !important; }
+        `;
         doc.head.appendChild(style);
+        // Asegurar viewport meta que bloquea zoom
+        let meta = doc.querySelector('meta[name="viewport"]');
+        if(!meta){ meta = doc.createElement('meta'); meta.name='viewport'; doc.head.appendChild(meta); }
+        meta.content = 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no';
       }
     } catch(e){}
     const tryResize = () => {
