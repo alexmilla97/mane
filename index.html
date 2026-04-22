@@ -241,6 +241,7 @@
   .dv-title { font-family: 'Barlow Condensed', sans-serif; font-size: 2.2rem; font-weight: 800; text-transform: uppercase; color: var(--text); letter-spacing: 0.02em; }
   .dv-badge { font-family: 'Barlow Condensed', sans-serif; font-size: 0.9rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--gold); background: rgba(212,160,23,0.12); padding: 0.3rem 0.8rem; border-radius: 4px; border: 1px solid rgba(212,160,23,0.3); }
   .dv-groups { flex: 1; padding: 1.5rem; display: flex; flex-direction: column; gap: 1.5rem; overflow: hidden; justify-content: center; }
+  .dv-groups.row-layout { flex-direction: row !important; align-items: flex-start; gap: 0.8rem; }
   .dv-row { display: flex; gap: 1.2rem; justify-content: center; width: 100%; }
   .dv-group-card { background: var(--bg2); border: 1px solid var(--border-strong); border-radius: 12px; overflow: hidden; display: flex; flex-direction: column; box-shadow: 0 10px 40px rgba(0,0,0,0.4); }
   .dv-group-name { background: var(--bg3); color: var(--gold); font-family: 'Barlow Condensed', sans-serif; font-size: 1.2rem; font-weight: 800; text-transform: uppercase; padding: 0.6rem 1rem; border-bottom: 1px solid var(--border-strong); text-align: center; letter-spacing: 0.1em; }
@@ -1403,14 +1404,9 @@ function renderPublicStandings(data, body){
   }
   const n = data.groups.length;
   if(n === 2){
-    // 2 grupos: uno a la izquierda y otro a la derecha
-    body.style.flexDirection = 'row';
-    body.style.alignItems = 'flex-start';
-    body.style.gap = '0.8rem';
+    body.classList.add('row-layout');
     data.groups.forEach(g => body.appendChild(buildCard(g, '0')));
   } else {
-    // Más de 2: apilados verticalmente
-    body.style.flexDirection = 'column';
     const col = document.createElement('div');
     col.style.cssText = 'display:flex;flex-direction:column;gap:0.8rem;width:100%;';
     data.groups.forEach(g => col.appendChild(buildCard(g, '100%')));
