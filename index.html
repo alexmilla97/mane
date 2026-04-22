@@ -1154,25 +1154,36 @@ window.openBracketOverlay = (sid) => {
     try {
       const doc = frame.contentDocument;
       if(doc){
-        // Ocultar líneas del bracket (se ven mal al rotar) y bloquear zoom del viewport
         const style = doc.createElement('style');
-        style.textContent = `
-          #pub-bracket-svg, .bracket-svg { display: none !important; }
-          html, body { touch-action: pan-x pan-y !important; -webkit-text-size-adjust: 100% !important; }
-        `;
+        style.textContent = `#pub-bracket-svg, .bracket-svg { display: none !important; }`;
         doc.head.appendChild(style);
-        // Asegurar viewport meta que bloquea zoom
-        let meta = doc.querySelector('meta[name="viewport"]');
-        if(!meta){ meta = doc.createElement('meta'); meta.name='viewport'; doc.head.appendChild(meta); }
-        meta.content = 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no';
       }
     } catch(e){}
+    // Disparar resize inicial varias veces para que fitScale ajuste bien
     const tryResize = () => {
       try { frame.contentWindow?.dispatchEvent(new Event('resize')); } catch(e){}
     };
     setTimeout(tryResize, 200);
     setTimeout(tryResize, 600);
     setTimeout(tryResize, 1500);
+    // Después del render inicial, bloquear resize events para permitir zoom sin reescalar
+    setTimeout(()=>{
+      try {
+        const w = frame.contentWindow;
+        if(!w) return;
+        // Sobreescribir dispatchEvent para ignorar resize events posteriores
+        // (el zoom dispara resize, pero no queremos que fitScale se ejecute)
+        const origDispatch = w.dispatchEvent.bind(w);
+        w.dispatchEvent = function(ev){
+          if(ev && ev.type === 'resize') return true; // ignorar
+          return origDispatch(ev);
+        };
+        // También bloquear resize events nativos del navegador
+        w.addEventListener('resize', function(e){
+          e.stopImmediatePropagation();
+        }, true);
+      } catch(e){}
+    }, 2500);
   };
   frame.src = `${location.pathname}?mode=bracket&session=${sid}`;
   window.addEventListener('resize', applyBracketOverlaySize);
