@@ -1143,10 +1143,14 @@ window.openBracketOverlay = (sid) => {
   const frame = $('bracket-overlay-frame');
   overlay.style.display = 'block';
   document.body.style.overflow = 'hidden';
+  // Solicitar pantalla completa (sobre todo útil en móvil)
+  const requestFs = overlay.requestFullscreen || overlay.webkitRequestFullscreen || overlay.webkitEnterFullscreen;
+  if(requestFs){
+    try { requestFs.call(overlay).catch(()=>{}); } catch(e){}
+  }
   applyBracketOverlaySize();
   frame.onload = () => {
     applyBracketOverlaySize();
-    // Ocultar las líneas del bracket dentro del iframe (se ven mal al rotar)
     try {
       const doc = frame.contentDocument;
       if(doc){
@@ -1169,6 +1173,11 @@ window.openBracketOverlay = (sid) => {
 window.closeBracketOverlay = () => {
   const overlay = $('bracket-overlay');
   const frame = $('bracket-overlay-frame');
+  // Salir de pantalla completa si está activa
+  const exitFs = document.exitFullscreen || document.webkitExitFullscreen;
+  if(exitFs && (document.fullscreenElement || document.webkitFullscreenElement)){
+    try { exitFs.call(document).catch(()=>{}); } catch(e){}
+  }
   overlay.style.display = 'none';
   frame.src = 'about:blank';
   document.body.style.overflow = '';
