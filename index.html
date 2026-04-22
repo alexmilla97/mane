@@ -235,22 +235,21 @@
   .toast.show { transform: translateY(0); opacity: 1; }
 
   /* ── MODO VISUALIZACIÓN ─────────────────────────────── */
-  #display-screen { display: none; position: fixed; inset: 0; background: var(--bg); z-index: 500; flex-direction: column; width: 100vw; }
+  #display-screen { display: none; position: fixed; inset: 0; background: var(--bg); z-index: 500; flex-direction: column; }
   #display-screen.active { display: flex; }
-  #display-screen.active .dv-groups > * { width: 100%; max-width: 100%; }
   .dv-header { background: var(--bg2); border-bottom: 2px solid var(--gold); padding: 1.2rem 2.5rem; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
   .dv-title { font-family: 'Barlow Condensed', sans-serif; font-size: 2.2rem; font-weight: 800; text-transform: uppercase; color: var(--text); letter-spacing: 0.02em; }
   .dv-badge { font-family: 'Barlow Condensed', sans-serif; font-size: 0.9rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--gold); background: rgba(212,160,23,0.12); padding: 0.3rem 0.8rem; border-radius: 4px; border: 1px solid rgba(212,160,23,0.3); }
-  .dv-groups { flex: 1; padding: 1.5rem; display: flex; flex-direction: column; gap: 1.5rem; overflow-y: auto; overflow-x: hidden; justify-content: flex-start; }
+  .dv-groups { flex: 1; padding: 1.5rem; display: flex; flex-direction: column; gap: 1.5rem; overflow: hidden; justify-content: center; }
   .dv-row { display: flex; gap: 1.2rem; justify-content: center; width: 100%; }
-  .dv-group-card { background: var(--bg2); border: 1px solid var(--border-strong); border-radius: 12px; overflow: hidden; display: flex; flex-direction: column; box-shadow: 0 10px 40px rgba(0,0,0,0.4); width: 100%; align-self: stretch; flex-shrink: 0; }
+  .dv-group-card { background: var(--bg2); border: 1px solid var(--border-strong); border-radius: 12px; overflow: hidden; display: flex; flex-direction: column; box-shadow: 0 10px 40px rgba(0,0,0,0.4); }
   .dv-group-name { background: var(--bg3); color: var(--gold); font-family: 'Barlow Condensed', sans-serif; font-size: 1.2rem; font-weight: 800; text-transform: uppercase; padding: 0.6rem 1rem; border-bottom: 1px solid var(--border-strong); text-align: center; letter-spacing: 0.1em; }
   .dv-table-wrap { padding: 0.8rem; flex: 1; }
-  .dv-table { width: 100%; border-collapse: collapse; color: var(--text); font-size: 1rem; table-layout: auto; }
-  .dv-table th { font-family: 'Barlow Condensed', sans-serif; font-size: 0.8rem; font-weight: 700; text-transform: uppercase; color: var(--text-muted); padding: 0.5rem 0.3rem; text-align: center; border-bottom: 1px solid var(--border); }
+  .dv-table { width: 100%; border-collapse: collapse; color: var(--text); font-size: 1rem; }
+  .dv-table th { font-family: 'Barlow Condensed', sans-serif; font-size: 0.8rem; font-weight: 700; text-transform: uppercase; color: var(--text-muted); padding: 0.5rem; text-align: center; border-bottom: 1px solid var(--border); }
   .dv-table th.th-name { text-align: left; }
-  .dv-table td { padding: 0.6rem 0.3rem; text-align: center; border-bottom: 1px solid var(--border); font-weight: 500; }
-  .dv-table td.td-name { text-align: left; font-weight: 700; white-space: normal; word-break: break-word; }
+  .dv-table td { padding: 0.6rem 0.5rem; text-align: center; border-bottom: 1px solid var(--border); font-weight: 500; }
+  .dv-table td.td-name { text-align: left; font-weight: 700; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .dv-rank { font-family: 'Barlow Condensed', sans-serif; font-weight: 800; color: var(--text-muted); font-size: 0.9rem; }
   .dv-rank.top { color: var(--gold); font-size: 1.1rem; }
   .dv-pts { font-family: 'Barlow Condensed', sans-serif; font-weight: 800; color: var(--gold); font-size: 1.2rem; }
@@ -258,15 +257,6 @@
   .dv-dg-neg { color: #E24B4A; }
   .dv-row-first { background: rgba(212,160,23,0.05); }
   .dv-sep-row td { padding: 0 !important; height: 2px; background: rgba(212,160,23,0.28); border: none !important; }
-  /* Responsive: pantallas estrechas */
-  @media (max-width: 600px){
-    .dv-groups { padding: 0.8rem; gap: 0.8rem; }
-    .dv-table { font-size: 0.85rem; }
-    .dv-table th, .dv-table td { padding: 0.4rem 0.2rem; }
-    .dv-group-name { font-size: 1rem; padding: 0.5rem; }
-    .dv-pts { font-size: 1rem; }
-    .dv-rank.top { font-size: 1rem; }
-  }
   .dv-footer { background: var(--bg2); border-top: 1px solid var(--border); padding: 0.3rem 2rem; display: flex; align-items: center; justify-content: center; flex-shrink: 0; gap: 1rem; }
   .dv-progress-bar { height: 3px; background: var(--bg3); flex: 1; max-width: 280px; border-radius: 2px; }
   .dv-progress-fill { height: 100%; background: var(--gold); border-radius: 2px; transition: width 0.5s ease; }
@@ -1216,21 +1206,21 @@ function renderPublicStandings(data, body){
   if(!data?.groups) return;
   if(!body) body = $('pub-standings-body');
   body.innerHTML='';
-  const n=data.groups.length, topCount=Math.ceil(n/2), botCount=Math.floor(n/2);
-  const cardW=`calc((100% - 1rem) / ${Math.min(topCount,3)})`;
   function buildCard(g){
-    const st=calcStandings(g).filter(s=>s.team.name!=='BYE'); // ocultar BYEs
+    const st=calcStandings(g).filter(s=>s.team.name!=='BYE');
     const rows=st.map((s,rank)=>{
       const gd=s.GF-s.GA;
       return `<tr${rank===0?' class="dv-row-first"':''}><td><span class="dv-rank${rank===0?' top':''}">${rank+1}</span></td><td class="td-name">${s.team.name}</td><td>${s.P>0?s.P:'—'}</td><td class="${gd>0?'dv-dg-pos':gd<0?'dv-dg-neg':''}">${s.P>0?(gd>0?'+'+gd:gd):'—'}</td><td><span class="dv-pts">${s.P>0?s.Pts:'—'}</span></td></tr>`;
     }).join('');
-    const card=document.createElement('div'); card.className='dv-group-card'; card.style.cssText=`width:${cardW};flex-shrink:0;`;
+    const card=document.createElement('div'); card.className='dv-group-card'; card.style.cssText='width:100%;flex-shrink:0;margin-bottom:1rem;';
     card.innerHTML=`<div class="dv-group-name">${g.name}</div><div class="dv-table-wrap"><table class="dv-table"><thead><tr><th style="width:2em">#</th><th class="th-name">Equipo</th><th>PJ</th><th>DG</th><th>Pts</th></tr></thead><tbody>${rows}</tbody></table></div>`;
     return card;
   }
-  const row1=document.createElement('div'); row1.className='dv-row'; row1.style.flexWrap='wrap';
-  data.groups.slice(0,topCount).forEach(g=>row1.appendChild(buildCard(g))); body.appendChild(row1);
-  if(botCount>0){ const row2=document.createElement('div'); row2.className='dv-row'; row2.style.flexWrap='wrap'; data.groups.slice(topCount).forEach(g=>row2.appendChild(buildCard(g))); body.appendChild(row2); }
+  // Todos los grupos apilados verticalmente
+  const col = document.createElement('div');
+  col.style.cssText='display:flex;flex-direction:column;gap:0;width:100%;';
+  data.groups.forEach(g=>col.appendChild(buildCard(g)));
+  body.appendChild(col);
 }
 
 window.switchPubTab = (tab) => {
@@ -1585,19 +1575,14 @@ if((IS_DISPLAY||IS_BRACKET||IS_QUEUE) && (SESSION_ID||IS_QUEUE)){
     }
   } else {
     $('display-screen').classList.add('active');
-    let _lastGroupData = null;
     onSnapshot(tourneyRef(SESSION_ID), snap=>{
       const data=snap.data();
       if(!data) return;
       if(IS_BRACKET && data.stateJson || IS_BRACKET && data.state?.rounds){
         const parsedState = parseState(data);
         if(parsedState.rounds) renderBracketDisplay(parsedState);
-      } else if(!IS_BRACKET){ const gd=parseGroupData(data); if(gd?.groups){ _lastGroupData = gd; renderDisplayScreen(gd); } }
+      } else if(!IS_BRACKET){ const gd=parseGroupData(data); if(gd?.groups) renderDisplayScreen(gd); }
     });
-    // Re-renderizar al cambiar tamaño (móvil ↔ desktop, rotación...)
-    if(!IS_BRACKET){
-      window.addEventListener('resize', ()=>{ if(_lastGroupData) renderDisplayScreen(_lastGroupData); });
-    }
     if(IS_BRACKET){
       // Ocultar header en vista pública del cuadro
       const hdr = document.querySelector('.dv-header');
@@ -3218,11 +3203,12 @@ function renderDisplayScreen(data){
   if(!data?.groups) return;
   $('dv-title').textContent=data.title||'—';
   const cont=$('dv-groups'); cont.innerHTML='';
-  cont.style.overflowY = 'auto';
-  cont.style.justifyContent = 'flex-start';
   const allM=data.groups.flatMap(g=>g.matches).filter(m=>m.t1.name!=='BYE'&&m.t2.name!=='BYE'), played=allM.filter(m=>m.played).length, total=allM.length;
   $('dv-progress-text').textContent=`${played} / ${total} partidos jugados`;
   $('dv-progress-fill').style.width=total?Math.round(played/total*100)+'%':'0%';
+  const n=data.groups.length, topCount=Math.ceil(n/2), botCount=Math.floor(n/2);
+  const contW=cont.clientWidth||window.innerWidth, gapPx=Math.round(Math.min(contW*0.012,10));
+  const cardW=`calc((100% - ${(topCount-1)*gapPx}px) / ${topCount})`;
   function buildDvCard(g){
     const st=calcStandings(g).filter(s=>s.team.name!=='BYE');
     const rows=st.map((s,rank)=>{
@@ -3231,16 +3217,13 @@ function renderDisplayScreen(data){
       const sep=(rank===0&&st.length>1)?'<tr class="dv-sep-row"><td colspan="5"></td></tr>':'';
       return `<tr${rank===0?' class="dv-row-first"':''}><td><span class="dv-rank${rank===0?' top':''}">${rank+1}</span></td><td class="td-name">${s.team.name}</td><td>${pj}</td><td class="${gdCls}">${gdTxt}</td><td><span class="dv-pts">${pts}</span></td></tr>${sep}`;
     }).join('');
-    const card=document.createElement('div'); card.className='dv-group-card';
-    card.style.cssText='width:100%;flex-shrink:0;';
+    const card=document.createElement('div'); card.className='dv-group-card'; card.style.width=cardW;
     card.innerHTML=`<div class="dv-group-name">${g.name}</div><div class="dv-table-wrap"><table class="dv-table"><thead><tr><th style="width:2em">#</th><th class="th-name">Equipo</th><th>PJ</th><th>DG</th><th>Pts</th></tr></thead><tbody>${rows}</tbody></table></div>`;
     return card;
   }
-  // Todos los grupos apilados verticalmente — igual que el caso de 2 grupos
-  const col = document.createElement('div');
-  col.style.cssText='display:flex;flex-direction:column;gap:1.2rem;width:100%;';
-  data.groups.forEach(g=>col.appendChild(buildDvCard(g)));
-  cont.appendChild(col);
+  const row1=document.createElement('div'); row1.className='dv-row';
+  data.groups.slice(0,topCount).forEach(g=>row1.appendChild(buildDvCard(g))); cont.appendChild(row1);
+  if(botCount>0){ const row2=document.createElement('div'); row2.className='dv-row'; data.groups.slice(topCount).forEach(g=>row2.appendChild(buildDvCard(g))); cont.appendChild(row2); }
 }
 function renderBracketDisplay(data){
   if(!data?.rounds) return;
