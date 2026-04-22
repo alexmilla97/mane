@@ -1404,10 +1404,14 @@ function renderPublicStandings(data, body){
     return card;
   }
   const n = data.groups.length;
-  if(n === 2){
+  const isMobile = window.innerWidth < 600;
+  if(n === 2 && !isMobile){
+    // Desktop con 2 grupos: lado a lado
     body.classList.add('row-layout');
     data.groups.forEach(g => body.appendChild(buildCard(g, '0')));
   } else {
+    // Móvil o más de 2 grupos: apilados verticalmente
+    body.classList.remove('row-layout');
     const col = document.createElement('div');
     col.style.cssText = 'display:flex;flex-direction:column;gap:0.8rem;width:100%;';
     data.groups.forEach(g => col.appendChild(buildCard(g, '100%')));
