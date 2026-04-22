@@ -1139,7 +1139,15 @@ function buildPublicCard(sid, tData){
 window.openBracketOverlay = (sid) => {
   const overlay = $('bracket-overlay');
   const frame = $('bracket-overlay-frame');
-  // Cargar el cuadro público en el iframe
+  // Cuando el iframe termine de cargar, forzar resize para redibujar líneas
+  frame.onload = () => {
+    setTimeout(()=>{
+      try { frame.contentWindow?.dispatchEvent(new Event('resize')); } catch(e){}
+    }, 400);
+    setTimeout(()=>{
+      try { frame.contentWindow?.dispatchEvent(new Event('resize')); } catch(e){}
+    }, 1200);
+  };
   frame.src = `${location.pathname}?mode=bracket&session=${sid}`;
   overlay.style.display = 'block';
   document.body.style.overflow = 'hidden';
@@ -1161,18 +1169,14 @@ function applyBracketOverlaySize(){
   if(!frame) return;
   const vw = window.innerWidth;
   const vh = window.innerHeight;
-  // Si está en portrait (pantalla más alta que ancha), rotar 90° para forzar horizontal
   if(vh > vw){
-    // El iframe ocupa el ancho = alto del viewport, y su altura = ancho del viewport
     frame.style.width = vh + 'px';
     frame.style.height = vw + 'px';
-    // Posicionar: origen arriba-izquierda, rotar 90° y luego trasladar
     frame.style.transformOrigin = 'top left';
     frame.style.transform = `rotate(90deg) translateY(-${vw}px)`;
     frame.style.top = '0';
     frame.style.left = '0';
   } else {
-    // Landscape: ocupar todo sin rotar
     frame.style.width = '100vw';
     frame.style.height = '100vh';
     frame.style.transform = 'none';
@@ -1180,6 +1184,15 @@ function applyBracketOverlaySize(){
     frame.style.top = '0';
     frame.style.left = '0';
   }
+  // Forzar recálculo del layout dentro del iframe (líneas del bracket)
+  try {
+    const tryResize = () => {
+      if(frame.contentWindow) frame.contentWindow.dispatchEvent(new Event('resize'));
+    };
+    setTimeout(tryResize, 300);
+    setTimeout(tryResize, 800);
+    setTimeout(tryResize, 1500);
+  } catch(e){}
 }
 
 window.showPubPanel = (sid, tab) => {
