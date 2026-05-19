@@ -986,6 +986,7 @@ if((IS_DISPLAY||IS_BRACKET||IS_QUEUE) && (SESSION_ID||IS_QUEUE)){
 
       let qIdx=0;
       const usedKeys=new Set();
+      const orderedEls=[];
       active.forEach(it=>{
         const isLive=it.status==='live';
         if(!isLive) qIdx++;
@@ -1016,8 +1017,10 @@ if((IS_DISPLAY||IS_BRACKET||IS_QUEUE) && (SESSION_ID||IS_QUEUE)){
             `<div class="qv-group">${it.torneoName?`<span style="color:var(--gold);opacity:0.8">${it.torneoName}</span> · `:''}${it.group}</div></div>`+
             (it.devName?`<div class="qv-device"><div class="qv-device-name qv-device-name--admin ${cls}">${it.devName}</div><div class="qv-device-lbl">${isLive?'dispositivo':'siguiente en'}</div></div>`:'');
         }
-        body.appendChild(el); // mantiene el orden correcto (noop si ya está al final)
+        orderedEls.push(el);
       });
+      // Reordenar el DOM solo cuando un nodo está fuera de posición — evita reflows intermedios
+      orderedEls.forEach((el,i)=>{ const cur=body.children[i]; if(cur!==el) body.insertBefore(el,cur||null); });
       // Eliminar nodos que ya no están en la lista
       Object.entries(existing).forEach(([k,el])=>{ if(!usedKeys.has(k)) el.remove(); });
     }
