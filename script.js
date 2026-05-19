@@ -1019,10 +1019,10 @@ if((IS_DISPLAY||IS_BRACKET||IS_QUEUE) && (SESSION_ID||IS_QUEUE)){
         }
         orderedEls.push(el);
       });
-      // Reordenar el DOM solo cuando un nodo está fuera de posición — evita reflows intermedios
-      orderedEls.forEach((el,i)=>{ const cur=body.children[i]; if(cur!==el) body.insertBefore(el,cur||null); });
-      // Eliminar nodos que ya no están en la lista
+      // Eliminar nodos obsoletos primero — así no aparecen durante el reordenamiento
       Object.entries(existing).forEach(([k,el])=>{ if(!usedKeys.has(k)) el.remove(); });
+      // Reordenar solo los nodos que están fuera de posición
+      orderedEls.forEach((el,i)=>{ const cur=body.children[i]; if(cur!==el) body.insertBefore(el,cur||null); });
     }
 
     if(SESSION_ID){
