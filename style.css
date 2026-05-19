@@ -368,9 +368,9 @@
   #public-view { display: none; flex-direction: column; min-height: 100vh; }
   #public-view.active { display: flex; }
 
-  .pub-header { background: var(--bg2); border-bottom: 2px solid var(--gold); padding: 1rem 2rem; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+  .pub-header { background: transparent; border-bottom: none; padding: 1rem 2rem; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
 
-  .pub-readonly-bar { background: rgba(212,160,23,0.08); border-bottom: 1px solid rgba(212,160,23,0.2); padding: 0.45rem 2rem; text-align: center; font-family: 'Barlow Condensed', sans-serif; font-size: 0.78rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--gold); display: flex; align-items: center; justify-content: center; gap: 0.5rem; }
+  .pub-readonly-bar { display: none; }
 
   .pub-body { flex: 1; display: flex; flex-direction: column; align-items: center; padding: 3rem 1.5rem; gap: 2rem; overflow-y: auto; }
 
