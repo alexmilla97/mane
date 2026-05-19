@@ -974,10 +974,13 @@ if((IS_DISPLAY||IS_BRACKET||IS_QUEUE) && (SESSION_ID||IS_QUEUE)){
       // Quitar placeholder vacío si existía
       const emptyEl=body.querySelector('.qv-empty'); if(emptyEl) emptyEl.remove();
 
-      // Clave única por partido — evita destruir nodos existentes (elimina el parpadeo)
-      const makeKey=it=>it.bType!=null
-        ?`${it.torneoName||''}_b_${it.bType}_${it.bRi}_${it.bMi}`
-        :(it.gi!=null&&it.mi!=null?`${it.torneoName||''}_g_${it.gi}_${it.mi}`:`${it.t1}_${it.t2}_${it.group||''}`);
+      // Clave: items live se identifican por dispositivo → el nodo persiste entre partidos,
+      // solo se actualiza el texto interior (equipos, grupo). Items queued se identifican por partido.
+      const makeKey=it=>it.status==='live'
+        ?`__live__${it.devName||'__nodev__'}`
+        :(it.bType!=null
+          ?`${it.torneoName||''}_b_${it.bType}_${it.bRi}_${it.bMi}`
+          :(it.gi!=null&&it.mi!=null?`${it.torneoName||''}_g_${it.gi}_${it.mi}`:`${it.t1}_${it.t2}_${it.group||''}`));
 
       // Mapa de nodos actuales
       const existing={};
@@ -994,10 +997,15 @@ if((IS_DISPLAY||IS_BRACKET||IS_QUEUE) && (SESSION_ID||IS_QUEUE)){
         const posText=isLive?'En juego':'#'+qIdx;
         let el=existing[key];
         if(el){
-          // Actualizar en sitio — el nodo no se destruye, la animación CSS no se reinicia
+          // Actualizar en sitio — el borde verde y el nombre de dispositivo no parpadean
           el.className='qv-item '+cls;
           const dot=el.querySelector('.qv-dot'); if(dot) dot.className='qv-dot '+cls;
           const posEl=el.querySelector('.qv-pos-num'); if(posEl){posEl.className='qv-pos-num '+cls;posEl.textContent=posText;}
+          // Actualizar equipos y grupo (el nodo live se reutiliza para el siguiente partido)
+          const teamsEl=el.querySelector('.qv-teams');
+          if(teamsEl) teamsEl.innerHTML=`${it.t1}<span class="vs">vs</span>${it.t2}`;
+          const groupEl=el.querySelector('.qv-group');
+          if(groupEl) groupEl.innerHTML=it.torneoName?`<span style="color:var(--gold);opacity:0.8">${it.torneoName}</span> · ${it.group}`:it.group;
           let devDiv=el.querySelector('.qv-device');
           if(it.devName){
             if(!devDiv){devDiv=document.createElement('div');devDiv.className='qv-device';
