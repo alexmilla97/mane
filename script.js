@@ -966,6 +966,11 @@ if((IS_DISPLAY||IS_BRACKET||IS_QUEUE) && (SESSION_ID||IS_QUEUE)){
     $('queue-screen').classList.add('active');
     const sub=$('qv-subtitle');
 
+    // Nodos live que desaparecen del estado de Firestore se conservan en DOM hasta 4s.
+    // Si llega el siguiente partido para el mismo dispositivo, se actualiza el texto en sitio
+    // sin destruir el nodo — el borde verde y el nombre de dispositivo no parpadean nunca.
+    const _lingerTimers={};
+
     function renderQueueItems(allItems, title){
       if(sub) sub.textContent = title || '';
       const body=$('qv-body');
@@ -975,27 +980,50 @@ if((IS_DISPLAY||IS_BRACKET||IS_QUEUE) && (SESSION_ID||IS_QUEUE)){
           if(a.status !== b.status) return a.status==='live' ? -1 : 1;
           return (a.assignedAt||0) - (b.assignedAt||0);
         });
-      if(!active.length){
-        body.innerHTML='<div class="qv-empty">Sin partidos asignados</div>'; return;
-      }
-      // Quitar placeholder vacío si existía
-      const emptyEl=body.querySelector('.qv-empty'); if(emptyEl) emptyEl.remove();
 
-      // Clave: items live se identifican por dispositivo → el nodo persiste entre partidos,
-      // solo se actualiza el texto interior (equipos, grupo). Items queued se identifican por partido.
       const makeKey=it=>it.status==='live'
         ?`__live__${it.devName||'__nodev__'}`
         :(it.bType!=null
           ?`${it.torneoName||''}_b_${it.bType}_${it.bRi}_${it.bMi}`
           :(it.gi!=null&&it.mi!=null?`${it.torneoName||''}_g_${it.gi}_${it.mi}`:`${it.t1}_${it.t2}_${it.group||''}`));
 
-      // Mapa de nodos actuales
       const existing={};
       body.querySelectorAll('.qv-item[data-key]').forEach(el=>{ existing[el.dataset.key]=el; });
+
+      // Claves live que llegan en este render
+      const incomingLiveKeys=new Set(active.filter(it=>it.status==='live').map(makeKey));
+
+      // Cancelar linger para nodos que vuelven a estar live (partido nuevo ya asignado)
+      incomingLiveKeys.forEach(k=>{ if(_lingerTimers[k]){ clearTimeout(_lingerTimers[k]); delete _lingerTimers[k]; } });
+
+      // Iniciar linger para nodos live que desaparecen del estado nuevo
+      Object.keys(existing).forEach(k=>{
+        if(k.startsWith('__live__') && !incomingLiveKeys.has(k) && !_lingerTimers[k]){
+          const el=existing[k];
+          _lingerTimers[k]=setTimeout(()=>{
+            el.remove();
+            delete _lingerTimers[k];
+            if(!body.querySelector('.qv-item')) body.innerHTML='<div class="qv-empty">Sin partidos asignados</div>';
+          }, 4000);
+        }
+      });
+
+      const lingeringKeys=new Set(Object.keys(_lingerTimers));
+
+      if(!active.length){
+        // Solo mostrar vacío si no hay ningún nodo live en periodo de linger
+        if(!lingeringKeys.size) body.innerHTML='<div class="qv-empty">Sin partidos asignados</div>';
+        return;
+      }
+      const emptyEl=body.querySelector('.qv-empty'); if(emptyEl) emptyEl.remove();
 
       let qIdx=0;
       const usedKeys=new Set();
       const orderedEls=[];
+
+      // Los nodos live en linger van primero para mantener su posición superior
+      lingeringKeys.forEach(k=>{ if(existing[k]){ usedKeys.add(k); orderedEls.push(existing[k]); } });
+
       active.forEach(it=>{
         const isLive=it.status==='live';
         if(!isLive) qIdx++;
@@ -1004,11 +1032,9 @@ if((IS_DISPLAY||IS_BRACKET||IS_QUEUE) && (SESSION_ID||IS_QUEUE)){
         const posText=isLive?'En juego':'#'+qIdx;
         let el=existing[key];
         if(el){
-          // Actualizar en sitio — el borde verde y el nombre de dispositivo no parpadean
           el.className='qv-item '+cls;
           const dot=el.querySelector('.qv-dot'); if(dot) dot.className='qv-dot '+cls;
           const posEl=el.querySelector('.qv-pos-num'); if(posEl){posEl.className='qv-pos-num '+cls;posEl.textContent=posText;}
-          // Actualizar equipos y grupo (el nodo live se reutiliza para el siguiente partido)
           const teamsEl=el.querySelector('.qv-teams');
           if(teamsEl) teamsEl.innerHTML=`${it.t1}<span class="vs">vs</span>${it.t2}`;
           const groupEl=el.querySelector('.qv-group');
@@ -1033,9 +1059,8 @@ if((IS_DISPLAY||IS_BRACKET||IS_QUEUE) && (SESSION_ID||IS_QUEUE)){
         }
         orderedEls.push(el);
       });
-      // Eliminar nodos obsoletos primero — así no aparecen durante el reordenamiento
+      // Eliminar nodos obsoletos respetando los que están en linger
       Object.entries(existing).forEach(([k,el])=>{ if(!usedKeys.has(k)) el.remove(); });
-      // Reordenar solo los nodos que están fuera de posición
       orderedEls.forEach((el,i)=>{ const cur=body.children[i]; if(cur!==el) body.insertBefore(el,cur||null); });
     }
 
