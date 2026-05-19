@@ -98,12 +98,19 @@ function showAdminView(){
           existing.busy = true;
           existing.currentMatch = normCm;
         } else if(!d.busy && existing.busy){
-          existing.busy = false;
-          existing.currentMatch = null;
-          setTimeout(async ()=>{
-            await dispatchNextFromQueue();
-            if(sessionId && (groupData.groups || state.rounds)){ await buildAndSaveQueue(); updateDeviceUI(); }
-          }, 2000);
+          // Si despachamos un partido a este dispositivo hace menos de 10s, el busy:false
+          // es una escritura tardía de ipadSave del partido anterior — ignorarla para evitar
+          // que buildAndSaveQueue publique un estado incorrecto en la cola pública.
+          if(existing.dispatchedAt && Date.now() - existing.dispatchedAt < 10000){
+            // noop: escritura obsoleta, el dispositivo ya tiene el partido nuevo
+          } else {
+            existing.busy = false;
+            existing.currentMatch = null;
+            setTimeout(async ()=>{
+              await dispatchNextFromQueue();
+              if(sessionId && (groupData.groups || state.rounds)){ await buildAndSaveQueue(); updateDeviceUI(); }
+            }, 2000);
+          }
         }
         // Dispositivo acaba de señalar ready:true — despachar si está libre
         if(d.ready && !existing.ready && !d.busy){
@@ -1248,6 +1255,7 @@ async function dispatchNextFromQueue(){
         const item = globalQueue.shift();
         // Marcar busy ANTES de guardar — así buildAndSaveQueue verá live=true
         free.busy = true;
+        free.dispatchedAt = Date.now(); // marca el momento del despacho para ignorar busy:false tardíos de ipadSave
         free.currentMatch = {gi:item.gi, mi:item.mi, sid:item.sid, matchId:item.matchId,
           t1:item.t1, t2:item.t2, group:item.group, torneoName:item.torneoName,
           assignedAt:Date.now(),
