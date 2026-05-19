@@ -1564,7 +1564,7 @@ function subscribeToSession(){
           // Resultado de partido de grupos
           const match=groupData.groups?.[d.gi]?.matches?.[d.mi];
           if(match&&!match.played){
-            applyScore(d.gi,d.mi,+d.s1,+d.s2);
+            applyScore(d.gi,d.mi,+d.s1,+d.s2,true);
             toast(`📱 ${match.t1.name} ${d.s1}–${d.s2} ${match.t2.name}${dev?' · '+dev.name:''}`);
           } else { renderGroups(); }
         }
@@ -1996,18 +1996,18 @@ function openScorePanel(gi,mi){
 window.modSc=(v,n)=>{ if(!activePanel)return; if(n===1){activePanel.s1=Math.max(0,activePanel.s1+v);$('sc1').textContent=activePanel.s1;}else{activePanel.s2=Math.max(0,activePanel.s2+v);$('sc2').textContent=activePanel.s2;} };
 window.closeScorePanel=gi=>$(`sp-${gi}`).classList.remove('open');
 
-function applyScore(gi,mi,forceS1,forceS2){
+function applyScore(gi,mi,forceS1,forceS2,skipQueueSave=false){
   const m=groupData.groups[gi].matches[mi];
   if(forceS1!==undefined){m.s1=forceS1;m.s2=forceS2;}else{m.s1=activePanel.s1;m.s2=activePanel.s2;}
-  m.played=true; _commitScore(gi);
+  m.played=true; _commitScore(gi,skipQueueSave);
 }
 function clearScore(gi,mi){ const m=groupData.groups[gi].matches[mi]; m.played=false;m.s1=null;m.s2=null; _commitScore(gi); toast('🗑️ Resultado eliminado'); }
-function _commitScore(gi){
+function _commitScore(gi,skipQueueSave=false){
   groupData.groups[gi].manualOrder=null;
   closeScorePanel(gi); activePanel=null;
   renderGroups();
   saveCurrentTournament();
-  buildAndSaveQueue().catch(e=>console.error('buildAndSaveQueue',e));
+  if(!skipQueueSave) buildAndSaveQueue().catch(e=>console.error('buildAndSaveQueue',e));
 }
 
 $('btn-simulate-gs').onclick=()=>{ groupData.groups.forEach((g,gi)=>{ g.matches.forEach((m,mi)=>{ if(!m.played){ applyScore(gi,mi,Math.floor(Math.random()*5),Math.floor(Math.random()*5)); } }); }); toast('🎲 Resultados simulados'); };
