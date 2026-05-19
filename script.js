@@ -150,7 +150,6 @@ function showAdminView(){
       if(groupData.groups) renderGroups();
       if(state.rounds) renderBracket();
       updateDeviceUI();
-      buildAndSaveQueue().catch(()=>{});
       const otherSids = [...new Set(globalQueue.filter(q=>q.sid!==sessionId).map(q=>q.sid))];
       otherSids.forEach(sid=>buildAndSaveQueueForSid(sid).catch(()=>{}));
     }
@@ -1690,6 +1689,7 @@ async function clearAllDevices(){
     await Promise.all(snap.docs.map(d=>deleteDoc(d.ref)));
     connectedDevices=[]; blockedDevices=[]; globalQueue=[];
     await saveGlobalQueue(); await setDoc(doc(db,'config','devicesList'),{devices:[],blocked:[],updatedAt:serverTimestamp()});
+    await buildAndSaveQueue().catch(()=>{});
     updateDeviceUI(); toast('🗑️ Todos los dispositivos eliminados');
   }catch(e){ toast('⚠️ Error al limpiar'); }
 }
