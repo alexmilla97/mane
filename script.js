@@ -142,7 +142,8 @@ function showAdminView(){
   });
 
   // Listener de cola global — siempre sincroniza globalQueue local con Firestore
-  onSnapshot(QUEUE_REF(), snap=>{
+  if(unsubscribeQueue){ unsubscribeQueue(); unsubscribeQueue=null; }
+  unsubscribeQueue = onSnapshot(QUEUE_REF(), snap=>{
     if(!snap.exists()) return;
     globalQueue = snap.data().queue||[];
     if(sessionId && (groupData.groups || state.rounds)){
@@ -1095,7 +1096,7 @@ let isFsMode=false, activePanel=null;
 let connectedDevices = [];  // dispositivos conocidos por el gestor
 let blockedDevices   = [];  // IDs bloqueados
 let globalQueue      = [];  // cola FIFO global [{gi,mi,sid,t1,t2,group,torneoName,assignedAt}]
-let unsubscribeSession=null, unsubscribeDevices=null, unsubscribeScores=null;
+let unsubscribeSession=null, unsubscribeDevices=null, unsubscribeScores=null, unsubscribeQueue=null;
 
 // ── 6.2 Identificador de sesión ────────────────────────
 function genSessionId(){ return 'trn-'+Math.random().toString(36).slice(2,14); }
@@ -1149,19 +1150,8 @@ async function saveGlobalQueue(){
   catch(e){ console.error('saveGlobalQueue',e); }
 }
 
-// ID único por partido
-async function getNextMatchId(){
-  const ref = doc(db,'config','matchCounter');
-  let id = Date.now(); // fallback
-  try{
-    await runTransaction(db, async tx=>{
-      const snap = await tx.get(ref);
-      id = snap.exists() ? (snap.data().next||1) : 1;
-      tx.set(ref, { next: id+1 });
-    });
-  }catch(e){}
-  return id;
-}
+// ID único por partido — timestamp de ms, suficiente para ordenar
+function getNextMatchId(){ return Date.now(); }
 
 // ── 7.2 Envío a dispositivos ───────────────────────────
 
@@ -1224,7 +1214,7 @@ async function dispatchNextFromQueue(){
       }
     } while(_dispatchPending); // re-ejecutar si alguien llamó durante el dispatch
     // Siempre actualizar cola pública al terminar el dispatch
-    if(sessionId && groupData.groups){
+    if(sessionId && (groupData.groups || state.rounds)){
       buildAndSaveQueue().catch(()=>{});
       // También otros torneos con dispositivos activos
       const activeSids = [...new Set(connectedDevices.filter(d=>d.busy&&d.currentMatch?.sid&&d.currentMatch.sid!==sessionId).map(d=>d.currentMatch.sid))];
@@ -1275,7 +1265,7 @@ async function addBracketMatchToQueue(bType,bRi,bMi){
   else if(bType==='lower') match=state.lRounds?.[bRi]?.[bMi];
   else if(bType==='gf') match=state.gf;
   if(!match||!match.t1||!match.t2||match.winner){ toast('⚠️ Partido no disponible'); return; }
-  const matchId = await getNextMatchId();
+  const matchId = getNextMatchId();
   const roundLabel = bType==='gf'?'Gran Final':bType==='upper'?`Upper R${bRi+1}`:`Lower R${bRi+1}`;
   const item = {matchId, type:'bracket', bType, bRi, bMi, sid:sessionId,
     t1:match.t1.name, t2:match.t2.name,
@@ -1306,7 +1296,7 @@ async function addToGlobalQueue(gi,mi){
   if(isMatchLive(gi,mi)){ toast('⚠️ Este partido ya está en juego'); return; }
   if(isMatchQueued(gi,mi)){ toast('⚠️ Ya está en la cola'); return; }
   const m=groupData.groups?.[gi]?.matches?.[mi]; if(!m) return;
-  const matchId = await getNextMatchId();
+  const matchId = getNextMatchId();
   const item = {matchId, gi, mi, sid:sessionId,
     t1:m.t1.name, t2:m.t2.name,
     group:groupData.groups[gi].name, torneoName:groupData.title,
@@ -1380,7 +1370,7 @@ async function buildAndSaveQueue(){
   if(!sessionId || (!groupData.groups && !state.rounds)) return;
   const items=[];
   // Partidos de grupos
-  groupData.groups.forEach((g,gi)=>{
+  (groupData.groups||[]).forEach((g,gi)=>{
     g.matches.forEach((m,mi)=>{
       if(m.played||m.t1.name==='BYE'||m.t2.name==='BYE') return;
       const dev=connectedDevices.find(d=>d.busy&&d.currentMatch?.gi===gi&&d.currentMatch?.mi===mi&&d.currentMatch?.sid===sessionId);
@@ -1496,9 +1486,9 @@ async function restoreTournament(sid, data, showToast){
 
 function subscribeToSession(){
   if(unsubscribeScores) unsubscribeScores();
-  unsubscribeScores = onSnapshot(collection(db,'scores'), snap=>{
-    snap.docChanges().forEach(async change=>{
-      if(change.type!=='added') return;
+  unsubscribeScores = onSnapshot(collection(db,'scores'), async snap=>{
+    for(const change of snap.docChanges()){
+      if(change.type!=='added') continue;
       const d=change.doc.data();
       // Liberar dispositivo siempre — independientemente del torneo
       const dev=connectedDevices.find(x=>x.clientId===d.from);
@@ -1549,7 +1539,7 @@ function subscribeToSession(){
       await buildAndSaveQueueForSid(d.sid||sessionId);
       if(d.sid && d.sid !== sessionId) await buildAndSaveQueue();
       updateDeviceUI();
-    });
+    }
   });
 }
 
@@ -1632,12 +1622,25 @@ function updateDeviceUI(){
   const mini=$('ntfy-mini-text'); if(mini) mini.textContent=count===0?'0 disp.':`${count} disp.`;
   const dot2=$('ntfy-dot2'); if(dot2){ count>0?dot2.classList.add('on'):dot2.classList.remove('on'); }
   renderDevicesList();
+  // Refrescar botón de cola en panel de marcadores de grupos
   document.querySelectorAll('.score-panel.open').forEach(p=>{
     if(!activePanel) return;
     const {gi,mi}=activePanel; if(`sp-${gi}`!==p.id) return;
     const sec=p.querySelector('.send-to-section');
     if(sec){ const tmp=document.createElement('div'); renderSendToSection(gi,mi,tmp); sec.replaceWith(tmp.firstElementChild||tmp); }
   });
+  // Refrescar botón de cola en panel de marcadores del bracket
+  if(_bsp && $('bracket-score-panel')?.style.display!=='none'){
+    const bType = _bsp.isGF?'gf':_bsp.isLower?'lower':'upper';
+    const bRi   = _bsp.isGF?0:_bsp.isLower?_bsp.lri:_bsp.ri;
+    const existing = $('bsp-queue-section');
+    if(existing){
+      const tmp = document.createElement('div');
+      renderBracketSendToSection(bType, bRi, _bsp.mi, tmp);
+      tmp.firstElementChild.id = 'bsp-queue-section';
+      existing.replaceWith(tmp.firstElementChild);
+    }
+  }
 }
 
 async function clearAllDevices(){
