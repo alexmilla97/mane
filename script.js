@@ -844,7 +844,7 @@ if(IS_DEVICE && DEVICE_ID){
 
   function showMatch(data){
     curMatch=data; sc={s1:0,s2:0}; running=false; clearInterval(timerInt); startTs=null;
-    const body=$('ipad-body'); body.innerHTML='';
+    const body=$('ipad-body');
     const torneoTag = data.torneoName
       ? `<div style="font-family:'Barlow Condensed',sans-serif;font-size:0.7rem;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--text-muted);text-align:center;opacity:0.6;margin-bottom:2px;">${data.torneoName}</div>` : '';
     const card = document.createElement('div'); card.className='ipad-match-card';
@@ -876,7 +876,7 @@ if(IS_DEVICE && DEVICE_ID){
       <button class="ipad-save-btn" id="ipad-btn-start" onclick="ipadStart()">▶ Iniciar partido</button>
       <button class="ipad-save-btn" id="ipad-btn-save" onclick="ipadSave()" style="display:none;background:var(--gold)">Guardar resultado ✓</button>
       <div id="ipad-sent-msg" style="display:none;" class="ipad-sent-msg">✓ Resultado enviado</div>`;
-    body.appendChild(card);
+    body.replaceChildren(card);
   }
 
   window.ipadStart = () => startTimer();
