@@ -9,7 +9,8 @@
     --win: #2ECC71;
     --radius: 8px; --radius-lg: 12px;
   }
-  body { background-color: var(--bg); background-image: linear-gradient(rgba(14,14,18,0.78),rgba(14,14,18,0.78)),url('portada.JPG'); background-size: cover; background-position: center; background-repeat: no-repeat; color: var(--text); font-family: 'Barlow', sans-serif; min-height: 100vh; }
+  html { background: url('portada.JPG') center/cover no-repeat; background-color: var(--bg); }
+  body { background: rgba(14,14,18,0.78); color: var(--text); font-family: 'Barlow', sans-serif; min-height: 100vh; }
 
   header { background: var(--bg2); border-bottom: 1px solid var(--border-strong); padding: 1.2rem 2rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; position: sticky; top: 0; z-index: 100; }
   .logo { font-family: 'Barlow Condensed', sans-serif; font-size: 1.6rem; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; color: var(--gold); }
