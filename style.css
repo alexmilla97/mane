@@ -9,7 +9,7 @@
     --win: #2ECC71;
     --radius: 8px; --radius-lg: 12px;
   }
-  body { background: linear-gradient(rgba(14,14,18,0.78),rgba(14,14,18,0.78)) center/cover fixed, url('portada.JPG') center/cover fixed var(--bg); color: var(--text); font-family: 'Barlow', sans-serif; min-height: 100vh; }
+  body { background-color: var(--bg); background-image: linear-gradient(rgba(14,14,18,0.78),rgba(14,14,18,0.78)),url('portada.JPG'); background-size: cover; background-position: center; background-repeat: no-repeat; color: var(--text); font-family: 'Barlow', sans-serif; min-height: 100vh; }
 
   header { background: var(--bg2); border-bottom: 1px solid var(--border-strong); padding: 1.2rem 2rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; position: sticky; top: 0; z-index: 100; }
   .logo { font-family: 'Barlow Condensed', sans-serif; font-size: 1.6rem; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; color: var(--gold); }
@@ -228,7 +228,7 @@
   .toast.show { transform: translateY(0); opacity: 1; }
 
   /* ── MODO VISUALIZACIÓN ─────────────────────────────── */
-  #display-screen { display: none; position: fixed; inset: 0; background: var(--bg); z-index: 500; flex-direction: column; }
+  #display-screen { display: none; position: fixed; inset: 0; z-index: 500; flex-direction: column; }
   #display-screen.active { display: flex; }
   .dv-header { background: var(--bg2); border-bottom: 2px solid var(--gold); padding: 1.2rem 2.5rem; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
   .dv-title { font-family: 'Barlow Condensed', sans-serif; font-size: 2.2rem; font-weight: 800; text-transform: uppercase; color: var(--text); letter-spacing: 0.02em; }
@@ -291,7 +291,7 @@
   .ntfy-mini:hover { border-color:var(--gold); color:var(--gold); }
 
   /* ── MODO COLA ────────────────────────────────────────── */
-  #queue-screen { display: none; position: fixed; inset: 0; background: var(--bg); z-index: 500; flex-direction: column; }
+  #queue-screen { display: none; position: fixed; inset: 0; z-index: 500; flex-direction: column; }
   #queue-screen.active { display: flex; }
   .qv-header { background: var(--bg2); border-bottom: 2px solid var(--gold); padding: 1.4rem 2.5rem; display: flex; align-items: baseline; gap: 1rem; flex-shrink: 0; }
   .qv-title { font-family: 'Barlow Condensed', sans-serif; font-size: 2.2rem; font-weight: 800; text-transform: uppercase; color: var(--text); letter-spacing: 0.04em; }
