@@ -966,20 +966,41 @@ if((IS_DISPLAY||IS_BRACKET||IS_QUEUE) && (SESSION_ID||IS_QUEUE)){
     $('queue-screen').classList.add('active');
     const sub=$('qv-subtitle');
 
-    // Nodos live que desaparecen del estado de Firestore se conservan en DOM hasta 4s.
-    // Si llega el siguiente partido para el mismo dispositivo, se actualiza el texto en sitio
-    // sin destruir el nodo — el borde verde y el nombre de dispositivo no parpadean nunca.
-    const _lingerTimers={};
+    // Caché de último estado live por dispositivo — permite inyectar el partido anterior
+    // cuando Firestore emite un estado intermedio sin ningún partido live.
+    // El nodo DOM se actualiza en sitio: el borde verde y el dispositivo no parpadean nunca.
+    const _lastLiveByDev={};
 
     function renderQueueItems(allItems, title){
       if(sub) sub.textContent = title || '';
       const body=$('qv-body');
-      const active = allItems
+      let active = allItems
         .filter(it => it.status==='live' || it.status==='queued')
         .sort((a,b) => {
           if(a.status !== b.status) return a.status==='live' ? -1 : 1;
           return (a.assignedAt||0) - (b.assignedAt||0);
         });
+
+      // 1. Actualizar caché y cancelar timers de limpieza para dispositivos que están live
+      const activeLiveDevs=new Set();
+      active.filter(it=>it.status==='live').forEach(it=>{
+        const dk=it.devName||'__nodev__';
+        activeLiveDevs.add(dk);
+        _lastLiveByDev[dk]=it;
+        if(_lastLiveByDev[dk+'__t']){clearTimeout(_lastLiveByDev[dk+'__t']);delete _lastLiveByDev[dk+'__t'];}
+      });
+
+      // 2. Para cada dispositivo con caché que ha desaparecido del estado actual,
+      //    inyectar el último partido conocido como live (elimina el parpadeo).
+      const injectItems=[];
+      Object.entries(_lastLiveByDev).forEach(([dk,liveItem])=>{
+        if(dk.endsWith('__t')||activeLiveDevs.has(dk)) return;
+        if(!_lastLiveByDev[dk+'__t']){
+          _lastLiveByDev[dk+'__t']=setTimeout(()=>{delete _lastLiveByDev[dk];delete _lastLiveByDev[dk+'__t'];},12000);
+        }
+        injectItems.push({...liveItem,status:'live'});
+      });
+      if(injectItems.length) active=[...injectItems,...active];
 
       const makeKey=it=>it.status==='live'
         ?`__live__${it.devName||'__nodev__'}`
@@ -990,29 +1011,8 @@ if((IS_DISPLAY||IS_BRACKET||IS_QUEUE) && (SESSION_ID||IS_QUEUE)){
       const existing={};
       body.querySelectorAll('.qv-item[data-key]').forEach(el=>{ existing[el.dataset.key]=el; });
 
-      // Claves live que llegan en este render
-      const incomingLiveKeys=new Set(active.filter(it=>it.status==='live').map(makeKey));
-
-      // Cancelar linger para nodos que vuelven a estar live (partido nuevo ya asignado)
-      incomingLiveKeys.forEach(k=>{ if(_lingerTimers[k]){ clearTimeout(_lingerTimers[k]); delete _lingerTimers[k]; } });
-
-      // Iniciar linger para nodos live que desaparecen del estado nuevo
-      Object.keys(existing).forEach(k=>{
-        if(k.startsWith('__live__') && !incomingLiveKeys.has(k) && !_lingerTimers[k]){
-          const el=existing[k];
-          _lingerTimers[k]=setTimeout(()=>{
-            el.remove();
-            delete _lingerTimers[k];
-            if(!body.querySelector('.qv-item')) body.innerHTML='<div class="qv-empty">Sin partidos asignados</div>';
-          }, 12000);
-        }
-      });
-
-      const lingeringKeys=new Set(Object.keys(_lingerTimers));
-
       if(!active.length){
-        // Solo mostrar vacío si no hay ningún nodo live en periodo de linger
-        if(!lingeringKeys.size) body.innerHTML='<div class="qv-empty">Sin partidos asignados</div>';
+        body.innerHTML='<div class="qv-empty">Sin partidos asignados</div>';
         return;
       }
       const emptyEl=body.querySelector('.qv-empty'); if(emptyEl) emptyEl.remove();
@@ -1020,9 +1020,6 @@ if((IS_DISPLAY||IS_BRACKET||IS_QUEUE) && (SESSION_ID||IS_QUEUE)){
       let qIdx=0;
       const usedKeys=new Set();
       const orderedEls=[];
-
-      // Los nodos live en linger van primero para mantener su posición superior
-      lingeringKeys.forEach(k=>{ if(existing[k]){ usedKeys.add(k); orderedEls.push(existing[k]); } });
 
       active.forEach(it=>{
         const isLive=it.status==='live';
@@ -1059,7 +1056,6 @@ if((IS_DISPLAY||IS_BRACKET||IS_QUEUE) && (SESSION_ID||IS_QUEUE)){
         }
         orderedEls.push(el);
       });
-      // Eliminar nodos obsoletos respetando los que están en linger
       Object.entries(existing).forEach(([k,el])=>{ if(!usedKeys.has(k)) el.remove(); });
       orderedEls.forEach((el,i)=>{ const cur=body.children[i]; if(cur!==el) body.insertBefore(el,cur||null); });
     }
