@@ -963,26 +963,63 @@ if((IS_DISPLAY||IS_BRACKET||IS_QUEUE) && (SESSION_ID||IS_QUEUE)){
     function renderQueueItems(allItems, title){
       if(sub) sub.textContent = title || '';
       const body=$('qv-body');
-      // Siempre ordenar: live primero, luego queued por assignedAt
       const active = allItems
         .filter(it => it.status==='live' || it.status==='queued')
         .sort((a,b) => {
           if(a.status !== b.status) return a.status==='live' ? -1 : 1;
           return (a.assignedAt||0) - (b.assignedAt||0);
         });
-      if(!active.length){ body.innerHTML='<div class="qv-empty">Sin partidos asignados</div>'; return; }
-      body.innerHTML='';
+      if(!active.length){
+        body.innerHTML='<div class="qv-empty">Sin partidos asignados</div>'; return;
+      }
+      // Quitar placeholder vacío si existía
+      const emptyEl=body.querySelector('.qv-empty'); if(emptyEl) emptyEl.remove();
+
+      // Clave única por partido — evita destruir nodos existentes (elimina el parpadeo)
+      const makeKey=it=>it.bType!=null
+        ?`${it.torneoName||''}_b_${it.bType}_${it.bRi}_${it.bMi}`
+        :(it.gi!=null&&it.mi!=null?`${it.torneoName||''}_g_${it.gi}_${it.mi}`:`${it.t1}_${it.t2}_${it.group||''}`);
+
+      // Mapa de nodos actuales
+      const existing={};
+      body.querySelectorAll('.qv-item[data-key]').forEach(el=>{ existing[el.dataset.key]=el; });
+
       let qIdx=0;
+      const usedKeys=new Set();
       active.forEach(it=>{
         const isLive=it.status==='live';
         if(!isLive) qIdx++;
-        const div=document.createElement('div'); div.className='qv-item '+(isLive?'live':'queued');
-        div.innerHTML=`<div class="qv-indicator"><div class="qv-dot ${it.status}"></div><div class="qv-pos-num ${it.status}">${isLive?'En juego':'#'+qIdx}</div></div>`+
-          `<div><div class="qv-teams">${it.t1}<span class="vs">vs</span>${it.t2}</div>`+
-          `<div class="qv-group">${it.torneoName?`<span style="color:var(--gold);opacity:0.8">${it.torneoName}</span> · `:''}${it.group}</div></div>`+
-          (it.devName?`<div class="qv-device"><div class="qv-device-name qv-device-name--admin ${it.status}">${it.devName}</div><div class="qv-device-lbl">${isLive?'dispositivo':'siguiente en'}</div></div>`:'');
-        body.appendChild(div);
+        const key=makeKey(it); usedKeys.add(key);
+        const cls=isLive?'live':'queued';
+        const posText=isLive?'En juego':'#'+qIdx;
+        let el=existing[key];
+        if(el){
+          // Actualizar en sitio — el nodo no se destruye, la animación CSS no se reinicia
+          el.className='qv-item '+cls;
+          const dot=el.querySelector('.qv-dot'); if(dot) dot.className='qv-dot '+cls;
+          const posEl=el.querySelector('.qv-pos-num'); if(posEl){posEl.className='qv-pos-num '+cls;posEl.textContent=posText;}
+          let devDiv=el.querySelector('.qv-device');
+          if(it.devName){
+            if(!devDiv){devDiv=document.createElement('div');devDiv.className='qv-device';
+              devDiv.innerHTML=`<div class="qv-device-name qv-device-name--admin ${cls}">${it.devName}</div><div class="qv-device-lbl">${isLive?'dispositivo':'siguiente en'}</div>`;
+              el.appendChild(devDiv);
+            } else {
+              const dn=devDiv.querySelector('.qv-device-name');
+              if(dn){dn.className=`qv-device-name qv-device-name--admin ${cls}`;dn.textContent=it.devName;}
+              const dl=devDiv.querySelector('.qv-device-lbl'); if(dl) dl.textContent=isLive?'dispositivo':'siguiente en';
+            }
+          } else if(devDiv){ devDiv.remove(); }
+        } else {
+          el=document.createElement('div'); el.className='qv-item '+cls; el.dataset.key=key;
+          el.innerHTML=`<div class="qv-indicator"><div class="qv-dot ${cls}"></div><div class="qv-pos-num ${cls}">${posText}</div></div>`+
+            `<div><div class="qv-teams">${it.t1}<span class="vs">vs</span>${it.t2}</div>`+
+            `<div class="qv-group">${it.torneoName?`<span style="color:var(--gold);opacity:0.8">${it.torneoName}</span> · `:''}${it.group}</div></div>`+
+            (it.devName?`<div class="qv-device"><div class="qv-device-name qv-device-name--admin ${cls}">${it.devName}</div><div class="qv-device-lbl">${isLive?'dispositivo':'siguiente en'}</div></div>`:'');
+        }
+        body.appendChild(el); // mantiene el orden correcto (noop si ya está al final)
       });
+      // Eliminar nodos que ya no están en la lista
+      Object.entries(existing).forEach(([k,el])=>{ if(!usedKeys.has(k)) el.remove(); });
     }
 
     if(SESSION_ID){
