@@ -1032,12 +1032,19 @@ if((IS_DISPLAY||IS_BRACKET||IS_QUEUE) && (SESSION_ID||IS_QUEUE)){
       orderedEls.forEach((el,i)=>{ const cur=body.children[i]; if(cur!==el) body.insertBefore(el,cur||null); });
     }
 
+    // Debounce de 120ms — absorbe estados intermedios de Firestore antes de pintar
+    let _qTimer = null;
+    function scheduleRender(allItems, title){
+      clearTimeout(_qTimer);
+      _qTimer = setTimeout(()=>renderQueueItems(allItems, title), 120);
+    }
+
     if(SESSION_ID){
       // Cola de un torneo específico (compatibilidad)
       onSnapshot(queueRef(SESSION_ID), snap=>{
         const data=snap.data();
         const {items, title} = parseQueueData(data);
-        renderQueueItems(items, title);
+        scheduleRender(items, title);
       });
     } else {
       // Cola combinada de todos los torneos publicados
@@ -1047,11 +1054,11 @@ if((IS_DISPLAY||IS_BRACKET||IS_QUEUE) && (SESSION_ID||IS_QUEUE)){
         Object.entries(pubQueuesLocal).forEach(([sid,{items,title}])=>{
           items.forEach(it=>allItems.push({...it,torneoName:title}));
         });
-        renderQueueItems(allItems, 'Todos los torneos');
+        scheduleRender(allItems, 'Todos los torneos');
       }
       onSnapshot(doc(db,'config','publishedTorneos'), snap=>{
         const ids=(snap.data()?.sessionIds||[]).filter(Boolean);
-        if(!ids.length){ renderQueueItems([],''); return; }
+        if(!ids.length){ scheduleRender([],''); return; }
         ids.forEach(sid=>{
           if(pubQueuesLocal[sid]) return;
           pubQueuesLocal[sid]={items:[],title:''};
