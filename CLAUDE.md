@@ -59,6 +59,24 @@ git -C "C:\Users\GEAMA\Desktop\Proyecto 1" commit -m "descripción del cambio"
 git -C "C:\Users\GEAMA\Desktop\Proyecto 1" push
 ```
 
+## Despliegue
+- Hosting: Cloudflare Pages, conectado al repositorio GitHub
+- Cada `git push` a `main` despliega automáticamente en producción
+- URL de producción: https://torneosmane.org
+
+## Bugs conocidos y soluciones aplicadas (script.js)
+
+### Cola de dispositivos / sincronización
+- `buildAndSaveQueue` crasheaba silenciosamente en torneos de bracket porque `groupData.groups` es `undefined` en fase eliminatoria. Solución: `(groupData.groups||[]).forEach(...)`.
+- `dispatchNextFromQueue` no llamaba a `buildAndSaveQueue` al terminar si el torneo era solo bracket. Solución: guardia `groupData.groups || state.rounds`.
+- El listener de scores usaba `forEach(async ...)`, lo que lanzaba múltiples `dispatchNextFromQueue` concurrentes. Solución: `for...of` con `await`.
+- `getNextMatchId()` hacía una transacción Firestore antes de actualizar la UI, generando un delay visible y ventana de doble-clic. Solución: sustituida por `Date.now()` (síncrono).
+- El listener `onSnapshot(QUEUE_REF())` no se cancelaba antes de crear uno nuevo. Solución: guardado en `unsubscribeQueue` y cancelado en `showAdminView`.
+- `updateDeviceUI` no refrescaba el botón de cola en el panel de marcadores del bracket cuando llegaba una actualización externa. Solución: añadido bloque que detecta `_bsp` abierto y reemplaza `#bsp-queue-section`.
+
+### Vista de cola pública (?mode=queue)
+- `renderQueueItems` vaciaba el DOM con `innerHTML=''` en cada actualización de Firestore, causando un parpadeo visible y el reinicio de las animaciones CSS. Solución: DOM diffing con `data-key` por partido; los nodos existentes se actualizan en sitio y solo se añaden o eliminan los que cambian.
+
 ## Convenciones de código
 - Indentación: 2 espacios
 - Ficheros separados: HTML, CSS y JS en sus propios ficheros
