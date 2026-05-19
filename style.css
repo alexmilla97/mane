@@ -308,9 +308,9 @@
   .qv-pos-num { font-family: 'Barlow Condensed', sans-serif; font-size: clamp(0.7rem,1.5vw,0.85rem); font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
   .qv-pos-num.live { color: var(--win); }
   .qv-pos-num.queued { color: var(--gold); }
-  .qv-teams { font-family: 'Barlow Condensed', sans-serif; font-size: clamp(1.2rem,3.5vw,2rem); font-weight: 800; text-transform: uppercase; letter-spacing: 0.02em; line-height: 1.1; }
+  .qv-teams { font-family: 'Barlow Condensed', sans-serif; font-size: clamp(1.2rem,3.5vw,2rem); font-weight: 800; text-transform: uppercase; letter-spacing: 0.02em; line-height: 1.1; transition: opacity 0.18s ease; }
   .qv-teams .vs { color: var(--text-muted); font-weight: 400; font-size: 0.6em; margin: 0 0.4em; }
-  .qv-group { font-family: 'Barlow Condensed', sans-serif; font-size: clamp(0.7rem,1.5vw,0.85rem); color: var(--text-muted); letter-spacing: 0.08em; text-transform: uppercase; margin-top: 4px; }
+  .qv-group { font-family: 'Barlow Condensed', sans-serif; font-size: clamp(0.7rem,1.5vw,0.85rem); color: var(--text-muted); letter-spacing: 0.08em; text-transform: uppercase; margin-top: 4px; transition: opacity 0.18s ease; }
   .qv-device { text-align: right; }
   .qv-device-name { font-family: 'Barlow Condensed', sans-serif; font-size: clamp(1.1rem,2.2vw,1.5rem); font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; }
   .qv-device-name--admin { font-size: clamp(1.4rem,2.8vw,2rem); }

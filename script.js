@@ -1004,7 +1004,7 @@ if((IS_DISPLAY||IS_BRACKET||IS_QUEUE) && (SESSION_ID||IS_QUEUE)){
             el.remove();
             delete _lingerTimers[k];
             if(!body.querySelector('.qv-item')) body.innerHTML='<div class="qv-empty">Sin partidos asignados</div>';
-          }, 4000);
+          }, 12000);
         }
       });
 
@@ -1032,13 +1032,13 @@ if((IS_DISPLAY||IS_BRACKET||IS_QUEUE) && (SESSION_ID||IS_QUEUE)){
         const posText=isLive?'En juego':'#'+qIdx;
         let el=existing[key];
         if(el){
-          el.className='qv-item '+cls;
-          const dot=el.querySelector('.qv-dot'); if(dot) dot.className='qv-dot '+cls;
-          const posEl=el.querySelector('.qv-pos-num'); if(posEl){posEl.className='qv-pos-num '+cls;posEl.textContent=posText;}
+          const wantCls='qv-item '+cls; if(el.className!==wantCls) el.className=wantCls;
+          const dot=el.querySelector('.qv-dot'); if(dot){const dc='qv-dot '+cls;if(dot.className!==dc)dot.className=dc;}
+          const posEl=el.querySelector('.qv-pos-num'); if(posEl){const pc='qv-pos-num '+cls;if(posEl.className!==pc)posEl.className=pc;if(posEl.textContent!==posText)posEl.textContent=posText;}
           const teamsEl=el.querySelector('.qv-teams');
-          if(teamsEl) teamsEl.innerHTML=`${it.t1}<span class="vs">vs</span>${it.t2}`;
+          if(teamsEl){const th=`${it.t1}<span class="vs">vs</span>${it.t2}`;if(teamsEl.innerHTML!==th){teamsEl.style.opacity='0';teamsEl.innerHTML=th;requestAnimationFrame(()=>{teamsEl.style.opacity='';});}}
           const groupEl=el.querySelector('.qv-group');
-          if(groupEl) groupEl.innerHTML=it.torneoName?`<span style="color:var(--gold);opacity:0.8">${it.torneoName}</span> · ${it.group}`:it.group;
+          if(groupEl){const gh=it.torneoName?`<span style="color:var(--gold);opacity:0.8">${it.torneoName}</span> · ${it.group}`:it.group;if(groupEl.innerHTML!==gh){groupEl.style.opacity='0';groupEl.innerHTML=gh;requestAnimationFrame(()=>{groupEl.style.opacity='';});}}
           let devDiv=el.querySelector('.qv-device');
           if(it.devName){
             if(!devDiv){devDiv=document.createElement('div');devDiv.className='qv-device';
@@ -1046,8 +1046,8 @@ if((IS_DISPLAY||IS_BRACKET||IS_QUEUE) && (SESSION_ID||IS_QUEUE)){
               el.appendChild(devDiv);
             } else {
               const dn=devDiv.querySelector('.qv-device-name');
-              if(dn){dn.className=`qv-device-name qv-device-name--admin ${cls}`;dn.textContent=it.devName;}
-              const dl=devDiv.querySelector('.qv-device-lbl'); if(dl) dl.textContent=isLive?'dispositivo':'siguiente en';
+              if(dn){const dc2=`qv-device-name qv-device-name--admin ${cls}`;if(dn.className!==dc2)dn.className=dc2;if(dn.textContent!==it.devName)dn.textContent=it.devName;}
+              const dl=devDiv.querySelector('.qv-device-lbl');const lbl=isLive?'dispositivo':'siguiente en';if(dl&&dl.textContent!==lbl)dl.textContent=lbl;
             }
           } else if(devDiv){ devDiv.remove(); }
         } else {
