@@ -1,0 +1,348 @@
+﻿<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gestor de Torneos</title>
+  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+</head>
+<body>
+
+
+<header id="admin-header" style="display:none">
+  <div class="logo">CERVECERÍA<span>MANÉ</span> <span style="font-size:0.7rem;color:var(--gold);background:rgba(212,160,23,0.12);border:1px solid rgba(212,160,23,0.3);border-radius:4px;padding:0.15rem 0.5rem;vertical-align:middle;letter-spacing:0.08em;">ADMIN</span></div>
+  <div style="display:flex; gap: 0.5rem; align-items:center;">
+    <button class="btn btn-fs" id="btn-queue-mode">📋 Cola</button>
+    <button class="btn btn-fs" id="btn-connect-device">📱 Conectar</button>
+    <div class="ntfy-mini" id="ntfy-mini" onclick="openConnectModal()">
+      <span class="ntfy-dot" id="ntfy-dot2"></span>
+      <span id="ntfy-mini-text">0 disp.</span>
+    </div>
+    <button class="btn btn-fs" id="btn-clear-devices" onclick="clearAllDevices()" style="border-color:#E24B4A;color:#E24B4A;">🗑️ Limpiar disp.</button>
+    <button class="btn btn-fs" id="btn-manage-tourneys">📂 Mis Torneos</button>
+    <button class="btn btn-fs" id="reset-btn">＋ Nuevo Torneo</button>
+    <button class="btn btn-danger" id="admin-logout-btn" onclick="adminLogout()">Cerrar sesión</button>
+  </div>
+</header>
+
+<!-- VISTA PÚBLICA -->
+<div id="public-view">
+  <div class="pub-header">
+    <div class="logo pub-logo-trigger" id="pub-logo" title="">CERVECERÍA<span>MANÉ</span></div>
+    <div id="pub-torney-name" style="font-family:'Barlow Condensed',sans-serif;font-size:0.9rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;"></div>
+  </div>
+  <div class="pub-readonly-bar">
+    👁 Modo visualización — Solo lectura
+  </div>
+  <div class="pub-body">
+    <div class="pub-hero">
+
+      <div class="pub-hero-title">Torneos</div>
+      <div class="pub-hero-sub" id="pub-hero-sub">Selecciona un torneo para ver la clasificación o el cuadro eliminatorio en directo.</div>
+    </div>
+
+    <!-- Tarjetas de torneos publicados -->
+    <div id="pub-torneos-list" style="width:100%;max-width:480px;display:flex;flex-direction:column;gap:0.8rem;"></div>
+
+    <!-- Cola combinada de todos los torneos — siempre visible -->
+    <div id="pub-combined-queue" style="display:none;width:100%;max-width:480px;flex-direction:column;gap:0.5rem;">
+      <div style="font-family:'Barlow Condensed',sans-serif;font-size:1rem;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;color:var(--gold);">📋 Siguientes Partidos</div>
+      <div class="qv-body" id="pub-combined-queue-body" style="min-height:80px;background:var(--bg2);border:1px solid var(--border-strong);border-radius:var(--radius-lg);"></div>
+    </div>
+
+    <!-- Panel inline (clasificación / cuadro) -->
+    <div id="pub-inline-panel" class="pub-inline-panel" style="display:none">
+      <div class="pub-inline-header">
+        <div class="pub-inline-title" id="pub-inline-title">—</div>
+        <button class="pub-inline-close" onclick="closePubPanel()">✕ Cerrar</button>
+      </div>
+      <div id="pub-inline-content" style="background:var(--bg2);border:1px solid var(--border-strong);border-radius:var(--radius-lg);overflow:hidden;"></div>
+    </div>
+
+    <div id="pub-no-torneo" class="pub-no-torneo" style="display:none">Sin torneo activo en este momento.</div>
+  </div>
+</div>
+
+<!-- BOTÓN ADMIN DISCRETO -->
+<button id="admin-btn" onclick="openLoginModal()">⚙ Admin</button>
+
+<!-- MODAL LOGIN -->
+<div id="login-modal">
+  <div class="login-card">
+    <h2>Acceso Admin</h2>
+    <div style="display:flex;flex-direction:column;gap:0.7rem;">
+      <input type="email" id="login-email" placeholder="Email" autocomplete="email">
+      <input type="password" id="login-password" placeholder="Contraseña" autocomplete="current-password">
+    </div>
+    <div class="login-error" id="login-error"></div>
+    <div class="login-actions">
+      <button class="btn" style="flex:1" onclick="closeLoginModal()">Cancelar</button>
+      <button class="btn btn-primary" style="flex:1" onclick="doLogin()" id="login-btn">Entrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- SETUP -->
+<div id="setup-screen">
+  <div style="max-width:680px;margin:3rem auto;padding:0 1.5rem;">
+    <div class="setup-card">
+      <h2>Nuevo Torneo</h2>
+      <p class="subtitle">Configura el torneo y añade los participantes.</p>
+
+      <div class="field-label">Nombre del torneo</div>
+      <input type="text" id="tourney-name" placeholder="Ej: Copa de Verano 2025" style="margin-bottom:1.5rem">
+
+      <hr class="section-divider" style="margin-top:0">
+
+      <!-- Paso 1 -->
+      <div class="step-badge">Paso 1 · Tipo de cuadro</div>
+      <div class="field-label">Número de participantes</div>
+      <div class="size-options" id="size-options">
+        <button class="size-btn active" data-size="4">4</button>
+        <button class="size-btn" data-size="8">8</button>
+        <button class="size-btn" data-size="16">16</button>
+        <button class="size-btn" data-size="32">32</button>
+      </div>
+
+      <hr class="section-divider">
+
+      <!-- Paso 2 -->
+      <div id="step2">
+        <div class="step-badge">Paso 2 · Fase de grupos</div>
+        <div class="field-label">Número de grupos</div>
+        <div class="size-options" id="group-options"></div>
+        <div class="info-box" id="groups-info"></div>
+
+        <hr class="section-divider">
+
+        <!-- Paso 3 -->
+        <div class="step-badge">Paso 3 · Participantes y Grupos</div>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
+          <div class="field-label" style="margin-bottom:0;">Asigna cada equipo a su grupo</div>
+          <div style="display:flex;gap:0.4rem;">
+            <button class="btn btn-fs" id="btn-import-players" style="font-size:0.7rem; padding:0.2rem 0.6rem;">📂 Importar</button>
+            <button class="btn btn-fs" id="btn-fill-test" style="font-size:0.7rem; padding:0.2rem 0.6rem;">🎲 Rellenar Prueba</button>
+          </div>
+        </div>
+        <input type="file" id="import-file-input" accept=".txt,.csv,.xlsx,.xls" style="display:none">
+        <div class="teams-grid" id="teams-grid"></div>
+        <button class="btn btn-primary" id="start-btn" style="width:100%;margin-top:0.5rem;padding:0.75rem;">
+          Generar Fase de Grupos →
+        </button>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- GROUP STAGE -->
+<div id="group-screen">
+  <div class="phase-bar">
+    <div>
+      <span class="phase-label-badge">Fase de grupos</span>
+      <div class="phase-title" id="gs-title">—</div>
+    </div>
+    <div style="display:flex;gap:0.6rem;align-items:center;flex-wrap:wrap;">
+      <div style="font-size:0.84rem;color:var(--text-muted)" id="gs-progress-text"></div>
+      <button class="btn btn-fs" id="btn-simulate-gs" style="border-color:var(--gold); color:var(--gold);">🎲 Simular Resultados</button>
+      <button class="btn btn-fs" id="btn-display-mode">👥 Grupos (Público)</button>
+      <button class="btn btn-fs" onclick="generarPegatinas()" style="border-color:#e74c3c;color:#e74c3c;">🖨️ Pegatinas</button>
+      <button class="btn btn-fs" id="publish-btn" onclick="togglePublish()" style="display:none">📡 Publicar</button>
+    </div>
+  </div>
+  <div style="width:100%"><div class="progress-bar"><div class="progress-fill" id="gs-fill" style="width:0%"></div></div></div>
+  <div class="groups-scroll" id="groups-container"></div>
+  <div class="group-footer">
+    <div class="footer-info" id="footer-info">Completa todos los partidos para continuar.</div>
+    <button id="btn-advance">Avanzar al Cuadro →</button>
+  </div>
+</div>
+
+<!-- PAIRING SCREEN -->
+<div id="pairing-screen">
+  <div class="pairing-card">
+    <h2 style="font-family:'Barlow Condensed', sans-serif; color:var(--gold); text-transform:uppercase; margin-bottom:0.5rem;">Configuración de Cruces</h2>
+    <p style="color:var(--text-muted); font-size:0.9rem; margin-bottom:1rem;">Selecciona cómo se cruzarán los grupos. El sistema asegura que el 1º y 2º de cada grupo solo se vean en la final.</p>
+    
+    <button class="btn" id="btn-random-pairing" style="margin-bottom:1.2rem;width:100%;background:var(--bg3);border-color:var(--border-strong);">
+      🔀 Cruces aleatorios
+    </button>
+
+    <div class="pairing-grid" id="pairing-grid"></div>
+    
+    <button class="btn btn-primary" id="btn-start-bracket" style="width:100%; margin-top:2rem; padding:0.8rem;">
+      Generar Cuadro Eliminatorio →
+    </button>
+    <button class="btn" onclick="goBackToGroups()" style="width:100%; margin-top:0.6rem; border:none; color:var(--text-muted);">
+      ← Volver a Grupos
+    </button>
+  </div>
+</div>
+
+<!-- BRACKET -->
+<div id="tournament-screen">
+  <div id="fs-bar">
+    <span class="fs-title" id="fs-bar-title">—</span>
+    <span class="fs-info" id="fs-bar-progress"></span>
+    <span class="fs-info">ESC o F11 · Salir</span>
+  </div>
+  <div class="tournament-header">
+    <div>
+      <div class="round-lbl-sm">Cuadro eliminatorio</div>
+      <div class="tournament-title" id="display-title">—</div>
+    </div>
+    <div style="display:flex;gap:0.6rem;align-items:center;flex-wrap:wrap;">
+      <div style="font-size:0.85rem;color:var(--text-muted)" id="progress-text"></div>
+      <button class="btn btn-fs" id="btn-fullscreen">🏆 Cuadro (Público)</button>
+      <button class="btn btn-fs" id="publish-btn-bracket" onclick="togglePublish()" style="display:none">📡 Publicar</button>
+      <button class="btn btn-fs" id="btn-simulate-bracket" style="border-color:var(--border);color:var(--text-muted);">🎲 Simular</button>
+    </div>
+  </div>
+  <div style="width:100%"><div class="progress-bar"><div class="progress-fill" id="progress-fill" style="width:0%"></div></div></div>
+  <div class="champion-banner" id="champion-banner">
+    <div class="trophy">🏆</div><h3>¡Campeón del torneo!</h3>
+    <div class="champion-name" id="champion-name"></div>
+  </div>
+  <div class="bracket-outer" id="bracket-outer">
+    <div id="bracket-scaler"><div id="bracket-container"></div></div>
+  </div>
+  <!-- Panel de puntuación para partidos del cuadro -->
+  <div id="bracket-score-panel" style="display:none; position:fixed; bottom:0; left:0; right:0; z-index:200; background:var(--bg2); border-top:2px solid var(--border-strong); padding:1rem; box-shadow:0 -4px 20px rgba(0,0,0,0.4);">
+    <div style="max-width:480px; margin:0 auto;">
+      <div id="bsp-label" style="font-family:'Barlow Condensed',sans-serif; font-size:0.7rem; font-weight:700; color:var(--gold); text-transform:uppercase; letter-spacing:0.1em; margin-bottom:0.6rem; text-align:center;"></div>
+      <div class="score-row" id="bsp-row"></div>
+      <div class="score-actions" style="margin-top:0.6rem; display:flex; gap:0.5rem; justify-content:flex-end;">
+        <button class="sc-cancel" onclick="closeBracketScorePanel()">Cancelar</button>
+        <button class="sc-save" onclick="saveBracketScore()">Guardar resultado ✓</button>
+      </div>
+    </div>
+  </div>
+  <div class="group-footer">
+    <div></div>
+    <button class="btn" id="btn-back-to-groups" onclick="goBackToGroupsFromBracket()" style="background:var(--bg3);border-color:var(--border-strong);color:var(--text-muted);">← Volver a Grupos</button>
+  </div>
+</div>
+
+<!-- MODO VISUALIZACIÓN -->
+<div id="display-screen">
+  <div class="dv-header">
+    <div class="dv-title" id="dv-title">—</div>
+    <div style="display:flex;align-items:center;gap:0.8rem;">
+      <div class="dv-live-dot"></div>
+      <div class="dv-badge" id="dv-badge-text">EN VIVO · Clasificación</div>
+    </div>
+  </div>
+  <div class="dv-groups" id="dv-groups"></div>
+  <div class="dv-footer">
+    <span class="dv-progress-text" id="dv-progress-text">—</span>
+    <div class="dv-progress-bar"><div class="dv-progress-fill" id="dv-progress-fill" style="width:0%"></div></div>
+  </div>
+</div>
+
+<!-- OVERLAY GESTIÓN TORNEOS -->
+<div id="tourneys-overlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.9); z-index:400; flex-direction:column; padding:2rem;">
+  <div style="max-width:600px; margin:0 auto; width:100%; background:var(--bg2); border:1px solid var(--border-strong); border-radius:var(--radius-lg); padding:2rem; display:flex; flex-direction:column; gap:1.5rem;">
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+      <h2 style="font-family:'Barlow Condensed', sans-serif; color:var(--gold); text-transform:uppercase;">Mis Torneos Guardados</h2>
+      <button class="btn btn-danger" onclick="closeTourneysOverlay()">✕</button>
+    </div>
+    <div id="tourneys-list" style="display:flex; flex-direction:column; gap:0.8rem; max-height:60vh; overflow-y:auto; padding-right:0.5rem;">
+      <!-- Lista de torneos -->
+    </div>
+    <div style="text-align:center; color:var(--text-muted); font-size:0.85rem;">
+      Los torneos se guardan automáticamente en este navegador.
+    </div>
+  </div>
+</div>
+
+<!-- CONECTAR DISPOSITIVO -->
+<div id="connect-overlay">
+  <div class="connect-modal">
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <div class="connect-modal-title">Conectar dispositivo</div>
+      <button class="btn btn-danger" onclick="closeConnectOverlay()">✕</button>
+    </div>
+    <div>
+      <div class="field-label" style="margin-bottom:0.5rem;">Nombre del dispositivo</div>
+      <div style="display:flex;gap:0.5rem;">
+        <input type="text" id="connect-device-name" placeholder="iPad 1" style="flex:1;">
+        <button class="btn btn-primary" onclick="generateDeviceQR()">Generar QR</button>
+      </div>
+    </div>
+    <div class="connect-qr-wrap" id="connect-qr-wrap">
+      <div style="color:#aaa;font-size:0.84rem;text-align:center;line-height:1.6;">Introduce el nombre del dispositivo<br>y pulsa <strong>Generar QR</strong></div>
+    </div>
+    <div id="connect-url-row" style="display:none; flex-direction:column; gap:0.4rem;">
+      <div class="connect-url-box" id="connect-url-box"></div>
+      <button class="btn" onclick="copyConnectURL()" style="align-self:flex-end; font-size:0.78rem; padding:0.25rem 0.8rem;">📋 Copiar URL</button>
+    </div>
+    <div>
+      <div class="field-label" style="margin-bottom:0.5rem;">Dispositivos conectados</div>
+      <div id="connect-devices-list" class="connect-devices-list">
+        <div class="connect-empty" id="connect-empty-msg">Ningún dispositivo conectado todavía.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- COLA DE PARTIDOS -->
+<div id="queue-screen">
+  <div class="qv-header">
+    <div class="qv-title">Siguientes Partidos</div>
+    <div class="qv-subtitle" id="qv-subtitle"></div>
+  </div>
+  <div class="qv-body" id="qv-body"></div>
+</div>
+
+<!-- MODO IPAD -->
+<div id="ipad-screen">
+  <div class="ipad-hdr">
+    <div class="ipad-hdr-name" id="ipad-hdr-name">—</div>
+    <div style="display:flex;align-items:center;gap:0.7rem;">
+      <div class="ipad-hdr-status">
+        <span class="ntfy-dot" id="ipad-ntfy-dot"></span>
+        <span id="ipad-status-text">Conectando…</span>
+      </div>
+      <button class="ipad-fs-btn" id="ipad-fs-btn" onclick="ipadToggleFS()" title="Pantalla completa">⛶</button>
+    </div>
+  </div>
+  <div class="ipad-body" id="ipad-body">
+    <div class="ipad-waiting">
+      <div class="ipad-waiting-icon">📋</div>
+      <div class="ipad-waiting-text">Esperando partido…</div>
+      <div class="ipad-waiting-sub">El gestor enviará un partido en cualquier momento</div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<!-- Overlay para mostrar el cuadro en móvil forzado en horizontal -->
+<div id="bracket-overlay" style="display:none;position:fixed;inset:0;background:#000;z-index:9999;overflow:hidden;">
+  <button id="bracket-overlay-close" onclick="closeBracketOverlay()" style="position:fixed;top:12px;right:12px;z-index:10001;width:36px;height:36px;border-radius:50%;border:2px solid var(--gold);background:rgba(0,0,0,0.7);color:var(--gold);font-size:1.2rem;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;padding:0;">✕</button>
+  <div id="bracket-overlay-wrap" style="position:absolute;top:0;left:0;transform-origin:top left;">
+    <iframe id="bracket-overlay-frame" style="border:0;background:#000;width:100%;height:100%;display:block;" allowfullscreen></iframe>
+  </div>
+</div>
+<div id="fs-hint">F11 — Pantalla completa</div>
+
+
+<script>
+['loadTournament','deleteTournament','moveTeam','openScorePanel',
+ 'applyScore','clearScore','removeDevice','clearAllDevices','generateDeviceQR','copyConnectURL','openConnectModal',
+ 'addToGlobalQueue','removeFromGlobalQueue',
+ 'selectWinner','selectWinnerLower','selectWinnerGF','resetWinner',
+ 'ipadToggleFS','ipadMod','ipadSave','ipadStart','renderPairingScreen',
+ 'closeTourneysOverlay','closeConnectOverlay','goBackToGroups','goBackToGroupsFromBracket',
+ 'openLoginModal','closeLoginModal','doLogin','adminLogout','switchPubTab','togglePublish',
+ 'showPubPanel','closePubPanel',
+ 'closeBracketScorePanel','modBSP','saveBracketScore'
+].forEach(fn => window[fn] = (...a) => window['_fn_'+fn]?.(...a));
+window.$ = id => document.getElementById(id);
+// modSc e closeScorePanel se definen directamente en window dentro del módulo
+</script>
+<script type="module" src="script.js"></script>
+</body>
+</html>
