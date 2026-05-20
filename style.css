@@ -292,6 +292,12 @@
   .ntfy-mini { display:flex; align-items:center; gap:0.35rem; font-size:0.73rem; color:var(--text-muted); padding:0.28rem 0.65rem; border:1px solid var(--border); border-radius:20px; cursor:pointer; transition:all 0.15s; white-space:nowrap; }
   .ntfy-mini:hover { border-color:var(--gold); color:var(--gold); }
 
+  /* ── MENÚ ADMIN DESPLEGABLE ──────────────────────── */
+  .admin-menu-wrap { position:relative; }
+  .admin-menu-dropdown { display:none; position:absolute; top:calc(100% + 6px); right:0; background:var(--bg2); border:1px solid var(--border-strong); border-radius:var(--radius); padding:0.4rem; flex-direction:column; gap:0.3rem; min-width:200px; z-index:200; box-shadow:0 8px 24px rgba(0,0,0,0.5); }
+  .admin-menu-dropdown.open { display:flex; animation:fadeIn 0.12s ease; }
+  .admin-menu-item { width:100%; text-align:left; justify-content:flex-start; }
+
   /* ── MODO COLA ────────────────────────────────────────── */
   #queue-screen { display: none; position: fixed; inset: 0; z-index: 500; flex-direction: column; }
   #queue-screen.active { display: flex; }

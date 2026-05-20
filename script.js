@@ -1795,10 +1795,21 @@ $('btn-display-mode').addEventListener('click',()=>{
 $('btn-queue-mode').addEventListener('click',()=>{
   window.open(`${location.pathname}?mode=queue`,'_blank','noopener');
   toast('📋 Cola combinada abierta');
+  closeAdminMenu();
 });
-$('btn-manage-tourneys').addEventListener('click',()=>{ renderTourneysList(); $('tourneys-overlay').style.display='flex'; });
-$('btn-connect-device').addEventListener('click',()=>openConnectModal());
+$('btn-manage-tourneys').addEventListener('click',()=>{ renderTourneysList(); $('tourneys-overlay').style.display='flex'; closeAdminMenu(); });
+$('btn-connect-device').addEventListener('click',()=>{ openConnectModal(); closeAdminMenu(); });
 $('btn-clear-devices').addEventListener('click',()=>clearAllDevices());
+
+function toggleAdminMenu(){
+  $('admin-menu-dropdown').classList.toggle('open');
+}
+function closeAdminMenu(){
+  $('admin-menu-dropdown').classList.remove('open');
+}
+document.addEventListener('click', e=>{
+  if(!$('admin-menu-wrap').contains(e.target)) closeAdminMenu();
+});
 
 // ═══════════════════════════════════════════════════════
 // 8. PANTALLA DE CONFIGURACIÓN (Setup)
