@@ -2478,7 +2478,9 @@ function propagateLower(lri, mi, winner){
   // Auto-avanzar BYEs pendientes (por si el torneo fue guardado antes del fix)
   if(state.lRounds) autoAdvanceLowerByes();
   const c=$('bracket-container'); c.innerHTML='';
-  if(state.numTeams===32) c.classList.add('size-32'); else c.classList.remove('size-32');
+  if(state.numTeams===64){ c.classList.add('size-64'); c.classList.remove('size-32'); }
+  else if(state.numTeams===32){ c.classList.add('size-32'); c.classList.remove('size-64'); }
+  else { c.classList.remove('size-32'); c.classList.remove('size-64'); }
   const wrap = document.createElement('div'); wrap.className='bracket-full-wrap';
   // Upper bracket
   if(!state.singleElim){ const upperLabel = document.createElement('div'); upperLabel.className='bracket-section-label'; upperLabel.textContent='▲ Upper Bracket'; wrap.appendChild(upperLabel); }
@@ -2848,7 +2850,7 @@ function renderBracketDisplay(data){
   cont.innerHTML='';
   cont.style.cssText=`flex:1;overflow:hidden;position:relative;background:var(--bg);height:${availH}px;`;
 
-  const cls = data.numTeams===32?'size-32':'';
+  const cls = data.numTeams===64?'size-64':data.numTeams===32?'size-32':'';
   const savedState=state; state=data;
 
   // ── Contenedor UPPER ──
