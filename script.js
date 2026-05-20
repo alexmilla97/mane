@@ -1807,6 +1807,7 @@ function toggleAdminMenu(){
 function closeAdminMenu(){
   $('admin-menu-dropdown').classList.remove('open');
 }
+$('admin-menu-btn').addEventListener('click', e=>{ e.stopPropagation(); toggleAdminMenu(); });
 document.addEventListener('click', e=>{
   if(!$('admin-menu-wrap').contains(e.target)) closeAdminMenu();
 });
