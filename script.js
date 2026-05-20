@@ -1145,6 +1145,7 @@ if((IS_DISPLAY||IS_BRACKET||IS_QUEUE) && (SESSION_ID||IS_QUEUE)){
 
 // Variables del gestor — en scope de módulo para acceso desde funciones compartidas
 let bracketSize=4, numGroups=2, doubleElim=true;
+window._setDoubleElim = v => { doubleElim = v; };
 let groupData={}, sessionId=null;
 let isFsMode=false, activePanel=null;
 
@@ -1843,14 +1844,6 @@ function rebuildTeamInputs(){
 document.querySelectorAll('#size-options .size-btn').forEach(btn=>btn.addEventListener('click',()=>{
   document.querySelectorAll('#size-options .size-btn').forEach(b=>b.classList.remove('active'));
   btn.classList.add('active'); bracketSize=+btn.dataset.size; rebuildGroupOptions();
-}));
-document.querySelectorAll('#elim-options .size-btn').forEach(btn=>btn.addEventListener('click',()=>{
-  document.querySelectorAll('#elim-options .size-btn').forEach(b=>b.classList.remove('active'));
-  btn.classList.add('active');
-  doubleElim = btn.dataset.elim === 'double';
-  $('elim-info').innerHTML = doubleElim
-    ? 'Cada participante tiene <strong>2 oportunidades</strong> — si pierdes en el cuadro principal pasas al cuadro de perdedores.'
-    : 'Eliminación directa — un solo partido perdido y quedas fuera del torneo.';
 }));
 rebuildGroupOptions();
 

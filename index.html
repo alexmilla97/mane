@@ -14,6 +14,16 @@
     #admin-menu-dropdown { display:none; position:absolute; top:calc(100% + 6px); right:0; background:#161620; border:1px solid rgba(255,255,255,0.18); border-radius:8px; padding:0.4rem; flex-direction:column; gap:0.3rem; min-width:200px; z-index:9999; box-shadow:0 8px 24px rgba(0,0,0,0.5); }
   </style>
   <script>
+    function setElimMode(val){
+      document.querySelectorAll('#elim-options .size-btn').forEach(function(b){ b.classList.remove('active'); });
+      var btn=document.querySelector('#elim-options [data-elim="'+val+'"]');
+      if(btn) btn.classList.add('active');
+      if(window._setDoubleElim) window._setDoubleElim(val==='double');
+      var info=document.getElementById('elim-info');
+      if(info) info.innerHTML = val==='double'
+        ? 'Cada participante tiene <strong>2 oportunidades</strong> — si pierdes en el cuadro principal pasas al cuadro de perdedores.'
+        : 'Eliminación directa — un solo partido perdido y quedas fuera del torneo.';
+    }
     function toggleAdminMenu(){
       var dd=document.getElementById('admin-menu-dropdown');
       if(!dd) return;
@@ -134,8 +144,8 @@
 
       <div class="field-label" style="margin-top:1.2rem;">Formato del cuadro</div>
       <div class="size-options" id="elim-options">
-        <button class="size-btn active" data-elim="double">Doble eliminación</button>
-        <button class="size-btn" data-elim="single">Eliminación simple</button>
+        <button class="size-btn active" data-elim="double" onclick="setElimMode('double')">Doble eliminación</button>
+        <button class="size-btn" data-elim="single" onclick="setElimMode('single')">Eliminación simple</button>
       </div>
       <div class="info-box" id="elim-info">Cada participante tiene <strong>2 oportunidades</strong> — si pierdes en el cuadro principal pasas al cuadro de perdedores.</div>
 
