@@ -36,6 +36,10 @@
 <header id="admin-header" style="display:none">
   <div class="logo">CERVECERÍA<span>MANÉ</span> <span style="font-size:0.7rem;color:var(--gold);background:rgba(212,160,23,0.12);border:1px solid rgba(212,160,23,0.3);border-radius:4px;padding:0.15rem 0.5rem;vertical-align:middle;letter-spacing:0.08em;">ADMIN</span></div>
   <div style="display:flex; gap: 0.5rem; align-items:center;">
+    <div class="ntfy-mini" id="ntfy-mini" onclick="openConnectModal()">
+      <span class="ntfy-dot" id="ntfy-dot2"></span>
+      <span id="ntfy-mini-text">0 disp.</span>
+    </div>
     <div class="admin-menu-wrap" id="admin-menu-wrap">
       <button class="btn btn-fs" id="admin-menu-btn" onclick="toggleAdminMenu()">☰ Menú</button>
       <div class="admin-menu-dropdown" id="admin-menu-dropdown">
@@ -46,10 +50,6 @@
         <button class="btn btn-fs admin-menu-item" id="btn-clear-devices" style="border-color:#E24B4A;color:#E24B4A;">🗑️ Limpiar disp.</button>
         <button class="btn btn-danger admin-menu-item" id="admin-logout-btn" onclick="adminLogout()">Cerrar sesión</button>
       </div>
-    </div>
-    <div class="ntfy-mini" id="ntfy-mini" onclick="openConnectModal()">
-      <span class="ntfy-dot" id="ntfy-dot2"></span>
-      <span id="ntfy-mini-text">0 disp.</span>
     </div>
   </div>
 </header>
