@@ -1801,17 +1801,10 @@ $('btn-manage-tourneys').addEventListener('click',()=>{ renderTourneysList(); $(
 $('btn-connect-device').addEventListener('click',()=>{ openConnectModal(); closeAdminMenu(); });
 $('btn-clear-devices').addEventListener('click',()=>clearAllDevices());
 
-window.toggleAdminMenu = function(){
-  const dd=$('admin-menu-dropdown');
-  if(dd.style.display==='flex'){ dd.style.display='none'; } else { dd.style.display='flex'; dd.style.flexDirection='column'; }
-};
 window.closeAdminMenu = function(){
-  $('admin-menu-dropdown').style.display='none';
+  const dd=$('admin-menu-dropdown');
+  if(dd) dd.style.display='none';
 };
-document.addEventListener('click', e=>{
-  const wrap=$('admin-menu-wrap');
-  if(wrap && !wrap.contains(e.target)) window.closeAdminMenu();
-});
 
 // ═══════════════════════════════════════════════════════
 // 8. PANTALLA DE CONFIGURACIÓN (Setup)

@@ -13,6 +13,19 @@
     .admin-menu-wrap { position:relative; }
     #admin-menu-dropdown { display:none; position:absolute; top:calc(100% + 6px); right:0; background:#161620; border:1px solid rgba(255,255,255,0.18); border-radius:8px; padding:0.4rem; flex-direction:column; gap:0.3rem; min-width:200px; z-index:9999; box-shadow:0 8px 24px rgba(0,0,0,0.5); }
   </style>
+  <script>
+    function toggleAdminMenu(){
+      var dd=document.getElementById('admin-menu-dropdown');
+      if(!dd) return;
+      dd.style.display = dd.style.display==='flex' ? 'none' : 'flex';
+      dd.style.flexDirection = 'column';
+    }
+    document.addEventListener('click', function(e){
+      var wrap=document.getElementById('admin-menu-wrap');
+      var dd=document.getElementById('admin-menu-dropdown');
+      if(dd && wrap && !wrap.contains(e.target)) dd.style.display='none';
+    });
+  </script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
