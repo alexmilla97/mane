@@ -88,6 +88,43 @@ git -C "C:\Users\aleja\Desktop\PAGINA MANE" push
 - `renderQueueItems` vaciaba el DOM con `innerHTML=''` en cada actualización de Firestore, causando un parpadeo visible y el reinicio de las animaciones CSS. Solución: DOM diffing con `data-key` por partido; los nodos existentes se actualizan en sitio y solo se añaden o eliminan los que cambian.
 - Parpadeo de la tarjeta verde ("EN JUEGO") durante transiciones de partido: Firestore emite estados intermedios donde el partido activo aparece como `status:'pending'` (sin live ni queued). Solución: caché de datos `_lastLiveByDev` en `renderQueueItems` — guarda el último item live por dispositivo e inyecta datos sintéticos cuando el estado entrante no tiene ningún partido live, manteniendo el nodo DOM intacto durante la transición.
 
+## Header admin — menú desplegable
+
+Los botones de administración están agrupados en un único menú desplegable (`☰ Menú`) en la esquina superior derecha. A su izquierda aparece el contador de dispositivos conectados (`ntfy-mini`).
+
+### Estructura HTML (en `index.html`, dentro de `<header id="admin-header">`)
+```html
+<div class="ntfy-mini" id="ntfy-mini" onclick="openConnectModal()">...</div>
+<div class="admin-menu-wrap" id="admin-menu-wrap">
+  <button id="admin-menu-btn" onclick="toggleAdminMenu()">☰ Menú</button>
+  <div id="admin-menu-dropdown">
+    <!-- botones: Cola, Conectar, Mis Torneos, Nuevo Torneo, Limpiar disp., Cerrar sesión -->
+  </div>
+</div>
+```
+
+### CSS (en el `<style>` inline del `<head>` de `index.html`)
+```css
+.admin-menu-wrap { position:relative; }
+#admin-menu-dropdown { display:none; position:absolute; top:calc(100% + 6px); right:0;
+  background:#161620; border:1px solid rgba(255,255,255,0.18); border-radius:8px;
+  padding:0.4rem; flex-direction:column; gap:0.3rem; min-width:200px;
+  z-index:9999; box-shadow:0 8px 24px rgba(0,0,0,0.5); }
+```
+
+### JS — importante
+`toggleAdminMenu` está definida en un `<script>` clásico (NO módulo) en el `<head>` de `index.html`, porque `onclick=""` no accede al scope de `<script type="module">`. NO moverla a `script.js`.
+
+```js
+function toggleAdminMenu(){
+  var dd=document.getElementById('admin-menu-dropdown');
+  dd.style.display = dd.style.display==='flex' ? 'none' : 'flex';
+  dd.style.flexDirection = 'column';
+}
+```
+
+El cierre al hacer clic fuera también está en ese mismo `<script>` clásico.
+
 ## Convenciones de código
 - Indentación: 2 espacios
 - Ficheros separados: HTML, CSS y JS en sus propios ficheros
