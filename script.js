@@ -1802,10 +1802,11 @@ $('btn-connect-device').addEventListener('click',()=>{ openConnectModal(); close
 $('btn-clear-devices').addEventListener('click',()=>clearAllDevices());
 
 function toggleAdminMenu(){
-  $('admin-menu-dropdown').classList.toggle('open');
+  const dd=$('admin-menu-dropdown');
+  if(dd.style.display==='flex'){ dd.style.display='none'; } else { dd.style.display='flex'; dd.style.flexDirection='column'; }
 }
 function closeAdminMenu(){
-  $('admin-menu-dropdown').classList.remove('open');
+  $('admin-menu-dropdown').style.display='none';
 }
 $('admin-menu-btn').addEventListener('click', e=>{ e.stopPropagation(); toggleAdminMenu(); });
 document.addEventListener('click', e=>{
