@@ -103,8 +103,35 @@ Variable global `doubleElim` (boolean, por defecto `true`).
 
 - En `launchTournament`: si `doubleElim=false` no se construye lower bracket ni gran final, `state.singleElim=true`
 - En `selectWinner`: si `state.singleElim`, no llama a `dropToLower`; si es la final, declara campeón en `state.champion`
+- En `renderBracket` y `renderBracketDisplay`: si `state.singleElim`, NO se renderiza lower bracket ni gran final
 - El simulador y `updateProgress` son null-safe respecto a `state.gf` y `state.lRounds`
 - Al hacer "Nuevo Torneo" (`resetAll`), `doubleElim` vuelve a `true` y el selector UI se resetea
+
+### Clases CSS de tamaño para el cuadro (`renderBracket` y `renderBracketDisplay`)
+
+El contenedor del bracket recibe una clase CSS según el número de equipos para comprimir el layout:
+
+| `numTeams` | Clase CSS | Escala aplicada |
+|-----------|-----------|-----------------|
+| 64 | `size-64` | `transform: scale(0.6)` en cada `.match` |
+| 32 | `size-32` | `transform: scale(0.85)` en cada `.match` |
+| ≤16 | _(ninguna)_ | tamaño normal |
+
+**En `renderBracket` (vista admin, ~línea 2481):**
+```javascript
+if(state.numTeams===64){ c.classList.add('size-64'); c.classList.remove('size-32'); }
+else if(state.numTeams===32){ c.classList.add('size-32'); c.classList.remove('size-64'); }
+else { c.classList.remove('size-32'); c.classList.remove('size-64'); }
+```
+
+**En `renderBracketDisplay` (vista pública, ~línea 2851):**
+```javascript
+const cls = data.numTeams===64?'size-64':data.numTeams===32?'size-32':'';
+```
+La variable `cls` se aplica a `upperC.className` y `lowerC.className`.
+
+Las reglas CSS de `size-64` están en `style.css` (sección `64 TEAMS OPTIMIZATION`).
+Las reglas CSS de `size-32` también están en `style.css`.
 
 ## Header admin — menú desplegable
 
@@ -142,6 +169,21 @@ function toggleAdminMenu(){
 ```
 
 El cierre al hacer clic fuera también está en ese mismo `<script>` clásico.
+
+## Patrón crítico: onclick vs. ES modules
+
+`script.js` usa `<script type="module">`. Las funciones definidas dentro **no están en `window`** y no pueden llamarse desde atributos `onclick=""` de HTML.
+
+**Regla:** cualquier función llamada vía `onclick=""` debe estar en un `<script>` clásico (sin `type="module"`) en el `<head>` de `index.html`. Si necesita leer/escribir una variable del módulo, usar un puente `window._nombre`.
+
+### Funciones en el `<script>` clásico del `<head>` (NO mover a script.js)
+- `toggleAdminMenu()` — abre/cierra el menú desplegable admin
+- `setElimMode(val)` — cambia el modo de eliminación; escribe `window._setDoubleElim(val==='double')`
+- Listener de clic-fuera del menú (`document.addEventListener('click', ...)`)
+
+### Puentes módulo ↔ clásico (definidos en script.js)
+- `window._setDoubleElim = v => { doubleElim = v; }` — permite que `setElimMode` actualice la variable del módulo
+- `window.closeAdminMenu = function(){ ... }` — permite cerrar el menú desde dentro del módulo si hace falta
 
 ## Convenciones de código
 - Indentación: 2 espacios
