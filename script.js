@@ -1144,7 +1144,7 @@ if((IS_DISPLAY||IS_BRACKET||IS_QUEUE) && (SESSION_ID||IS_QUEUE)){
 }
 
 // Variables del gestor — en scope de módulo para acceso desde funciones compartidas
-let bracketSize=4, numGroups=2;
+let bracketSize=4, numGroups=2, doubleElim=true;
 let groupData={}, sessionId=null;
 let isFsMode=false, activePanel=null;
 
@@ -1844,6 +1844,14 @@ document.querySelectorAll('#size-options .size-btn').forEach(btn=>btn.addEventLi
   document.querySelectorAll('#size-options .size-btn').forEach(b=>b.classList.remove('active'));
   btn.classList.add('active'); bracketSize=+btn.dataset.size; rebuildGroupOptions();
 }));
+document.querySelectorAll('#elim-options .size-btn').forEach(btn=>btn.addEventListener('click',()=>{
+  document.querySelectorAll('#elim-options .size-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  doubleElim = btn.dataset.elim === 'double';
+  $('elim-info').innerHTML = doubleElim
+    ? 'Cada participante tiene <strong>2 oportunidades</strong> — si pierdes en el cuadro principal pasas al cuadro de perdedores.'
+    : 'Eliminación directa — un solo partido perdido y quedas fuera del torneo.';
+}));
 rebuildGroupOptions();
 
 $('btn-fill-test').onclick=()=>{ [...$('teams-grid').querySelectorAll('input')].forEach((inp,i)=>{ if(!inp.value.trim()) inp.value=`Jugador ${i+1}`; }); toast('🎲 Nombres de prueba rellenados'); };
@@ -1921,6 +1929,9 @@ function resetAll(){
   ['group-screen','pairing-screen','tournament-screen'].forEach(id=>$(id).style.display='none');
   $('setup-screen').style.display='block';
   $('champion-banner').classList.remove('visible');
+  doubleElim = true;
+  document.querySelectorAll('#elim-options .size-btn').forEach((b,i)=>b.classList.toggle('active',i===0));
+  $('elim-info').innerHTML = 'Cada participante tiene <strong>2 oportunidades</strong> — si pierdes en el cuadro principal pasas al cuadro de perdedores.';
 }
 $('reset-btn').addEventListener('click', resetAll);
 
@@ -2138,26 +2149,27 @@ $('btn-simulate-bracket').addEventListener('click', ()=>{
     state.rounds.forEach((round,ri)=>round.forEach((m,mi)=>{
       if(!m.winner&&m.t1&&m.t2&&m.t1.name!=='BYE'&&m.t2.name!=='BYE'){
         simMatch(m);
-        if(m.winner){ changed=true; propagateUpper(state.rounds,ri,mi,m.winner); dropToLower(ri,mi,m.loser); autoAdvanceLowerByes(); }
+        if(m.winner){ changed=true; propagateUpper(state.rounds,ri,mi,m.winner); if(!state.singleElim){dropToLower(ri,mi,m.loser); autoAdvanceLowerByes();} }
       }
     }));
-    (state.lRounds||[]).forEach((round,lri)=>round.forEach((m,mi)=>{
-      if(!m.winner&&m.t1&&m.t2&&m.t1.name!=='BYE'&&m.t2.name!=='BYE'){
-        simMatch(m);
-        if(m.winner){ changed=true; propagateLower(lri,mi,m.winner); }
+    if(!state.singleElim){
+      (state.lRounds||[]).forEach((round,lri)=>round.forEach((m,mi)=>{
+        if(!m.winner&&m.t1&&m.t2&&m.t1.name!=='BYE'&&m.t2.name!=='BYE'){
+          simMatch(m);
+          if(m.winner){ changed=true; propagateLower(lri,mi,m.winner); }
+        }
+      }));
+      if(!state.gf.winner&&state.gf.t1&&state.gf.t2){
+        simMatch(state.gf);
+        if(state.gf.winner){ changed=true; }
       }
-    }));
-    // Gran Final
-    if(!state.gf.winner&&state.gf.t1&&state.gf.t2){
-      simMatch(state.gf);
-      if(state.gf.winner){ changed=true; }
+      const lastR=state.rounds[state.rounds.length-1];
+      if(lastR[0]?.winner&&!state.gf.t1) state.gf.t1=lastR[0].winner;
     }
-    // Upper final → Gran Final t1
-    const lastR=state.rounds[state.rounds.length-1];
-    if(lastR[0]?.winner&&!state.gf.t1) state.gf.t1=lastR[0].winner;
   }
-  if(state.gf.winner){
-    $('champion-name').textContent=state.gf.winner.name;
+  const champ = state.singleElim ? state.champion : state.gf?.winner;
+  if(champ){
+    $('champion-name').textContent=champ.name;
     $('champion-banner').classList.add('visible');
   }
   saveCurrentTournament(); renderBracket(); updateProgress();
@@ -2303,10 +2315,10 @@ function generateProfessionalNames(pairings){
 
 function launchTournament(title, names){
   const rounds = buildUpperRounds(names);
-  const lRounds = buildLowerRounds(rounds);
-  const gf = { t1: null, t2: null, winner: null };
-  const totalMatches = rounds.flat().length + lRounds.flat().length + 1;
-  state = { title, numTeams: names.length, totalMatches, rounds, lRounds, gf };
+  const lRounds = doubleElim ? buildLowerRounds(rounds) : null;
+  const gf = doubleElim ? { t1: null, t2: null, winner: null } : null;
+  const totalMatches = rounds.flat().length + (lRounds ? lRounds.flat().length + 1 : 0);
+  state = { title, numTeams: names.length, totalMatches, rounds, lRounds, gf, singleElim: !doubleElim };
   // Drop BYEs de upper R1 al lower (state.lRounds ya existe)
   rounds[0].forEach((m, mi) => {
     if(m.winner && m.loser) dropToLower(0, mi, { name:'BYE', seed:0 });
@@ -2700,14 +2712,20 @@ function selectWinner(ri, mi, si){
   const loser  = si===0 ? match.t2 : match.t1;
   match.winner = winner; match.loser = loser;
   propagateUpper(state.rounds, ri, mi, winner);
-  // Check upper final → feeds Gran Final t1
   const lastR = state.rounds[state.rounds.length-1];
-  if(lastR.length===1 && lastR[0].winner) state.gf.t1 = lastR[0].winner;
-  // Drop loser to lower bracket
-  dropToLower(ri, mi, loser);
-  // Auto-avanzar si el partido de lower quedó con un BYE (cascada)
-  autoAdvanceLowerByes();
-  toast(`✓ ${winner.name} avanza · ${loser.name} al lower`);
+  if(state.singleElim){
+    if(lastR.length===1 && lastR[0].winner){
+      state.champion = lastR[0].winner;
+      $('champion-name').textContent = state.champion.name;
+      $('champion-banner').classList.add('visible');
+    }
+    toast(`✓ ${winner.name} avanza · ${loser.name} eliminado`);
+  } else {
+    if(lastR.length===1 && lastR[0].winner) state.gf.t1 = lastR[0].winner;
+    dropToLower(ri, mi, loser);
+    autoAdvanceLowerByes();
+    toast(`✓ ${winner.name} avanza · ${loser.name} al lower`);
+  }
   saveCurrentTournament(); renderBracket(); updateProgress();
 }
 
