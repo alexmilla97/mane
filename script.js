@@ -2481,26 +2481,27 @@ function propagateLower(lri, mi, winner){
   if(state.numTeams===32) c.classList.add('size-32'); else c.classList.remove('size-32');
   const wrap = document.createElement('div'); wrap.className='bracket-full-wrap';
   // Upper bracket
-  const upperLabel = document.createElement('div'); upperLabel.className='bracket-section-label'; upperLabel.textContent='▲ Upper Bracket';
-  wrap.appendChild(upperLabel);
+  if(!state.singleElim){ const upperLabel = document.createElement('div'); upperLabel.className='bracket-section-label'; upperLabel.textContent='▲ Upper Bracket'; wrap.appendChild(upperLabel); }
   const upperWrap = document.createElement('div'); upperWrap.style.cssText='display:flex;gap:2rem;align-items:center;position:relative;';
   renderUpperInto(upperWrap);
   wrap.appendChild(upperWrap);
-  // Divider
-  const div1 = document.createElement('div'); div1.className='bracket-divider'; wrap.appendChild(div1);
-  // Lower bracket
-  const lowerLabel = document.createElement('div'); lowerLabel.className='bracket-section-label'; lowerLabel.textContent='▼ Lower Bracket';
-  wrap.appendChild(lowerLabel);
-  const lowerWrap = document.createElement('div'); lowerWrap.className='lower-bracket-wrap';
-  renderLowerInto(lowerWrap);
-  wrap.appendChild(lowerWrap);
-  // Grand Final
-  const div2 = document.createElement('div'); div2.className='bracket-divider'; wrap.appendChild(div2);
-  const gfWrap = document.createElement('div'); gfWrap.className='grand-final-wrap';
-  const gfLabel = document.createElement('div'); gfLabel.className='grand-final-label'; gfLabel.textContent='🏆 Gran Final';
-  gfWrap.appendChild(gfLabel);
-  const gfCard = buildCard(state.gf, 'gf', 0, true); gfCard.id='match-gf-0'; gfWrap.appendChild(gfCard);
-  wrap.appendChild(gfWrap);
+  if(!state.singleElim){
+    // Divider
+    const div1 = document.createElement('div'); div1.className='bracket-divider'; wrap.appendChild(div1);
+    // Lower bracket
+    const lowerLabel = document.createElement('div'); lowerLabel.className='bracket-section-label'; lowerLabel.textContent='▼ Lower Bracket';
+    wrap.appendChild(lowerLabel);
+    const lowerWrap = document.createElement('div'); lowerWrap.className='lower-bracket-wrap';
+    renderLowerInto(lowerWrap);
+    wrap.appendChild(lowerWrap);
+    // Grand Final
+    const div2 = document.createElement('div'); div2.className='bracket-divider'; wrap.appendChild(div2);
+    const gfWrap = document.createElement('div'); gfWrap.className='grand-final-wrap';
+    const gfLabel = document.createElement('div'); gfLabel.className='grand-final-label'; gfLabel.textContent='🏆 Gran Final';
+    gfWrap.appendChild(gfLabel);
+    const gfCard = buildCard(state.gf, 'gf', 0, true); gfCard.id='match-gf-0'; gfWrap.appendChild(gfCard);
+    wrap.appendChild(gfWrap);
+  }
   c.appendChild(wrap);
   const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
   svg.setAttribute('class','bracket-svg'); svg.id='bracket-svg'; c.appendChild(svg);
@@ -2518,7 +2519,7 @@ function renderUpperInto(container){
     left.appendChild(makeCol(roundLabel(total,ri), rounds[ri].slice(0,h), ri, 0, 'left'));
   }
   const center = document.createElement('div'); center.className='bracket-center';
-  const ch = document.createElement('div'); ch.className='round-header'; ch.textContent='Final Upper'; center.appendChild(ch);
+  const ch = document.createElement('div'); ch.className='round-header'; ch.textContent=state.singleElim?'Final':'Final Upper'; center.appendChild(ch);
   const ca = document.createElement('div'); ca.className='center-match-area';
   ca.style.cssText = 'padding:1.5rem;border-radius:var(--radius-lg);';
   const finalMatch = buildCard(rounds[total-1][0], total-1, 0, false);
