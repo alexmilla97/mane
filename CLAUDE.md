@@ -10,11 +10,11 @@ Aplicación web de una sola página (SPA) para gestionar torneos completos. Incl
 - Librerías externas: qrcodejs (QR), jsPDF (pegatinas PDF), SheetJS (importar Excel)
 
 ## Funcionalidades implementadas
-- Pantalla de configuración: nombre del torneo, número de equipos, grupos
+- Pantalla de configuración: nombre del torneo, número de equipos (4/8/16/32/64), grupos
 - Fase de grupos: clasificaciones en tiempo real, marcadores, indicadores de partido en directo / en cola
 - Sistema multi-dispositivo: enviar partidos a pantallas externas vía Firebase
 - Pantalla de emparejamientos: asignación de cruces entre grupos
-- Cuadro de eliminatorias: bracket con doble eliminación, escalado automático al viewport
+- Cuadro de eliminatorias: **doble eliminación** (por defecto) o **eliminación simple**, escalado automático al viewport
 - Modo pantalla completa (F11)
 - Códigos QR para acceso desde móvil
 - Vistas especiales por parámetro URL: `IS_DISPLAY`, `IS_BRACKET`, `IS_QUEUE`, `IS_DEVICE`
@@ -87,6 +87,24 @@ git -C "C:\Users\aleja\Desktop\PAGINA MANE" push
 ### Vista de cola pública (?mode=queue)
 - `renderQueueItems` vaciaba el DOM con `innerHTML=''` en cada actualización de Firestore, causando un parpadeo visible y el reinicio de las animaciones CSS. Solución: DOM diffing con `data-key` por partido; los nodos existentes se actualizan en sitio y solo se añaden o eliminan los que cambian.
 - Parpadeo de la tarjeta verde ("EN JUEGO") durante transiciones de partido: Firestore emite estados intermedios donde el partido activo aparece como `status:'pending'` (sin live ni queued). Solución: caché de datos `_lastLiveByDev` en `renderQueueItems` — guarda el último item live por dispositivo e inyecta datos sintéticos cuando el estado entrante no tiene ningún partido live, manteniendo el nodo DOM intacto durante la transición.
+
+## Setup — opciones del cuadro
+
+### Tamaños disponibles
+4, 8, 16, 32, **64** participantes. Variable global `bracketSize` (por defecto 4).
+
+### Formato de eliminación
+Variable global `doubleElim` (boolean, por defecto `true`).
+
+| Modo | `doubleElim` | `state.lRounds` | `state.gf` | Campeón |
+|------|-------------|-----------------|------------|---------|
+| Doble eliminación | `true` | array de rondas | `{t1,t2,winner}` | `state.gf.winner` |
+| Eliminación simple | `false` | `null` | `null` | `state.champion` |
+
+- En `launchTournament`: si `doubleElim=false` no se construye lower bracket ni gran final, `state.singleElim=true`
+- En `selectWinner`: si `state.singleElim`, no llama a `dropToLower`; si es la final, declara campeón en `state.champion`
+- El simulador y `updateProgress` son null-safe respecto a `state.gf` y `state.lRounds`
+- Al hacer "Nuevo Torneo" (`resetAll`), `doubleElim` vuelve a `true` y el selector UI se resetea
 
 ## Header admin — menú desplegable
 
