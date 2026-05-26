@@ -3053,14 +3053,6 @@ function renderBracketDisplay(data){
       setTimeout(fitScaleAndLines, 400);
     });
   });
-  // Detectar cualquier cambio de tamaño del contenedor (más fiable que window resize)
-  let _fitTimer = null;
-  const _ro = new ResizeObserver(()=>{
-    clearTimeout(_fitTimer);
-    _fitTimer = setTimeout(fitScaleAndLines, 80);
-  });
-  _ro.observe(cont);
-
   // Detectar cambio de DPI al mover la ventana entre pantallas de distinta escala
   let _prevDpr = window.devicePixelRatio;
   setInterval(()=>{
