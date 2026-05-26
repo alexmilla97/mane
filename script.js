@@ -2984,32 +2984,29 @@ function renderBracketDisplay(data){
     cont.style.height = availH+'px';
 
     // Resetear transforms para medir el tamaño natural del DOM
-    upperC.style.cssText = upperC.style.cssText; // forzar reflow
-    upperC.style.transform='none'; upperC.style.width=''; upperC.style.height='';
-    lowerC.style.transform='none'; lowerC.style.width=''; lowerC.style.height='';
+    upperC.style.transform='none';
+    lowerC.style.transform='none';
 
     // Doble rAF garantiza que el navegador refluyó tras el reset
     requestAnimationFrame(()=>requestAnimationFrame(()=>{
       const hasLower = data.lRounds?.length > 0;
-      // getBoundingClientRect siempre da píxeles CSS, scrollWidth puede dar físicos en DPR>1
-      const uBCR = upperC.getBoundingClientRect();
-      const uW = uBCR.width || 1;
-      const uH = uBCR.height || 1;
+      // offsetWidth/offsetHeight: píxeles CSS de layout, estables sin importar DPR ni zoom
+      const uW = upperC.offsetWidth || 1;
+      const uH = upperC.offsetHeight || 1;
 
       if(!hasLower){
         // Eliminación simple: ocupa toda la pantalla centrado
         const uSc = Math.min(vW/uW, availH/uH);
         _uSc = uSc;
         upperC.style.transform=`scale(${uSc})`;
-        upperC.style.width=uW+'px'; upperC.style.height=uH+'px';
         upperC.style.left=((vW - uW*uSc)/2)+'px';
         upperC.style.top=Math.max(0,(availH - uH*uSc)/2)+'px';
         lowerC.style.display='none';
       } else {
         lowerC.style.display='';
-        const lBCR = lowerC.getBoundingClientRect();
-        const lW = lBCR.width || 1;
-        const lH = lBCR.height || 1;
+        // Medir tamaño natural con offsetWidth/offsetHeight (layout CSS, sin DPR)
+        const lW = lowerC.offsetWidth || 1;
+        const lH = lowerC.offsetHeight || 1;
 
         // Escalar cada bracket al ancho de pantalla
         let uSc = vW/uW;
@@ -3025,17 +3022,14 @@ function renderBracketDisplay(data){
         }
 
         _uSc = uSc;
-        // Centrar el bloque upper+lower verticalmente en la pantalla
         const topMargin = Math.max(0,(availH - uVisH - lVisH)/2);
 
+        // Solo transform y posición — sin width/height explícitos para evitar ciclo de encogimiento
         upperC.style.transform=`scale(${uSc})`;
-        upperC.style.width=uW+'px'; upperC.style.height=uH+'px';
         upperC.style.left=((vW - uW*uSc)/2)+'px';
         upperC.style.top=topMargin+'px';
 
-        // Lower empieza exactamente donde termina el upper
         lowerC.style.transform=`scale(${lSc})`;
-        lowerC.style.width=lW+'px'; lowerC.style.height=lH+'px';
         lowerC.style.left=((vW - lW*lSc)/2)+'px';
         lowerC.style.top=(topMargin + uVisH)+'px';
         lowerC.style.bottom='auto';
