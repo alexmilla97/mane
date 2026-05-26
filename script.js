@@ -2942,29 +2942,32 @@ function renderBracketDisplay(data){
   state=savedState;
   cont.appendChild(upperC); cont.appendChild(lowerC);
 
-  let _uSc = 1; // escala actual del upper, usada por drawPubLines
+  let _uSc = 1;
+
+  // Posición de un elemento relativa a un contenedor usando el árbol DOM de layout.
+  // No depende de getBoundingClientRect, DPR ni zoom — siempre en píxeles CSS de layout.
+  function posRelTo(el, container){
+    let x=0, y=0, cur=el;
+    while(cur && cur!==container){ x+=cur.offsetLeft; y+=cur.offsetTop; cur=cur.offsetParent; }
+    return {x, y, w:el.offsetWidth, h:el.offsetHeight};
+  }
 
   function drawPubLines(){
     const svg=document.getElementById('pub-bracket-svg'); if(!svg) return;
     svg.innerHTML='';
     const {rounds}=data, totalRounds=rounds.length;
-    const sc = _uSc;
-    // Tamaño natural en píxeles CSS (BCR del SVG escalado / escala actual)
-    const svgBCR = svg.getBoundingClientRect();
-    const bW = svgBCR.width / sc;
-    const bH = svgBCR.height / sc;
+    // Tamaño del SVG = tamaño de layout del contenedor upper (sin transforms, sin DPR)
+    const bW=upperC.offsetWidth||1, bH=upperC.offsetHeight||1;
     svg.setAttribute('width',bW); svg.setAttribute('height',bH);
     svg.style.width=bW+'px'; svg.style.height=bH+'px';
-    const svgRect = svg.getBoundingClientRect();
     for(let ri=0;ri<totalRounds-1;ri++){
       rounds[ri].forEach((m,mi)=>{
         const sEl=document.getElementById(`match-${ri}-${mi}`);
         const eEl=document.getElementById(`match-${ri+1}-${Math.floor(mi/2)}`);
         if(!sEl||!eEl) return;
-        const sR=sEl.getBoundingClientRect(), eR=eEl.getBoundingClientRect();
-        let x1=(sR.right-svgRect.left)/sc, y1=(sR.top+sR.height/2-svgRect.top)/sc;
-        let x2=(eR.left-svgRect.left)/sc,  y2=(eR.top+eR.height/2-svgRect.top)/sc;
-        if(x2<x1){x1=(sR.left-svgRect.left)/sc;x2=(eR.right-svgRect.left)/sc;}
+        const s=posRelTo(sEl,upperC), e=posRelTo(eEl,upperC);
+        let x1=s.x+s.w, y1=s.y+s.h/2, x2=e.x, y2=e.y+e.h/2;
+        if(x2<x1){x1=s.x; x2=e.x+e.w;}
         const path=document.createElementNS('http://www.w3.org/2000/svg','path');
         path.setAttribute('d',`M ${x1} ${y1} L ${(x1+x2)/2} ${y1} L ${(x1+x2)/2} ${y2} L ${x2} ${y2}`);
         path.setAttribute('class','bracket-line'+(m.winner?' active':''));
