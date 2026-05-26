@@ -2977,16 +2977,20 @@ function renderBracketDisplay(data){
     const availH = vH - footH;
     cont.style.height = availH+'px';
 
-    upperC.style.transform='scale(1)'; lowerC.style.transform='scale(1)';
-    upperC.style.height='auto'; upperC.style.minHeight='';
+    // Resetear transforms para poder medir el tamaño natural
+    upperC.style.transform='none'; lowerC.style.transform='none';
+    upperC.style.width=''; upperC.style.height='';
+    lowerC.style.width=''; lowerC.style.height='';
 
-    requestAnimationFrame(()=>{
-      const uW = upperC.scrollWidth || 1;
-      const uH = upperC.scrollHeight || 1;
+    // Doble rAF: primer frame aplica el reset, segundo frame mide tras reflow
+    requestAnimationFrame(()=>requestAnimationFrame(()=>{
       const hasLower = data.lRounds?.length > 0;
 
+      const uW = upperC.scrollWidth || 1;
+      const uH = upperC.scrollHeight || 1;
+
       if(!hasLower){
-        // Eliminación simple: upper ocupa toda la pantalla, centrado
+        // Eliminación simple: ocupa toda la pantalla, centrado
         const uSc = Math.min(vW/uW, availH/uH);
         _uSc = uSc;
         upperC.style.transform=`scale(${uSc})`;
@@ -2999,38 +3003,33 @@ function renderBracketDisplay(data){
         const lW = lowerC.scrollWidth || 1;
         const lH = lowerC.scrollHeight || 1;
 
-        // Escala base: cada bracket ocupa el ancho completo de pantalla
-        let uSc = vW/uW;
-        let lSc = vW/lW;
+        // Zona upper: 63% del alto. Zona lower: 37%
+        const upperZone = availH * 0.63;
+        const lowerZone = availH * 0.37;
 
-        // Si juntos superan la altura disponible, reducir ambos proporcionalmente
-        const totalH = uH*uSc + lH*lSc;
-        if(totalH > availH){
-          const r = availH/totalH;
-          uSc *= r; lSc *= r;
-        }
-
+        const uSc = Math.min(vW/uW, upperZone/uH);
+        const lSc = Math.min(vW/lW, lowerZone/lH);
         _uSc = uSc;
+
         const upperVisH = uH*uSc;
         const lowerVisH = lH*lSc;
 
-        // Si sobra espacio vertical, centrar el conjunto
-        const topOffset = Math.max(0,(availH - upperVisH - lowerVisH)/2);
-
+        // Upper: centrado dentro de su zona
         upperC.style.transform=`scale(${uSc})`;
         upperC.style.width=uW+'px'; upperC.style.height=uH+'px';
         upperC.style.left=((vW - uW*uSc)/2)+'px';
-        upperC.style.top=topOffset+'px';
+        upperC.style.top=Math.max(0,(upperZone - upperVisH)/2)+'px';
 
+        // Lower: centrado dentro de su zona (empieza en upperZone)
         lowerC.style.transform=`scale(${lSc})`;
         lowerC.style.width=lW+'px'; lowerC.style.height=lH+'px';
         lowerC.style.left=((vW - lW*lSc)/2)+'px';
-        lowerC.style.top=(topOffset + upperVisH)+'px';
+        lowerC.style.top=(upperZone + (lowerZone - lowerVisH)/2)+'px';
         lowerC.style.bottom='auto';
       }
 
       requestAnimationFrame(drawPubLines);
-    });
+    }));
   }
 
   setTimeout(fitScale,200); setTimeout(fitScale,700);
