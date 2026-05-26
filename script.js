@@ -3032,24 +3032,32 @@ function renderBracketDisplay(data){
         lowerC.style.bottom='auto';
       }
 
-      requestAnimationFrame(drawPubLines);
+      // Redibujar líneas con retraso para que el navegador haya aplicado los transforms
+      setTimeout(()=>requestAnimationFrame(drawPubLines), 120);
     }));
   }
 
-  setTimeout(fitScale,200); setTimeout(fitScale,700);
-  window.addEventListener('resize',fitScale);
+  // Función que recalcula escala Y redibuja líneas con retrasos escalonados
+  function fitScaleAndLines(){
+    fitScale();
+    setTimeout(()=>requestAnimationFrame(drawPubLines), 150);
+    setTimeout(()=>requestAnimationFrame(drawPubLines), 450);
+  }
+
+  setTimeout(fitScaleAndLines, 200); setTimeout(fitScaleAndLines, 700);
+  window.addEventListener('resize', fitScaleAndLines);
   // F11 y otros cambios de fullscreen cambian el viewport asíncronamente
   ['fullscreenchange','webkitfullscreenchange','mozfullscreenchange'].forEach(ev=>{
     document.addEventListener(ev, ()=>{
-      setTimeout(fitScale, 100);
-      setTimeout(fitScale, 400);
+      setTimeout(fitScaleAndLines, 100);
+      setTimeout(fitScaleAndLines, 400);
     });
   });
   // Detectar cualquier cambio de tamaño del contenedor (más fiable que window resize)
   let _fitTimer = null;
   const _ro = new ResizeObserver(()=>{
     clearTimeout(_fitTimer);
-    _fitTimer = setTimeout(fitScale, 80);
+    _fitTimer = setTimeout(fitScaleAndLines, 80);
   });
   _ro.observe(cont);
 
@@ -3058,8 +3066,8 @@ function renderBracketDisplay(data){
   setInterval(()=>{
     if(Math.abs(window.devicePixelRatio - _prevDpr) > 0.01){
       _prevDpr = window.devicePixelRatio;
-      setTimeout(fitScale, 100);
-      setTimeout(fitScale, 500);
+      setTimeout(fitScaleAndLines, 100);
+      setTimeout(fitScaleAndLines, 500);
     }
   }, 300);
 
