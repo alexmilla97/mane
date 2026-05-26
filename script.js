@@ -2971,49 +2971,63 @@ function renderBracketDisplay(data){
   }
 
   function fitScale(){
-    // Leer dimensiones del viewport en vivo (cambian con fullscreen)
     const vW = window.innerWidth;
     const vH = window.innerHeight;
     const footH = $('dv-footer')?.offsetHeight||36;
     const availH = vH - footH;
     cont.style.height = availH+'px';
 
-    // Dar altura mínima al upper para que se renderice correctamente antes de medir
     upperC.style.transform='scale(1)'; lowerC.style.transform='scale(1)';
-    upperC.style.height='auto'; upperC.style.minHeight='600px';
-    const upperDual = upperC.querySelector('.bracket-dual');
-    if(upperDual) upperDual.style.minHeight='600px';
+    upperC.style.height='auto'; upperC.style.minHeight='';
 
     requestAnimationFrame(()=>{
-      const uW = upperC.offsetWidth || upperC.scrollWidth || 1;
-      const uH = upperC.offsetHeight || upperC.scrollHeight || 1;
-      const lW = lowerC.offsetWidth || lowerC.scrollWidth || 1;
-      const lH = lowerC.offsetHeight || lowerC.scrollHeight || 1;
+      const uW = upperC.scrollWidth || 1;
+      const uH = upperC.scrollHeight || 1;
+      const hasLower = data.lRounds?.length > 0;
 
-      // 1. Upper: usar todo el ancho disponible, limitado al 80% del alto
-      const uScW = vW/uW;
-      const uScH = availH*0.80/uH;
-      const uSc  = Math.min(uScW, uScH);
-      _uSc = uSc;
-      const upperVisW = uW * uSc;
-      const upperVisH = uH * uSc;
+      if(!hasLower){
+        // Eliminación simple: upper ocupa toda la pantalla, centrado
+        const uSc = Math.min(vW/uW, availH/uH);
+        _uSc = uSc;
+        upperC.style.transform=`scale(${uSc})`;
+        upperC.style.width=uW+'px'; upperC.style.height=uH+'px';
+        upperC.style.left=((vW - uW*uSc)/2)+'px';
+        upperC.style.top=Math.max(0,(availH - uH*uSc)/2)+'px';
+        lowerC.style.display='none';
+      } else {
+        lowerC.style.display='';
+        const lW = lowerC.scrollWidth || 1;
+        const lH = lowerC.scrollHeight || 1;
 
-      upperC.style.transform=`scale(${uSc})`;
-      upperC.style.width=uW+'px'; upperC.style.height=uH+'px';
-      upperC.style.left = ((vW - upperVisW) / 2) + 'px';
-      upperC.style.top='0px';
+        // Escala base: cada bracket ocupa el ancho completo de pantalla
+        let uSc = vW/uW;
+        let lSc = vW/lW;
 
-      // 2. Lower: ocupa el espacio restante
-      const remainH = availH - upperVisH;
-      const lScW = vW/lW;
-      const lScH = remainH/lH;
-      const lSc  = Math.min(lScW, lScH);
-      const lowerVisW = lW*lSc;
+        // Si juntos superan la altura disponible, reducir ambos proporcionalmente
+        const totalH = uH*uSc + lH*lSc;
+        if(totalH > availH){
+          const r = availH/totalH;
+          uSc *= r; lSc *= r;
+        }
 
-      lowerC.style.transform=`scale(${lSc})`;
-      lowerC.style.width=lW+'px'; lowerC.style.height=lH+'px';
-      lowerC.style.left = ((vW - lowerVisW) / 2) + 'px';
-      lowerC.style.bottom='0px'; lowerC.style.top='auto';
+        _uSc = uSc;
+        const upperVisH = uH*uSc;
+        const lowerVisH = lH*lSc;
+
+        // Si sobra espacio vertical, centrar el conjunto
+        const topOffset = Math.max(0,(availH - upperVisH - lowerVisH)/2);
+
+        upperC.style.transform=`scale(${uSc})`;
+        upperC.style.width=uW+'px'; upperC.style.height=uH+'px';
+        upperC.style.left=((vW - uW*uSc)/2)+'px';
+        upperC.style.top=topOffset+'px';
+
+        lowerC.style.transform=`scale(${lSc})`;
+        lowerC.style.width=lW+'px'; lowerC.style.height=lH+'px';
+        lowerC.style.left=((vW - lW*lSc)/2)+'px';
+        lowerC.style.top=(topOffset + upperVisH)+'px';
+        lowerC.style.bottom='auto';
+      }
 
       requestAnimationFrame(drawPubLines);
     });
