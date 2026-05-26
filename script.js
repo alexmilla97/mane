@@ -2977,20 +2977,19 @@ function renderBracketDisplay(data){
     const availH = vH - footH;
     cont.style.height = availH+'px';
 
-    // Resetear transforms para poder medir el tamaño natural
-    upperC.style.transform='none'; lowerC.style.transform='none';
-    upperC.style.width=''; upperC.style.height='';
-    lowerC.style.width=''; lowerC.style.height='';
+    // Resetear transforms para medir el tamaño natural del DOM
+    upperC.style.cssText = upperC.style.cssText; // forzar reflow
+    upperC.style.transform='none'; upperC.style.width=''; upperC.style.height='';
+    lowerC.style.transform='none'; lowerC.style.width=''; lowerC.style.height='';
 
-    // Doble rAF: primer frame aplica el reset, segundo frame mide tras reflow
+    // Doble rAF garantiza que el navegador refluyó tras el reset
     requestAnimationFrame(()=>requestAnimationFrame(()=>{
       const hasLower = data.lRounds?.length > 0;
-
       const uW = upperC.scrollWidth || 1;
       const uH = upperC.scrollHeight || 1;
 
       if(!hasLower){
-        // Eliminación simple: ocupa toda la pantalla, centrado
+        // Eliminación simple: ocupa toda la pantalla centrado
         const uSc = Math.min(vW/uW, availH/uH);
         _uSc = uSc;
         upperC.style.transform=`scale(${uSc})`;
@@ -3003,28 +3002,33 @@ function renderBracketDisplay(data){
         const lW = lowerC.scrollWidth || 1;
         const lH = lowerC.scrollHeight || 1;
 
-        // Zona upper: 63% del alto. Zona lower: 37%
-        const upperZone = availH * 0.63;
-        const lowerZone = availH * 0.37;
+        // Escalar cada bracket al ancho de pantalla
+        let uSc = vW/uW;
+        let lSc = vW/lW;
+        let uVisH = uH*uSc;
+        let lVisH = lH*lSc;
 
-        const uSc = Math.min(vW/uW, upperZone/uH);
-        const lSc = Math.min(vW/lW, lowerZone/lH);
+        // Si juntos no caben en alto, reducir ambos proporcionalmente
+        if(uVisH + lVisH > availH){
+          const r = availH/(uVisH + lVisH);
+          uSc *= r; lSc *= r;
+          uVisH = uH*uSc; lVisH = lH*lSc;
+        }
+
         _uSc = uSc;
+        // Centrar el bloque upper+lower verticalmente en la pantalla
+        const topMargin = Math.max(0,(availH - uVisH - lVisH)/2);
 
-        const upperVisH = uH*uSc;
-        const lowerVisH = lH*lSc;
-
-        // Upper: centrado dentro de su zona
         upperC.style.transform=`scale(${uSc})`;
         upperC.style.width=uW+'px'; upperC.style.height=uH+'px';
         upperC.style.left=((vW - uW*uSc)/2)+'px';
-        upperC.style.top=Math.max(0,(upperZone - upperVisH)/2)+'px';
+        upperC.style.top=topMargin+'px';
 
-        // Lower: centrado dentro de su zona (empieza en upperZone)
+        // Lower empieza exactamente donde termina el upper
         lowerC.style.transform=`scale(${lSc})`;
         lowerC.style.width=lW+'px'; lowerC.style.height=lH+'px';
         lowerC.style.left=((vW - lW*lSc)/2)+'px';
-        lowerC.style.top=(upperZone + (lowerZone - lowerVisH)/2)+'px';
+        lowerC.style.top=(topMargin + uVisH)+'px';
         lowerC.style.bottom='auto';
       }
 
