@@ -2949,10 +2949,13 @@ function renderBracketDisplay(data){
     svg.innerHTML='';
     const {rounds}=data, totalRounds=rounds.length;
     const sc = _uSc;
-    const bW=upperC.scrollWidth, bH=upperC.scrollHeight;
+    // Tamaño natural en píxeles CSS (BCR del SVG escalado / escala actual)
+    const svgBCR = svg.getBoundingClientRect();
+    const bW = svgBCR.width / sc;
+    const bH = svgBCR.height / sc;
     svg.setAttribute('width',bW); svg.setAttribute('height',bH);
     svg.style.width=bW+'px'; svg.style.height=bH+'px';
-    const svgRect=svg.getBoundingClientRect();
+    const svgRect = svg.getBoundingClientRect();
     for(let ri=0;ri<totalRounds-1;ri++){
       rounds[ri].forEach((m,mi)=>{
         const sEl=document.getElementById(`match-${ri}-${mi}`);
@@ -2985,8 +2988,10 @@ function renderBracketDisplay(data){
     // Doble rAF garantiza que el navegador refluyó tras el reset
     requestAnimationFrame(()=>requestAnimationFrame(()=>{
       const hasLower = data.lRounds?.length > 0;
-      const uW = upperC.scrollWidth || 1;
-      const uH = upperC.scrollHeight || 1;
+      // getBoundingClientRect siempre da píxeles CSS, scrollWidth puede dar físicos en DPR>1
+      const uBCR = upperC.getBoundingClientRect();
+      const uW = uBCR.width || 1;
+      const uH = uBCR.height || 1;
 
       if(!hasLower){
         // Eliminación simple: ocupa toda la pantalla centrado
@@ -2999,8 +3004,9 @@ function renderBracketDisplay(data){
         lowerC.style.display='none';
       } else {
         lowerC.style.display='';
-        const lW = lowerC.scrollWidth || 1;
-        const lH = lowerC.scrollHeight || 1;
+        const lBCR = lowerC.getBoundingClientRect();
+        const lW = lBCR.width || 1;
+        const lH = lBCR.height || 1;
 
         // Escalar cada bracket al ancho de pantalla
         let uSc = vW/uW;
