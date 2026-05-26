@@ -2905,7 +2905,7 @@ function renderBracketDisplay(data){
   // ── Contenedor LOWER ──
   const lowerC=document.createElement('div');
   lowerC.id='pub-lower-c'; lowerC.className=cls;
-  lowerC.style.cssText='position:absolute;bottom:0;left:0;transform-origin:bottom left;min-width:max-content;padding:0 3rem 0.2rem;';
+  lowerC.style.cssText='position:absolute;top:0;left:0;transform-origin:top left;min-width:max-content;padding:0 3rem 0.2rem;';
 
   if(data.lRounds?.length){
     try{
@@ -2952,16 +2952,16 @@ function renderBracketDisplay(data){
     const bW=upperC.scrollWidth, bH=upperC.scrollHeight;
     svg.setAttribute('width',bW); svg.setAttribute('height',bH);
     svg.style.width=bW+'px'; svg.style.height=bH+'px';
-    const svgRect=svg.getBoundingClientRect(), dpr=window.devicePixelRatio||1;
+    const svgRect=svg.getBoundingClientRect();
     for(let ri=0;ri<totalRounds-1;ri++){
       rounds[ri].forEach((m,mi)=>{
         const sEl=document.getElementById(`match-${ri}-${mi}`);
         const eEl=document.getElementById(`match-${ri+1}-${Math.floor(mi/2)}`);
         if(!sEl||!eEl) return;
         const sR=sEl.getBoundingClientRect(), eR=eEl.getBoundingClientRect();
-        let x1=(sR.right-svgRect.left)/dpr/sc, y1=(sR.top+sR.height/2-svgRect.top)/dpr/sc;
-        let x2=(eR.left-svgRect.left)/dpr/sc,  y2=(eR.top+eR.height/2-svgRect.top)/dpr/sc;
-        if(x2<x1){x1=(sR.left-svgRect.left)/dpr/sc;x2=(eR.right-svgRect.left)/dpr/sc;}
+        let x1=(sR.right-svgRect.left)/sc, y1=(sR.top+sR.height/2-svgRect.top)/sc;
+        let x2=(eR.left-svgRect.left)/sc,  y2=(eR.top+eR.height/2-svgRect.top)/sc;
+        if(x2<x1){x1=(sR.left-svgRect.left)/sc;x2=(eR.right-svgRect.left)/sc;}
         const path=document.createElementNS('http://www.w3.org/2000/svg','path');
         path.setAttribute('d',`M ${x1} ${y1} L ${(x1+x2)/2} ${y1} L ${(x1+x2)/2} ${y2} L ${x2} ${y2}`);
         path.setAttribute('class','bracket-line'+(m.winner?' active':''));
@@ -3042,6 +3042,15 @@ function renderBracketDisplay(data){
       setTimeout(fitScale, 400);
     });
   });
+  // Detectar cambio de pantalla (mover ventana de monitor a tele cambia devicePixelRatio)
+  let _prevDpr = window.devicePixelRatio;
+  setInterval(()=>{
+    if(Math.abs(window.devicePixelRatio - _prevDpr) > 0.01){
+      _prevDpr = window.devicePixelRatio;
+      setTimeout(fitScale, 100);
+      setTimeout(fitScale, 500);
+    }
+  }, 300);
 
   const uP=data.rounds.flat().filter(m=>m.winner).length;
   const lP=(data.lRounds||[]).flat().filter(m=>m.winner).length;
