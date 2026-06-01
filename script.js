@@ -771,7 +771,7 @@ if(IS_DEVICE && DEVICE_ID){
   const dot = $('ipad-ntfy-dot'), st = $('ipad-status-text');
   st.textContent = 'Conectando…';
 
-  let curMatch = null, sc = {s1:0,s2:0}, timerInt = null, startTs = null, running = false;
+  let curMatch = null, sc = {s1:0,s2:0}, timerInt = null, startTs = null, running = false, idleReloadTimer = null;
 
   // Inbox listener — procesa partidos entrantes
   function subscribeInbox(){
@@ -849,6 +849,7 @@ if(IS_DEVICE && DEVICE_ID){
   }
 
   function showMatch(data){
+    if(idleReloadTimer){ clearTimeout(idleReloadTimer); idleReloadTimer=null; } // cancela recarga por inactividad: llegó un partido
     curMatch=data; sc={s1:0,s2:0}; running=false; clearInterval(timerInt); startTs=null;
     const body=$('ipad-body');
     const torneoTag = data.torneoName
@@ -928,8 +929,11 @@ if(IS_DEVICE && DEVICE_ID){
             <div class="ipad-waiting-sub">Esperando el próximo partido…</div>
           </div>`;
       },2500);
-      const reloadInterval = setInterval(()=>{ if(!curMatch) location.reload(); }, 10000);
-      const cancelReload = setInterval(()=>{ if(curMatch) clearInterval(reloadInterval); }, 500);
+      // Recargar UNA sola vez tras 10s si seguimos sin partido. showMatch cancela
+      // este temporizador en cuanto llega uno nuevo: sin recargas en carrera ni
+      // acumulación de intervalos (la versión anterior dejaba un setInterval vivo).
+      if(idleReloadTimer) clearTimeout(idleReloadTimer);
+      idleReloadTimer = setTimeout(()=>{ if(!curMatch) location.reload(); }, 10000);
     } catch(e){
       curMatch=done; btn.disabled=false; btn.textContent='Guardar resultado ✓';
       alert('Error al guardar. Inténtalo de nuevo.');
@@ -956,6 +960,10 @@ if(IS_DEVICE && DEVICE_ID){
 // state declarado aquí para que renderBracketDisplay pueda acceder a él
 // incluso después del throw que detiene la inicialización del admin
 let state = {};
+// Vista pública del cuadro (?mode=bracket): listeners globales de reescalado.
+// Declarados antes del throw de display-mode para que estén inicializados allí.
+let _pubBracketListenersBound = false;
+let _pubFitScaleAndLines = null;
 
 if((IS_DISPLAY||IS_BRACKET||IS_QUEUE) && (SESSION_ID||IS_QUEUE)){
   if(!auth.currentUser) await signInAnonymously(auth);
@@ -1233,8 +1241,15 @@ async function saveGlobalQueue(){
   catch(e){ console.error('saveGlobalQueue',e); }
 }
 
-// ID único por partido — timestamp de ms, suficiente para ordenar
-function getNextMatchId(){ return Date.now(); }
+// ID único por partido — timestamp de ms, estrictamente creciente para evitar
+// colisiones si se añaden dos partidos en el mismo milisegundo.
+let _lastMatchId = 0;
+function getNextMatchId(){
+  let id = Date.now();
+  if(id <= _lastMatchId) id = _lastMatchId + 1;
+  _lastMatchId = id;
+  return id;
+}
 
 // ── 7.2 Envío a dispositivos ───────────────────────────
 
@@ -1574,10 +1589,14 @@ function subscribeToSession(){
     for(const change of snap.docChanges()){
       if(change.type!=='added') continue;
       const d=change.doc.data();
-      // Liberar dispositivo siempre — independientemente del torneo
+      // Liberar el dispositivo que reportó el resultado — independientemente del torneo.
+      // Solo si su partido actual coincide con el resultado (o no tiene ninguno), para
+      // no pisar un partido recién despachado por otra pestaña/gestor (escritura tardía).
       const dev=connectedDevices.find(x=>x.clientId===d.from);
-      if(dev){ dev.busy=false; dev.currentMatch=null; }
-      if(d.from) setDoc(doc(db,'devices',d.from),{busy:false,currentMatch:null},{merge:true}).catch(()=>{});
+      const _devMid=dev?.currentMatch?.matchId;
+      const _sameMatch=_devMid==null || d.matchId==null || String(_devMid)===String(d.matchId);
+      if(dev && _sameMatch){ dev.busy=false; dev.currentMatch=null; }
+      if(d.from && _sameMatch) setDoc(doc(db,'devices',d.from),{busy:false,currentMatch:null},{merge:true}).catch(()=>{});
       // Aplicar resultado solo si es del torneo activo
       if(d.sid===sessionId){
         if(d.type==='bracket'){
@@ -1634,13 +1653,16 @@ async function loadTournament(sid){
     const data=snap.data();
     const qSnap=await getDoc(QUEUE_REF());
     globalQueue=qSnap.exists()?(qSnap.data().queue||[]):[];
-    // Aplicar scores pendientes de este torneo antes de restaurar
+    // Aplicar scores pendientes de este torneo antes de restaurar.
+    // Solo se pre-aplican los de GRUPOS; los de BRACKET se dejan en Firestore para
+    // que el listener de scores (subscribeToSession) los procese con la lógica de
+    // propagación correcta. Antes se borraban sin aplicarse → se perdía el resultado.
     try{
       const scoresSnap=await getDocs(collection(db,'scores'));
-      const pending=scoresSnap.docs.filter(d=>d.data().sid===sid);
-      if(pending.length){
+      const pendingGroups=scoresSnap.docs.filter(d=>{ const sc=d.data(); return sc.sid===sid && sc.type!=='bracket'; });
+      if(pendingGroups.length){
         const gd=parseGroupData(data);
-        pending.forEach(scoreDoc=>{
+        pendingGroups.forEach(scoreDoc=>{
           const sc=scoreDoc.data();
           const match=gd.groups?.[sc.gi]?.matches?.[sc.mi];
           if(match&&!match.played){ match.s1=+sc.s1; match.s2=+sc.s2; match.played=true; }
@@ -3048,23 +3070,33 @@ function renderBracketDisplay(data){
   }
 
   setTimeout(fitScaleAndLines, 200); setTimeout(fitScaleAndLines, 700);
-  window.addEventListener('resize', fitScaleAndLines);
-  // F11 y otros cambios de fullscreen cambian el viewport asíncronamente
-  ['fullscreenchange','webkitfullscreenchange','mozfullscreenchange'].forEach(ev=>{
-    document.addEventListener(ev, ()=>{
-      setTimeout(fitScaleAndLines, 100);
-      setTimeout(fitScaleAndLines, 400);
+
+  // renderBracketDisplay se invoca en CADA actualización de Firestore. Para no
+  // acumular un listener de resize, tres de fullscreen y un setInterval por cada
+  // actualización (fuga de memoria y CPU creciente), guardamos la última función
+  // de reescalado y registramos los listeners globales una sola vez; siempre
+  // apuntan a la versión vigente.
+  _pubFitScaleAndLines = fitScaleAndLines;
+  if(!_pubBracketListenersBound){
+    _pubBracketListenersBound = true;
+    window.addEventListener('resize', ()=>_pubFitScaleAndLines?.());
+    // F11 y otros cambios de fullscreen cambian el viewport asíncronamente
+    ['fullscreenchange','webkitfullscreenchange','mozfullscreenchange'].forEach(ev=>{
+      document.addEventListener(ev, ()=>{
+        setTimeout(()=>_pubFitScaleAndLines?.(), 100);
+        setTimeout(()=>_pubFitScaleAndLines?.(), 400);
+      });
     });
-  });
-  // Detectar cambio de DPI al mover la ventana entre pantallas de distinta escala
-  let _prevDpr = window.devicePixelRatio;
-  setInterval(()=>{
-    if(Math.abs(window.devicePixelRatio - _prevDpr) > 0.01){
-      _prevDpr = window.devicePixelRatio;
-      setTimeout(fitScaleAndLines, 100);
-      setTimeout(fitScaleAndLines, 500);
-    }
-  }, 300);
+    // Detectar cambio de DPI al mover la ventana entre pantallas de distinta escala
+    let _prevDpr = window.devicePixelRatio;
+    setInterval(()=>{
+      if(Math.abs(window.devicePixelRatio - _prevDpr) > 0.01){
+        _prevDpr = window.devicePixelRatio;
+        setTimeout(()=>_pubFitScaleAndLines?.(), 100);
+        setTimeout(()=>_pubFitScaleAndLines?.(), 500);
+      }
+    }, 300);
+  }
 
   const uP=data.rounds.flat().filter(m=>m.winner).length;
   const lP=(data.lRounds||[]).flat().filter(m=>m.winner).length;

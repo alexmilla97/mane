@@ -80,13 +80,19 @@ git -C "C:\Users\aleja\Desktop\PAGINA MANE" push
 - `buildAndSaveQueue` crasheaba silenciosamente en torneos de bracket porque `groupData.groups` es `undefined` en fase eliminatoria. Solución: `(groupData.groups||[]).forEach(...)`.
 - `dispatchNextFromQueue` no llamaba a `buildAndSaveQueue` al terminar si el torneo era solo bracket. Solución: guardia `groupData.groups || state.rounds`.
 - El listener de scores usaba `forEach(async ...)`, lo que lanzaba múltiples `dispatchNextFromQueue` concurrentes. Solución: `for...of` con `await`.
-- `getNextMatchId()` hacía una transacción Firestore antes de actualizar la UI, generando un delay visible y ventana de doble-clic. Solución: sustituida por `Date.now()` (síncrono).
+- `getNextMatchId()` hacía una transacción Firestore antes de actualizar la UI, generando un delay visible y ventana de doble-clic. Solución: sustituida por `Date.now()` (síncrono). Refinado después con un contador `_lastMatchId` para garantizar IDs estrictamente crecientes (sin colisiones en el mismo milisegundo).
 - El listener `onSnapshot(QUEUE_REF())` no se cancelaba antes de crear uno nuevo. Solución: guardado en `unsubscribeQueue` y cancelado en `showAdminView`.
 - `updateDeviceUI` no refrescaba el botón de cola en el panel de marcadores del bracket cuando llegaba una actualización externa. Solución: añadido bloque que detecta `_bsp` abierto y reemplaza `#bsp-queue-section`.
 
 ### Vista de cola pública (?mode=queue)
 - `renderQueueItems` vaciaba el DOM con `innerHTML=''` en cada actualización de Firestore, causando un parpadeo visible y el reinicio de las animaciones CSS. Solución: DOM diffing con `data-key` por partido; los nodos existentes se actualizan en sitio y solo se añaden o eliminan los que cambian.
 - Parpadeo de la tarjeta verde ("EN JUEGO") durante transiciones de partido: Firestore emite estados intermedios donde el partido activo aparece como `status:'pending'` (sin live ni queued). Solución: caché de datos `_lastLiveByDev` en `renderQueueItems` — guarda el último item live por dispositivo e inyecta datos sintéticos cuando el estado entrante no tiene ningún partido live, manteniendo el nodo DOM intacto durante la transición.
+
+### Auditoría de código (revisión completa)
+- **Vista pública del cuadro (`?mode=bracket`) — fuga de listeners/intervalos**: `renderBracketDisplay` se invoca en cada actualización de Firestore y registraba en cada llamada un listener `resize`, tres `fullscreenchange` y un `setInterval(300ms)`, que nunca se cancelaban → CPU creciente y parpadeo del bracket en torneos largos. Solución: las funciones de reescalado se guardan en `_pubFitScaleAndLines` (variable de módulo) y los listeners/intervalo globales se registran una sola vez (`_pubBracketListenersBound`), apuntando siempre a la versión vigente.
+- **Pérdida de resultados de bracket pendientes al cargar torneo**: en `loadTournament`, el bloque de scores pendientes solo aplicaba partidos de grupos pero borraba (`deleteDoc`) **todos** los pendientes, incluidos los de bracket → se perdía el resultado. Solución: filtrar a `type!=='bracket'` (solo se pre-aplican grupos); los de bracket se dejan en Firestore para que el listener `subscribeToSession` los procese con la propagación correcta.
+- **Modo dispositivo — recarga por inactividad**: `ipadSave` creaba dos `setInterval` (uno de ellos, `cancelReload`, nunca se limpiaba y se acumulaba por cada partido; además había carrera con la recarga a los 10s). Solución: un único `setTimeout` (`idleReloadTimer`) que `showMatch` cancela en cuanto llega un partido nuevo.
+- **Listener de scores pisaba partidos recién despachados**: liberaba el dispositivo (`busy:false`) de forma incondicional, pudiendo sobrescribir un partido recién enviado por una escritura tardía. Solución: solo libera si `currentMatch.matchId` del dispositivo coincide con el `matchId` del resultado (o no tiene partido), comparando con `String()`.
 
 ## Setup — opciones del cuadro
 
