@@ -1,0 +1,11 @@
+# Cloudflare Pages — control de caché
+# Los ficheros de código y el HTML se revalidan SIEMPRE (no-cache): el navegador
+# guarda una copia pero comprueba el ETag en cada carga y solo descarga de nuevo
+# si han cambiado. Así cada despliegue llega al instante, sin recargas forzadas.
+# (Antes: max-age=14400 → los usuarios podían ver el código antiguo hasta 4 h.)
+/index.html
+  Cache-Control: no-cache, must-revalidate
+/script.js
+  Cache-Control: no-cache, must-revalidate
+/style.css
+  Cache-Control: no-cache, must-revalidate

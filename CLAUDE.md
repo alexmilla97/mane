@@ -73,6 +73,7 @@ git -C "C:\Users\aleja\Desktop\PAGINA MANE" push
 - Hosting: Cloudflare Pages, conectado al repositorio GitHub
 - Cada `git push` a `main` despliega automáticamente en producción
 - URL de producción: https://torneosmane.org
+- **Caché**: el fichero `_headers` (raíz del repo) fuerza `Cache-Control: no-cache, must-revalidate` en `index.html`, `script.js` y `style.css`, para que cada despliegue llegue al instante (el navegador revalida por ETag → 304 si no cambia). Antes Cloudflare servía `script.js` con `max-age=14400`, por lo que los usuarios podían ejecutar el código antiguo hasta 4 h tras un despliegue.
 
 ## Bugs conocidos y soluciones aplicadas (script.js)
 
