@@ -2282,7 +2282,7 @@ function generateProfessionalNames(pairings){
     const n = A.length;
     const last = n - 1;
 
-    let slots;
+    let slots = null;
     if(n === 4){
       // Bracket de 16: 4 jugadores por grupo
       slots = [
@@ -2295,7 +2295,7 @@ function generateProfessionalNames(pairings){
         D[0], A[last],
         C[1], B[last-1],
       ];
-    } else {
+    } else if(n === 8){
       // Bracket de 32: 8 jugadores por grupo
       slots = [
         A[0], D[last],   C[3], B[last-3],
@@ -2308,7 +2308,9 @@ function generateProfessionalNames(pairings){
         C[1], B[last-1], D[2], A[last-2],
       ];
     }
-    return slots.map(s => s ?? 'BYE');
+    // Si n no coincide con ninguna tabla fija (p. ej. 64 jugadores = 16 por grupo)
+    // delega en el fallback genérico de más abajo, que reparte a TODOS los jugadores.
+    if(slots) return slots.map(s => s ?? 'BYE');
   }
 
   // Fallback para otros números de grupos: L/R intercalado
