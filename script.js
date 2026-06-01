@@ -2531,8 +2531,8 @@ function propagateLower(lri, mi, winner){
   c.appendChild(wrap);
   const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
   svg.setAttribute('class','bracket-svg'); svg.id='bracket-svg'; c.appendChild(svg);
-  setTimeout(syncBracketOverlay,100);
-  if(isFsMode) requestAnimationFrame(scaleBracket);
+  setTimeout(()=>scaleBracket(),60);
+  setTimeout(()=>scaleBracket(),260);
 }
 
 function renderUpperInto(container){
@@ -3109,6 +3109,20 @@ function renderBracketDisplay(data){
 
 // ── 11.1 Pantalla completa ─────────────────────────────
 function syncBracketOverlay(){ const c=$('bracket-container'),svg=$('bracket-svg'); if(!c||!svg) return; const w=Math.max(c.scrollWidth,1),h=Math.max(c.scrollHeight,1); svg.setAttribute('width',w); svg.setAttribute('height',h); svg.style.width=w+'px'; svg.style.height=h+'px'; requestAnimationFrame(()=>requestAnimationFrame(drawLines)); }
+// Ajusta el cuadro (admin) para que quepa entero en el área visible. Nunca amplía
+// (tope en 1), así los cuadros pequeños no cambian; solo encoge los que se salen
+// (p. ej. 64). Antes no existía esta función y solo se llamaba en pantalla completa,
+// por lo que en modo normal el cuadro de 64 se salía y se solapaba.
+function scaleBracket(){
+  const outer=$('bracket-outer'), scaler=$('bracket-scaler'), cont=$('bracket-container');
+  if(!outer||!scaler||!cont||outer.clientWidth<1||outer.clientHeight<1) return;
+  scaler.style.transform='none';
+  const cw=cont.scrollWidth, ch=cont.scrollHeight;
+  if(cw<1||ch<1) return;
+  const sc=Math.min((outer.clientWidth-24)/cw, (outer.clientHeight-24)/ch, 1);
+  scaler.style.transform='scale('+sc+')';
+  syncBracketOverlay();
+}
 function enterFs(){ const elem=$('tournament-screen'); if(!elem) return; isFsMode=true; const req=elem.requestFullscreen||elem.webkitRequestFullscreen; if(req){req.call(elem).then(()=>{setTimeout(()=>{syncBracketOverlay();window.dispatchEvent(new Event('resize'));},100);toast('⛶ Pantalla completa — ESC para salir');}).catch(()=>{document.body.classList.add('fs-mode');setTimeout(()=>{syncBracketOverlay();window.dispatchEvent(new Event('resize'));},100);});}else{document.body.classList.add('fs-mode');setTimeout(()=>{syncBracketOverlay();window.dispatchEvent(new Event('resize'));},100);} }
 function exitFs(){ isFsMode=false; if(document.fullscreenElement) document.exitFullscreen().catch(()=>{}); else if(document.webkitFullscreenElement) document.webkitExitFullscreen(); document.body.classList.remove('fs-mode'); setTimeout(()=>{syncBracketOverlay();window.dispatchEvent(new Event('resize'));},100); }
 if(!IS_DISPLAY && !IS_BRACKET && !IS_QUEUE && !IS_DEVICE){
@@ -3119,7 +3133,7 @@ if(!IS_DISPLAY && !IS_BRACKET && !IS_QUEUE && !IS_DEVICE){
     window.open(`${location.pathname}?mode=bracket&session=${sessionId}`,'_blank','noopener');
     toast('🏆 Cuadro público abierto');
   });
-  window.addEventListener('resize',()=>syncBracketOverlay());
+  window.addEventListener('resize',()=>scaleBracket());
 }
 function flashHint(){ const h=$('fs-hint'); h.classList.add('show'); setTimeout(()=>h.classList.remove('show'),3500); }
 

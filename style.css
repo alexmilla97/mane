@@ -271,6 +271,20 @@
   .size-32 .bracket-dual { gap: 1.5rem; }
   .size-32 .bracket-half-left, .size-32 .bracket-half-right { gap: 1.5rem; }
 
+  /* ── 64 TEAMS OPTIMIZATION ─────────────────────────────
+     El cuadro de 64 NO escala cada .match (lo encoge entero scaleBracket()).
+     La clave es dar altura suficiente al dual para que los 16 partidos por
+     media columna (posicionados por %) no se solapen: 16 × ~70px ≈ 1120px. */
+  .size-64 .bracket-dual { min-height: 1240px; gap: 1.5rem; }
+  .size-64 .bracket-half-left, .size-64 .bracket-half-right { gap: 1.2rem; }
+  .size-64 .round-col { min-width: 150px; }
+  .size-64 .team-slot { padding: 0.28rem 0.5rem; }
+  .size-64 .slot-name { font-size: 0.72rem; }
+  .size-64 .slot-seed { font-size: 0.6rem; }
+  .size-64 .lower-round-col { min-width: 138px; gap: 0.25rem; }
+  .size-64 .lower-matches { gap: 0.3rem; }
+  .size-64 .lower-bracket-wrap { gap: 1rem; }
+
   .tourney-item { background:var(--bg3); border:1px solid var(--border); border-radius:var(--radius); padding:1rem; display:flex; justify-content:space-between; align-items:center; cursor:pointer; transition:border-color 0.2s; }
   .tourney-item:hover { border-color:var(--gold); }
 
