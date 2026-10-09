@@ -10,8 +10,10 @@ Aplicación web de una sola página (SPA) para gestionar torneos completos. Incl
 - Librerías externas: qrcodejs (QR), jsPDF (pegatinas PDF), SheetJS (importar Excel)
 
 ## Funcionalidades implementadas
-- Pantalla de configuración: nombre del torneo, número de equipos (4/8/16/32/64), grupos
+- Pantalla de configuración ("Nuevo torneo"): nombre, participantes (4/8/16/32/64), formato (doble/simple), número de grupos o **Liga** (1 grupo, hasta 32), participantes escritos directamente en cada grupo
 - Fase de grupos: clasificaciones en tiempo real, marcadores, indicadores de partido en directo / en cola
+- **Formato liga**: todos contra todos **por jornadas** (con descanso si son impares) y después cuadro sembrado por la clasificación
+- **Edición manual de resultados del cuadro**: corregir marcador, cambiar ganador o anular, con anulación en cascada de lo que dependía
 - Sistema multi-dispositivo: enviar partidos a pantallas externas vía Firebase
 - Pantalla de emparejamientos: asignación de cruces entre grupos
 - Cuadro de eliminatorias: **doble eliminación** (por defecto) o **eliminación simple**, escalado automático al viewport
@@ -20,27 +22,29 @@ Aplicación web de una sola página (SPA) para gestionar torneos completos. Incl
 - Vistas especiales por parámetro URL: `IS_DISPLAY`, `IS_BRACKET`, `IS_QUEUE`, `IS_DEVICE`
 - Vista pública de torneos publicados (sin login)
 - Generación de pegatinas en PDF para partidos
-- Importación de jugadores desde .txt, .csv o .xlsx
+- Importación de jugadores desde .txt, .csv o .xlsx, por orden o con encabezados `Grupo A` / `Grupo 1`
 
 ## Diseño visual
 - Tema oscuro: fondo `#0E0E12`, acentos en dorado `#D4A017`
 - Variables CSS centralizadas en `:root`
-- Diseño responsive con scroll horizontal para los grupos
-- Imagen de fondo `portada.JPG` aplicada mediante `<div id="page-bg">` fijo con `z-index:-1` (inline style en `<head>`)
+- Diseño responsive; en móvil la página **solo se desplaza en vertical** (ver "Móvil: solo desplazamiento vertical")
+- Imagen de fondo `portada.JPG` aplicada mediante `<div id="page-bg">` fijo con `z-index:-1` (inline style en `<head>`). **En las pantallas de admin Nuevo torneo, Fase de grupos y Cuadro se oculta** (`body.setup-mode` / `groups-mode` / `bracket-mode`): una sola superficie sin costuras entre cabecera y contenido
 - Encabezado de vista pública (`pub-header`) semitransparente con `backdrop-filter: blur`
 - Vista pública fijada a `height: 100vh` para evitar scroll de página cuando no hay paneles abiertos
 
 ## Estructura del proyecto
 ```
-PAGINA MANE/
+mane/
 ├── index.html    — HTML y estructura de pantallas
 ├── style.css     — Todo el CSS
 ├── script.js     — Toda la lógica JavaScript (con índice de secciones al inicio)
 ├── portada.JPG   — Imagen de fondo de la página
 ├── sello.png     — Sello de fondo de pegatinas/tickets PDF (se carga con loadSello() solo al generar)
 ├── firestore.rules.propuesta — Propuesta de reglas de Firestore (NO publicada)
+├── _headers      — Cabeceras de caché para Cloudflare (ver Despliegue)
 └── CLAUDE.md     — Instrucciones para Claude Code
 ```
+Copias locales conocidas: `C:\Users\Usuario\Desktop\ESCRITORIO\ALEJANDRO\mane` (PC actual) y `C:\Users\aleja\Desktop\PAGINA MANE` (otro PC).
 
 ## Vistas de la página
 - **Vista pública (escritorio/móvil)**: `torneosmane.org` sin login — muestra torneos publicados, tarjetas de clasificación y cola de partidos
@@ -64,12 +68,14 @@ python -m http.server 8080
 Acceder en: http://localhost:8080
 
 ## Subir cambios a GitHub
+**Cada push a `main` publica en producción**: subir solo cuando el usuario lo pida, y antes incrementar `?v=N` si cambió `script.js` o `style.css`.
 ```powershell
 $env:PATH += ";C:\Program Files\Git\cmd"
-git -C "C:\Users\aleja\Desktop\PAGINA MANE" add .
-git -C "C:\Users\aleja\Desktop\PAGINA MANE" commit -m "descripción del cambio"
-git -C "C:\Users\aleja\Desktop\PAGINA MANE" push
+git -C "<carpeta del proyecto>" add .
+git -C "<carpeta del proyecto>" commit -m "descripción del cambio"
+git -C "<carpeta del proyecto>" push
 ```
+Tras el push, comprobar el despliegue (~1 min): `curl -s https://torneosmane.org/ | grep -o 'script.js?v=[0-9]*'` debe mostrar la versión nueva.
 
 ## Despliegue
 - Hosting: Cloudflare Pages, conectado al repositorio GitHub
@@ -149,7 +155,7 @@ git -C "C:\Users\aleja\Desktop\PAGINA MANE" push
 
 ### Formato liga (1 grupo)
 - En "Número de grupos" aparece **`Liga`** para tamaños ≤ `LEAGUE_MAX_SIZE` (32). Por defecto sigue seleccionado 2 grupos. El grupo se llama "Liga" (setup, fase, pegatinas, tarjeta pública).
-- Todos contra todos (`makeRR`). Al pulsar "Avanzar al cuadro" con 1 grupo **se salta la pantalla de cruces**: confirmación y `launchTournament(title, generateProfessionalNames([[0]]))`.
+- Todos contra todos por jornadas (`makeLeagueMatches`, ver abajo); los demás grupos siguen usando `makeRR`. Al pulsar "Avanzar al cuadro" con 1 grupo **se salta la pantalla de cruces**: confirmación y `launchTournament(title, generateProfessionalNames([[0]]))`.
 - Siembra (`generateProfessionalNames`, rama `nGroups===1`): orden estándar duplicando `[1]→[1,2]→[1,4,2,3]→…` (semilla s contra N+1−s); 1º contra último y 1º/2º en mitades opuestas. Los BYE son las últimas semillas → nunca BYE contra BYE. Verificado: 8 → `1-8 4-5 | 2-7 3-6`; 16 con 11 jugadores → BYE para 1º–5º.
 - **Jornadas**: la liga se crea con `makeLeagueMatches()` (método de rotación en `leagueRounds()`, solo jugadores reales; si son impares, uno descansa por jornada) y cada partido lleva `jornada`. Los partidos se guardan en orden de jornada (pegatinas y cola salen así). Ligas antiguas sin `jornada`: `ensureJornadas()` la asigna al pintar, sin reordenar (los índices gi/mi no cambian). La vista agrupa por jornada con cabecera `.jornada-lbl` ("Jornada N · Descansa: X · jugados/total"). `matchGroupLabel()` da "Liga · J3" para cola, iPad, ticket y pegatinas. Verificado 2–32 jugadores (pares/impares, con BYE): cada pareja una vez, nadie dos veces por jornada, como mucho uno descansa.
 - Vista admin (`groups-mode`, `data-cols="1"`): clasificación a la izquierda (sticky) y partidos en dos columnas a la derecha.
@@ -183,14 +189,14 @@ El contenedor del bracket recibe una clase CSS según el número de equipos para
 | 32 | `size-32` | `transform: scale(0.85)` en cada `.match` |
 | ≤16 | _(ninguna)_ | tamaño normal |
 
-**En `renderBracket` (vista admin, ~línea 2481):**
+**En `renderBracket` (vista admin):**
 ```javascript
 if(state.numTeams===64){ c.classList.add('size-64'); c.classList.remove('size-32'); }
 else if(state.numTeams===32){ c.classList.add('size-32'); c.classList.remove('size-64'); }
 else { c.classList.remove('size-32'); c.classList.remove('size-64'); }
 ```
 
-**En `renderBracketDisplay` (vista pública, ~línea 2851):**
+**En `renderBracketDisplay` (vista pública):**
 ```javascript
 const cls = data.numTeams===64?'size-64':data.numTeams===32?'size-32':'';
 ```
@@ -250,6 +256,19 @@ El cierre al hacer clic fuera también está en ese mismo `<script>` clásico.
 ### Puentes módulo ↔ clásico (definidos en script.js)
 - `window._setDoubleElim = v => { doubleElim = v; }` — permite que `setElimMode` actualice la variable del módulo
 - `window.closeAdminMenu = function(){ ... }` — permite cerrar el menú desde dentro del módulo si hace falta
+
+## Pruebas sin tocar la base de datos real
+El proyecto usa la Firestore de producción, así que **no se prueba contra Firebase real**. Método usado:
+- Copiar `index.html` a una carpeta temporal e inyectar al principio del `<head>` un `<script type="importmap">` que redirige las tres URLs de Firebase (`firebase-app.js`, `firebase-firestore.js`, `firebase-auth.js` de gstatic 10.12.0) a **módulos simulados** locales (almacén en memoria con `doc/setDoc/getDoc/onSnapshot/updateDoc/arrayUnion…` y un `auth.currentUser` admin o anónimo según la URL).
+- Servir esa carpeta con `python -m http.server` y abrirla en **Edge/Chrome headless**: `--dump-dom` para leer lo que un script de prueba escribe en un `<pre>`, `--screenshot` para capturas, `--virtual-time-budget` para que corran los temporizadores.
+- Notas: con `--virtual-time-budget` las transiciones CSS no avanzan (desactivarlas antes de medir); `window.confirm` hay que sustituirlo por `()=>true`; la ventana headless no baja de ~500px de ancho, así que para móvil se carga cada vista en un **iframe** de 335/375/445px.
+- La lógica pura (cuadro, anulación en cascada, siembra, calendario de liga, importador) se prueba extrayendo las funciones de `script.js` y ejecutándolas con Node.
+
+## Pendiente
+- **Seguridad (fuera del código)**: publicar reglas de Firestore (`firestore.rules.propuesta`: poner el email de admin y probar antes) y desactivar el registro de usuarios con email en Firebase Auth.
+- Pantallas de admin aún con el estilo antiguo: **cruces** (`#pairing-screen`) y la ventana **Mis torneos**.
+- Puede existir un documento huérfano `config/bracketLayouts` en Firestore (de un editor de diseño que se probó y se retiró); no se usa.
+- Gran Final sin "segunda final" si gana quien viene del cuadro de perdedores (decisión de diseño sin confirmar).
 
 ## Convenciones de código
 - Indentación: 2 espacios
