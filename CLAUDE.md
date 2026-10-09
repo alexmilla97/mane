@@ -76,7 +76,7 @@ git -C "C:\Users\aleja\Desktop\PAGINA MANE" push
 - Cada `git push` a `main` despliega automáticamente en producción
 - URL de producción: https://torneosmane.org
 - **Caché (IMPORTANTE)**: Cloudflare sirve `script.js`/`style.css` con `Cache-Control: max-age=14400` (4 h). Ese valor lo impone un ajuste de **zona** en el panel de Cloudflare (*Caching → Configuration → Browser Cache TTL = 4 horas*), que **sobrescribe** las cabeceras del origen, por lo que el fichero `_headers` del repo **no surte efecto por sí solo**.
-  - **Solución activa (sin tocar el panel)**: `index.html` referencia los assets con un parámetro de versión: `script.js?v=N` y `style.css?v=N`. **Al cambiar `script.js` o `style.css` hay que incrementar `N`** (URL nueva → el navegador descarga fresco, ignorando la copia cacheada). Versión actual: `v=17`.
+  - **Solución activa (sin tocar el panel)**: `index.html` referencia los assets con un parámetro de versión: `script.js?v=N` y `style.css?v=N`. **Al cambiar `script.js` o `style.css` hay que incrementar `N`** (URL nueva → el navegador descarga fresco, ignorando la copia cacheada). Versión actual: `v=19`.
   - **Solución alternativa (un solo cambio en el panel)**: poner *Browser Cache TTL* en **"Respect Existing Headers"**; entonces el `_headers` (ya incluido en el repo, con `no-cache, must-revalidate`) pasa a funcionar y ya no haría falta subir la versión `?v=` en cada cambio.
 
 ## Bugs conocidos y soluciones aplicadas (script.js)
@@ -139,6 +139,13 @@ git -C "C:\Users\aleja\Desktop\PAGINA MANE" push
 ### Cuadro (admin) como una sola página
 - `syncSetupMode()` también pone `body.bracket-mode` mientras se ve `#tournament-screen` (admin): sin foto, sin margen del body, cabecera + `.tournament-header` + pie con el mismo fondo `--bg2` y sin bordes; barra de progreso como línea fina con márgenes laterales. Solo CSS: el cuadro, `scaleBracket()` y la pantalla completa (F11, `body.fs-mode`) no cambian.
 - Nota de pruebas: en Edge headless con `--virtual-time-budget` las transiciones CSS no avanzan y `#bracket-scaler` (con `transition`) parece no escalar → desactivar transiciones en la prueba antes de medir.
+
+### Móvil: solo desplazamiento vertical
+- `html, body { overflow-x: clip }` (con `hidden` de respaldo): la página nunca se desplaza en horizontal; `clip` no rompe la cabecera sticky y el zoom con dos dedos sigue funcionando.
+- **Web pública**: `#public-view` y sus descendientes usan `box-sizing: border-box` (las tarjetas `width:100%` + padding se salían ~50px por la regla global inactiva); `.pub-body` y `.qv-body` con `overflow-x: hidden`.
+- **Cola** (`.qv-item`): columnas `auto minmax(0,1fr) auto` y nombres que se parten; en ≤640px el dispositivo va debajo de los nombres (`.qv-item .qv-device { grid-column: 2 }`). En la pantalla grande (`?mode=queue`) no cambia.
+- **Cabecera admin en ≤640px**: menos relleno, logo más pequeño, distintivo ADMIN y contador compactos, "☰ Menú" en una línea (cabe en 360px).
+- Comprobación usada: cada vista en un iframe de 335/375/445px midiendo `scrollWidth` de la página y de toda zona con `overflow-x:auto` (con nombres largos reales).
 
 ### Formato liga (1 grupo)
 - En "Número de grupos" aparece **`Liga`** para tamaños ≤ `LEAGUE_MAX_SIZE` (32). Por defecto sigue seleccionado 2 grupos. El grupo se llama "Liga" (setup, fase, pegatinas, tarjeta pública).
