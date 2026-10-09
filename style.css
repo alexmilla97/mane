@@ -479,3 +479,8 @@
   #design-panel input[type="color"] { width: 38px; height: 24px; border: none; background: none; padding: 0; cursor: pointer; }
   #design-panel .dz-sep { height: 1px; background: rgba(255,255,255,0.08); }
   #design-panel .dz-status { font-size: 0.78rem; color: #8A8A9A; }
+  #design-panel .dz-slider { display: flex; flex-direction: column; gap: 0.15rem; }
+  #design-panel .dz-slider-lbl { display: flex; justify-content: space-between; font-size: 0.78rem; }
+  #design-panel .dz-slider-lbl b { color: #D4A017; font-weight: 600; }
+  #design-panel .dz-slider input[type="range"] { width: 100%; accent-color: #D4A017; }
+  #design-panel #dz-hpos { flex: 0 0 auto; }
