@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Gestor de Torneos</title>
   <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=8">
+  <link rel="stylesheet" href="style.css?v=9">
   <style>
     #page-bg { position:fixed; top:0; left:0; width:100%; height:100%; z-index:-1; background: linear-gradient(rgba(14,14,18,0.72),rgba(14,14,18,0.72)) 0 0/100% 100%, url('portada.JPG') center/100% 100% no-repeat; }
     .pub-header { background: rgba(14,14,18,0.45) !important; border-bottom: 1px solid rgba(212,160,23,0.3) !important; backdrop-filter: blur(6px); }
@@ -120,16 +120,17 @@
 </div>
 
 <!-- SETUP -->
+<!-- Diseño a lo ancho: panel de configuración fijo a la izquierda y participantes
+     repartidos en una tarjeta por grupo a la derecha (en móvil se apila). -->
 <div id="setup-screen">
-  <div style="max-width:680px;margin:3rem auto;padding:0 1.5rem;">
-    <div class="setup-card">
+  <div class="setup-layout">
+
+    <aside class="setup-card setup-side">
       <h2>Nuevo Torneo</h2>
       <p class="subtitle">Configura el torneo y añade los participantes.</p>
 
       <div class="field-label">Nombre del torneo</div>
-      <input type="text" id="tourney-name" placeholder="Ej: Copa de Verano 2025" style="margin-bottom:1.5rem">
-
-      <hr class="section-divider" style="margin-top:0">
+      <input type="text" id="tourney-name" placeholder="Ej: Copa de Verano 2025" style="margin-bottom:1.2rem">
 
       <!-- Paso 1 -->
       <div class="step-badge">Paso 1 · Tipo de cuadro</div>
@@ -142,14 +143,12 @@
         <button class="size-btn" data-size="64">64</button>
       </div>
 
-      <div class="field-label" style="margin-top:1.2rem;">Formato del cuadro</div>
+      <div class="field-label" style="margin-top:1rem;">Formato del cuadro</div>
       <div class="size-options" id="elim-options">
         <button class="size-btn active" data-elim="double" onclick="setElimMode('double')">Doble eliminación</button>
         <button class="size-btn" data-elim="single" onclick="setElimMode('single')">Eliminación simple</button>
       </div>
       <div class="info-box" id="elim-info">Cada participante tiene <strong>2 oportunidades</strong> — si pierdes en el cuadro principal pasas al cuadro de perdedores.</div>
-
-      <hr class="section-divider">
 
       <!-- Paso 2 -->
       <div id="step2">
@@ -157,26 +156,29 @@
         <div class="field-label">Número de grupos</div>
         <div class="size-options" id="group-options"></div>
         <div class="info-box" id="groups-info"></div>
-
-        <hr class="section-divider">
-
-        <!-- Paso 3 -->
-        <div class="step-badge">Paso 3 · Participantes y Grupos</div>
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
-          <div class="field-label" style="margin-bottom:0;">Asigna cada equipo a su grupo</div>
-          <div style="display:flex;gap:0.4rem;">
-            <button class="btn btn-fs" id="btn-import-players" style="font-size:0.7rem; padding:0.2rem 0.6rem;">📂 Importar</button>
-            <button class="btn btn-fs" id="btn-fill-test" style="font-size:0.7rem; padding:0.2rem 0.6rem;">🎲 Rellenar Prueba</button>
-          </div>
-        </div>
-        <input type="file" id="import-file-input" accept=".txt,.csv,.xlsx,.xls" style="display:none">
-        <div class="teams-grid" id="teams-grid"></div>
-        <button class="btn btn-primary" id="start-btn" style="width:100%;margin-top:0.5rem;padding:0.75rem;">
-          Generar Fase de Grupos →
-        </button>
       </div>
 
-    </div>
+      <button class="btn btn-primary" id="start-btn" style="width:100%;margin-top:0.5rem;padding:0.75rem;">
+        Generar Fase de Grupos →
+      </button>
+    </aside>
+
+    <section class="setup-card setup-main">
+      <!-- Paso 3 -->
+      <div class="setup-main-head">
+        <div>
+          <div class="step-badge" style="margin-bottom:0.3rem;">Paso 3 · Participantes</div>
+          <div class="field-label" style="margin-bottom:0;">Escribe los participantes de cada grupo <span id="setup-filled" class="setup-filled"></span></div>
+        </div>
+        <div style="display:flex;gap:0.4rem;">
+          <button class="btn btn-fs" id="btn-import-players" style="font-size:0.75rem; padding:0.3rem 0.7rem;">📂 Importar</button>
+          <button class="btn btn-fs" id="btn-fill-test" style="font-size:0.75rem; padding:0.3rem 0.7rem;">🎲 Rellenar Prueba</button>
+        </div>
+      </div>
+      <input type="file" id="import-file-input" accept=".txt,.csv,.xlsx,.xls" style="display:none">
+      <div class="teams-grid" id="teams-grid"></div>
+    </section>
+
   </div>
 </div>
 
@@ -386,6 +388,6 @@
 window.$ = id => document.getElementById(id);
 // modSc e closeScorePanel se definen directamente en window dentro del módulo
 </script>
-<script type="module" src="script.js?v=8"></script>
+<script type="module" src="script.js?v=9"></script>
 </body>
 </html>

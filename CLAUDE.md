@@ -76,7 +76,7 @@ git -C "C:\Users\aleja\Desktop\PAGINA MANE" push
 - Cada `git push` a `main` despliega automáticamente en producción
 - URL de producción: https://torneosmane.org
 - **Caché (IMPORTANTE)**: Cloudflare sirve `script.js`/`style.css` con `Cache-Control: max-age=14400` (4 h). Ese valor lo impone un ajuste de **zona** en el panel de Cloudflare (*Caching → Configuration → Browser Cache TTL = 4 horas*), que **sobrescribe** las cabeceras del origen, por lo que el fichero `_headers` del repo **no surte efecto por sí solo**.
-  - **Solución activa (sin tocar el panel)**: `index.html` referencia los assets con un parámetro de versión: `script.js?v=N` y `style.css?v=N`. **Al cambiar `script.js` o `style.css` hay que incrementar `N`** (URL nueva → el navegador descarga fresco, ignorando la copia cacheada). Versión actual: `v=8`.
+  - **Solución activa (sin tocar el panel)**: `index.html` referencia los assets con un parámetro de versión: `script.js?v=N` y `style.css?v=N`. **Al cambiar `script.js` o `style.css` hay que incrementar `N`** (URL nueva → el navegador descarga fresco, ignorando la copia cacheada). Versión actual: `v=9`.
   - **Solución alternativa (un solo cambio en el panel)**: poner *Browser Cache TTL* en **"Respect Existing Headers"**; entonces el `_headers` (ya incluido en el repo, con `no-cache, must-revalidate`) pasa a funcionar y ya no haría falta subir la versión `?v=` en cada cambio.
 
 ## Bugs conocidos y soluciones aplicadas (script.js)
@@ -123,6 +123,11 @@ git -C "C:\Users\aleja\Desktop\PAGINA MANE" push
 ### CSS: regla global de box-sizing inactiva (no tocar sin revisar todo)
 - `style.css` empieza con un `<style>` literal (línea 1). Eso invalida la primera regla (`*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }`), así que **en toda la web los elementos usan content-box y márgenes por defecto**. El diseño actual está ajustado así; quitar ese `<style>` cambiaría espacios en todas las pantallas.
 - Consecuencia: un `input`/`select` con `width:100%` + padding se sale de su caja. Arreglo puntual en setup (solapamiento nombre/grupo): `box-sizing: border-box` explícito en `.team-input-wrap input, .group-select`, `min-width:0` en `.team-input-wrap` y `flex: 0 0 120px` en `.group-select`.
+
+### Pantalla "Nuevo torneo" (rediseño a lo ancho)
+- `#setup-screen` > `.setup-layout` (grid 360px + resto; en ≤960px se apila): **panel izquierdo** `.setup-side` fijo (`sticky`, con scroll propio y el botón `#start-btn` pegado abajo) con nombre, participantes, formato, grupos y Generar; **zona derecha** `.setup-main` con una tarjeta `.setup-group` por grupo.
+- `rebuildTeamInputs()` crea los huecos como `input[data-group=j]` dentro de cada tarjeta (ya no hay `select` de grupo por fila). Conserva los nombres escritos al cambiar tamaño/grupos. `--gcols` (máx. 4) y `--gcols2` (máx. 2, pantallas medianas) fijan las columnas; con >8 por grupo los huecos van en varias columnas (`.many-per-group`). `updateSetupCounts()` mantiene los contadores `escritos/huecos`.
+- `start-btn` lee `input[data-group]` → `{name, groupIdx}` (vacío = BYE). Importar y Rellenar siguen llenando en orden, grupo a grupo. La lógica del torneo no cambia.
 
 ## Setup — opciones del cuadro
 

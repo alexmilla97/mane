@@ -1881,29 +1881,49 @@ function updateGroupInfo(){
   const tpg=bracketSize/numGroups;
   $('groups-info').innerHTML=`<strong>${numGroups} grupos</strong> de <strong>${tpg} participante${tpg>1?'s':''}</strong> · <strong>Todos clasifican</strong> al cuadro`;
 }
+// Una tarjeta por grupo con sus huecos (data-group = índice del grupo). Al cambiar el
+// número de participantes o de grupos se conservan los nombres ya escritos, en orden.
 function rebuildTeamInputs(){
-  const g=$('teams-grid'); g.innerHTML='';
+  const g=$('teams-grid');
+  const prev=[...g.querySelectorAll('input[data-group]')].map(inp=>inp.value);
+  g.innerHTML='';
   const letters='ABCDEFGHIJKLMNOPQRSTUVWXYZ', tpg=bracketSize/numGroups;
-  for(let i=1;i<=bracketSize;i++){
-    const row=document.createElement('div'); row.className='team-input-row';
-    const w=document.createElement('div'); w.className='team-input-wrap';
-    w.innerHTML=`<span class="team-num">${i}</span><input type="text" placeholder="Equipo ${i}" data-idx="${i}">`;
-    const sel=document.createElement('select'); sel.className='group-select'; sel.dataset.idx=i;
-    for(let j=0;j<numGroups;j++){
-      const opt=document.createElement('option'); opt.value=j; opt.textContent='Grupo '+letters[j];
-      if(Math.floor((i-1)/tpg)===j) opt.selected=true;
-      sel.appendChild(opt);
+  g.style.setProperty('--gcols', Math.min(numGroups, 4));
+  g.style.setProperty('--gcols2', Math.min(numGroups, 2)); // pantallas medianas
+  g.classList.toggle('many-per-group', tpg>8); // grupos grandes: huecos en varias columnas
+  let n=0;
+  for(let j=0;j<numGroups;j++){
+    const card=document.createElement('div'); card.className='setup-group';
+    card.innerHTML=`<div class="setup-group-title"><span>Grupo ${letters[j]}</span><span class="setup-group-count" data-count="${j}"></span></div>`;
+    const body=document.createElement('div'); body.className='setup-group-body';
+    for(let k=1;k<=tpg;k++){
+      const w=document.createElement('div'); w.className='team-input-wrap';
+      w.innerHTML=`<span class="team-num">${k}</span><input type="text" placeholder="Participante ${k}" data-group="${j}">`;
+      w.querySelector('input').value = prev[n++] || '';
+      body.appendChild(w);
     }
-    row.appendChild(w); row.appendChild(sel); g.appendChild(row);
+    card.appendChild(body); g.appendChild(card);
   }
+  updateSetupCounts();
 }
+// Contadores "escritos / huecos" de cada grupo y del total
+function updateSetupCounts(){
+  const inputs=[...$('teams-grid').querySelectorAll('input[data-group]')];
+  const filled=inputs.filter(i=>i.value.trim()).length;
+  $('teams-grid').querySelectorAll('[data-count]').forEach(el=>{
+    const gi=el.dataset.count, mine=inputs.filter(i=>i.dataset.group===gi);
+    el.textContent=`${mine.filter(i=>i.value.trim()).length}/${mine.length}`;
+  });
+  const t=$('setup-filled'); if(t) t.textContent=`· ${filled}/${inputs.length}`;
+}
+$('teams-grid').addEventListener('input', updateSetupCounts);
 document.querySelectorAll('#size-options .size-btn').forEach(btn=>btn.addEventListener('click',()=>{
   document.querySelectorAll('#size-options .size-btn').forEach(b=>b.classList.remove('active'));
   btn.classList.add('active'); bracketSize=+btn.dataset.size; rebuildGroupOptions();
 }));
 rebuildGroupOptions();
 
-$('btn-fill-test').onclick=()=>{ [...$('teams-grid').querySelectorAll('input')].forEach((inp,i)=>{ if(!inp.value.trim()) inp.value=`Jugador ${i+1}`; }); toast('🎲 Nombres de prueba rellenados'); };
+$('btn-fill-test').onclick=()=>{ [...$('teams-grid').querySelectorAll('input')].forEach((inp,i)=>{ if(!inp.value.trim()) inp.value=`Jugador ${i+1}`; }); updateSetupCounts(); toast('🎲 Nombres de prueba rellenados'); };
 
 // Importar jugadores desde archivo
 $('btn-import-players').addEventListener('click', ()=>$('import-file-input').click());
@@ -1916,7 +1936,8 @@ $('import-file-input').addEventListener('change', async e=>{
 
     if(ext==='xlsx'||ext==='xls'){
       // Excel: usar SheetJS si está disponible, si no avisar
-      const XLSX = await import('https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs') // 0.18.5 (npm) tenía vulnerabilidades conocidas.catch(()=>null);
+      // SheetJS 0.20.3 desde su CDN oficial (la 0.18.5 de npm tenía vulnerabilidades conocidas)
+      const XLSX = await import('https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs').catch(()=>null);
       if(!XLSX){ toast('⚠️ Formato Excel no soportado en este navegador. Usa .txt o .csv'); return; }
       const buf = await file.arrayBuffer();
       const wb = XLSX.read(buf, {type:'array'});
@@ -1934,6 +1955,7 @@ $('import-file-input').addEventListener('change', async e=>{
     const inputs = [...$('teams-grid').querySelectorAll('input')];
     const filled = Math.min(names.length, inputs.length);
     inputs.forEach((inp, i)=>{ inp.value = i<names.length ? names[i] : ''; });
+    updateSetupCounts();
     toast(`✓ ${filled} jugadores importados${names.length>inputs.length?' (hay más en el archivo que plazas disponibles)':''}`);
   }catch(err){
     console.error('Import error', err);
@@ -1943,9 +1965,10 @@ $('import-file-input').addEventListener('change', async e=>{
 
 $('start-btn').addEventListener('click',async()=>{
   const title=$('tourney-name').value.trim()||'Torneo';
-  const teamsData=[...$('teams-grid').querySelectorAll('.team-input-row')].map(row=>({
-    name:row.querySelector('input').value.trim()||'BYE',
-    groupIdx:parseInt(row.querySelector('select').value)
+  // Cada hueco pertenece a su grupo (data-group); los vacíos son BYE como antes
+  const teamsData=[...$('teams-grid').querySelectorAll('input[data-group]')].map(inp=>({
+    name:inp.value.trim()||'BYE',
+    groupIdx:parseInt(inp.dataset.group)
   }));
   const tpg=bracketSize/numGroups, counts=Array(numGroups).fill(0);
   teamsData.forEach(t=>counts[t.groupIdx]++);
