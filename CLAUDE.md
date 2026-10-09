@@ -76,7 +76,7 @@ git -C "C:\Users\aleja\Desktop\PAGINA MANE" push
 - Cada `git push` a `main` despliega automáticamente en producción
 - URL de producción: https://torneosmane.org
 - **Caché (IMPORTANTE)**: Cloudflare sirve `script.js`/`style.css` con `Cache-Control: max-age=14400` (4 h). Ese valor lo impone un ajuste de **zona** en el panel de Cloudflare (*Caching → Configuration → Browser Cache TTL = 4 horas*), que **sobrescribe** las cabeceras del origen, por lo que el fichero `_headers` del repo **no surte efecto por sí solo**.
-  - **Solución activa (sin tocar el panel)**: `index.html` referencia los assets con un parámetro de versión: `script.js?v=N` y `style.css?v=N`. **Al cambiar `script.js` o `style.css` hay que incrementar `N`** (URL nueva → el navegador descarga fresco, ignorando la copia cacheada). Versión actual: `v=6`.
+  - **Solución activa (sin tocar el panel)**: `index.html` referencia los assets con un parámetro de versión: `script.js?v=N` y `style.css?v=N`. **Al cambiar `script.js` o `style.css` hay que incrementar `N`** (URL nueva → el navegador descarga fresco, ignorando la copia cacheada). Versión actual: `v=5`.
   - **Solución alternativa (un solo cambio en el panel)**: poner *Browser Cache TTL* en **"Respect Existing Headers"**; entonces el `_headers` (ya incluido en el repo, con `no-cache, must-revalidate`) pasa a funcionar y ya no haría falta subir la versión `?v=` en cada cambio.
 
 ## Bugs conocidos y soluciones aplicadas (script.js)
@@ -119,14 +119,6 @@ git -C "C:\Users\aleja\Desktop\PAGINA MANE" push
 - `afterBracketUndo` quita de la cola los partidos del cuadro que ya no son válidos y avisa si alguno estaba en juego en un iPad (su resultado se ignorará por `scoreTeamsMatch`).
 - Los resultados (panel e iPad) guardan ahora `s1/s2` en el partido del cuadro.
 - `resetWinner` usa el mismo motor. Verificado con un banco de pruebas aleatorio (224.000 comprobaciones, tamaños 4–64, doble/simple, con BYEs): tras cualquier secuencia de jugar/anular/cambiar, el cuadro coincide con reconstruirlo desde cero.
-
-### Diseño personalizado del cuadro público (modo diseño)
-- Botón **🎨 Diseño** en la pantalla del cuadro (admin) → abre `?mode=bracket&session=X&design=1`. Solo se activa con sesión de admin (no anónima); si no, toast de aviso.
-- Bloques arrastrables: **título** (`#pub-title-c`), **cuadro de ganadores** (`#pub-upper-c`), **Gran Final** (`#pub-gf-c`) y **cuadro de perdedores** (`#pub-lower-c`). Arrastrar = mover; tirador ◢ = tamaño (mantiene proporción). Posiciones como **fracción del área visible** (`{x, y, w}`), así se ve igual en cualquier pantalla.
-- Panel flotante (`#design-panel`, dentro de `#display-screen` para que se vea en pantalla completa): centrar, restablecer bloque, mostrar título / "Cervecería Mané" / barra de progreso, separación del lower, colores (acento, fondo, tarjetas, texto → variables CSS en `#display-screen`), Guardar, Descartar, Volver a automático, Pantalla completa.
-- Firestore: `config/bracketLayouts` = `{ layouts: { "<numTeams><d|s>": {blocks, style} } }` — **un diseño por tamaño de cuadro y tipo de eliminación** (`bracketLayoutKey`). Las pantallas públicas escuchan ese doc y repintan al guardar. Sin diseño para un tamaño → colocación automática de siempre (código sin cambios).
-- **IMPORTANTE**: las variables del modo diseño (`_pubLayouts`, `_designDraft`, `_pubApplyLayout`, `DESIGN_*`…) están declaradas ANTES del `throw new Error('display-mode')`; lo que se declare con `let/const` después no existe en la vista pública (TDZ).
-- Probado con Edge headless y Firebase simulado (import map): modo diseño, arrastre, guardado, vista pública con diseño, vista automática, gestor y web pública sin errores.
 
 ## Setup — opciones del cuadro
 

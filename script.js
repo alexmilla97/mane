@@ -40,7 +40,7 @@
 // 1. FIREBASE — Configuración e inicialización
 // ═══════════════════════════════════════════════════════
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
-import { getFirestore, doc, setDoc, getDoc, onSnapshot, collection, getDocs, deleteDoc, serverTimestamp, addDoc, runTransaction, arrayUnion, arrayRemove, updateDoc, deleteField }
+import { getFirestore, doc, setDoc, getDoc, onSnapshot, collection, getDocs, deleteDoc, serverTimestamp, addDoc, runTransaction, arrayUnion, arrayRemove }
   from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { getAuth, signInAnonymously, signInWithEmailAndPassword, signOut, onAuthStateChanged, setPersistence, browserLocalPersistence } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
 
@@ -702,7 +702,6 @@ const IS_DEVICE    = params.has('device');
 const IS_DISPLAY   = params.get('mode') === 'display';
 const IS_BRACKET   = params.get('mode') === 'bracket';
 const IS_QUEUE     = params.get('mode') === 'queue';
-const IS_DESIGN    = IS_BRACKET && params.get('design') === '1'; // editor del diseño del cuadro público
 const DEVICE_NAME  = IS_DEVICE ? decodeURIComponent(params.get('device') || 'Dispositivo') : null;
 const DEVICE_ID    = IS_DEVICE ? params.get('id') : null;
 const SESSION_ID   = params.get('session');  // torneo activo
@@ -971,18 +970,6 @@ let state = {};
 // Declarados antes del throw de display-mode para que estén inicializados allí.
 let _pubBracketListenersBound = false;
 let _pubFitScaleAndLines = null;
-// Diseño personalizado del cuadro público (ver sección 11.2)
-const LAYOUTS_REF = () => doc(db,'config','bracketLayouts');
-let _pubLayouts = null;          // { "16d": {...}, "8s": {...} } — de Firestore
-let _pubLastBracketData = null;  // último estado recibido, para repintar al cambiar el diseño
-let _designMode = false;         // ?mode=bracket&design=1 con sesión de admin
-let _designDraft = null;         // diseño en edición (sin guardar)
-let _designKey = null;           // clave del tamaño en edición
-let _designSelected = 'upper';   // bloque seleccionado en el panel
-let _designDirty = false;        // hay cambios sin guardar
-let _pubApplyLayout = null;      // recoloca los bloques sin repintar (arrastre)
-const DESIGN_BLOCK_NAMES = { title:'Título', upper:'Cuadro de ganadores', gf:'Gran Final', lower:'Cuadro de perdedores' };
-const DESIGN_DEFAULT_COLORS = { accent:'#D4A017', bg:'#0E0E12', card:'#161620', text:'#F0EEE8' };
 
 if((IS_DISPLAY||IS_BRACKET||IS_QUEUE) && (SESSION_ID||IS_QUEUE)){
   if(!auth.currentUser) await signInAnonymously(auth);
@@ -1156,24 +1143,12 @@ if((IS_DISPLAY||IS_BRACKET||IS_QUEUE) && (SESSION_ID||IS_QUEUE)){
     }
   } else {
     $('display-screen').classList.add('active');
-    if(IS_BRACKET){
-      // Diseños personalizados del cuadro (uno por tamaño). Al cambiar, se repinta.
-      onSnapshot(LAYOUTS_REF(), snap=>{
-        _pubLayouts = snap.data()?.layouts || {};
-        if(_pubLastBracketData && !_designMode) renderBracketDisplay(_pubLastBracketData);
-      }, ()=>{ _pubLayouts = {}; });
-      // Modo diseño (?design=1): solo para el admin con sesión iniciada
-      if(IS_DESIGN){
-        if(auth.currentUser && !auth.currentUser.isAnonymous) _designMode = true;
-        else setTimeout(()=>toast('⚠️ Inicia sesión como admin en el gestor para editar el diseño'), 800);
-      }
-    }
     onSnapshot(tourneyRef(SESSION_ID), snap=>{
       const data=snap.data();
       if(!data) return;
       if(IS_BRACKET && data.stateJson || IS_BRACKET && data.state?.rounds){
         const parsedState = parseState(data);
-        if(parsedState.rounds){ _pubLastBracketData = parsedState; renderBracketDisplay(parsedState); }
+        if(parsedState.rounds) renderBracketDisplay(parsedState);
       } else if(!IS_BRACKET){ const gd=parseGroupData(data); if(gd?.groups) renderDisplayScreen(gd); }
     });
     if(IS_BRACKET){
@@ -1181,8 +1156,7 @@ if((IS_DISPLAY||IS_BRACKET||IS_QUEUE) && (SESSION_ID||IS_QUEUE)){
       const hdr = document.querySelector('.dv-header');
       if(hdr) hdr.style.display = 'none';
       document.addEventListener('fullscreenchange',()=>{ window.dispatchEvent(new Event('resize')); });
-      // En modo diseño no se fuerza pantalla completa (el panel tiene su propio botón)
-      if(!_designMode) setTimeout(()=>{
+      setTimeout(()=>{
         const elem=$('display-screen');
         if(elem?.requestFullscreen) elem.requestFullscreen().catch(()=>{});
       },300);
@@ -3042,21 +3016,8 @@ function renderDisplayScreen(data){
 function renderBracketDisplay(data){
   if(!data?.rounds) return;
 
-  // ── Diseño personalizado (11.2): uno por tamaño de cuadro y tipo de eliminación ──
-  const layoutKey = bracketLayoutKey(data);
-  if(_designMode && _designKey !== layoutKey){
-    _designKey = layoutKey;
-    _designDraft = JSON.parse(JSON.stringify(_pubLayouts?.[layoutKey] || {blocks:{}, style:{}}));
-    _designDirty = false;
-  }
-  const layout = _designMode ? _designDraft : (_pubLayouts?.[layoutKey] || null);
-  const custom = !!layout;                 // sin diseño guardado → colocación automática de siempre
-  const lst = (custom && layout.style) || {};
-  applyLayoutStyle(lst);
-
   const vW=window.innerWidth, vH=window.innerHeight;
-  const footEl = document.querySelector('#display-screen .dv-footer');
-  const footH = footEl && footEl.style.display!=='none' ? (footEl.offsetHeight||36) : 0;
+  const footH = $('dv-footer')?.offsetHeight||36;
   const availH = vH - footH;
 
   const cont=$('dv-groups');
@@ -3070,8 +3031,6 @@ function renderBracketDisplay(data){
   const upperC=document.createElement('div');
   upperC.id='pub-upper-c'; upperC.className=cls;
   upperC.style.cssText='position:absolute;top:0;left:0;transform-origin:top left;min-width:max-content;padding:0.6rem 0 0.4rem;';
-  // Bloques independientes (solo en diseño personalizado): título y Gran Final
-  let titleC=null, gfC=null;
 
   try{
     const {rounds}=state, total=rounds.length, halfR=total-1;
@@ -3091,32 +3050,15 @@ function renderBracketDisplay(data){
     const brand = document.createElement('div');
     brand.textContent = 'Cervecería Mané';
     brand.style.cssText = 'font-family:"Barlow Condensed",sans-serif;font-size:1.6rem;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;color:var(--gold);line-height:1;';
-    if(lst.showBrand===false) brand.style.display='none';
     titleStack.appendChild(tournName); titleStack.appendChild(brand);
-    if(custom){
-      titleC = document.createElement('div'); titleC.id='pub-title-c';
-      titleC.style.cssText='position:absolute;top:0;left:0;transform-origin:top left;width:max-content;';
-      titleStack.style.marginBottom='0';
-      titleC.appendChild(titleStack);
-      if(lst.showTitle===false && !_designMode) titleC.style.display='none';
-      if(lst.showTitle===false && _designMode) titleC.style.opacity='0.25';
-    } else {
-      center.appendChild(titleStack);
-    }
+    center.appendChild(titleStack);
 
-    const ch=document.createElement('div'); ch.className='round-header'; ch.textContent=data.singleElim?'Final':'Final Upper'; center.appendChild(ch);
+    const ch=document.createElement('div'); ch.className='round-header'; ch.textContent='Final Upper'; center.appendChild(ch);
     const ca=document.createElement('div'); ca.className='center-match-area';
     const finalM=buildCard(rounds[total-1][0],total-1,0,false); finalM.id=`match-${total-1}-0`; ca.appendChild(finalM); center.appendChild(ca);
 
     // Gran Final — misma posición pero más grande
-    if(custom && data.gf){
-      // Diseño personalizado: la Gran Final es un bloque propio (se muestra aunque falten finalistas)
-      gfC = document.createElement('div'); gfC.id='pub-gf-c';
-      gfC.style.cssText='position:absolute;top:0;left:0;transform-origin:top left;width:max-content;min-width:220px;display:flex;flex-direction:column;align-items:center;';
-      const gfH=document.createElement('div'); gfH.className='round-header'; gfH.textContent='🏆 Gran Final'; gfH.style.cssText='color:var(--gold);font-size:1rem;';
-      const gfCard=buildCard(data.gf,'gf',0,false); gfCard.id='match-gf-0-pub'; gfCard.style.width='220px';
-      gfC.appendChild(gfH); gfC.appendChild(gfCard);
-    } else if(data.gf?.t1&&data.gf?.t2){
+    if(data.gf?.t1&&data.gf?.t2){
       const gfSpacer = document.createElement('div');
       gfSpacer.style.cssText = 'height:1.5rem;';
       center.appendChild(gfSpacer);
@@ -3146,7 +3088,7 @@ function renderBracketDisplay(data){
       const lCenter=document.createElement('div'); lCenter.style.cssText='display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:160px;flex-shrink:0;';
       const lRight=document.createElement('div'); lRight.style.cssText='display:flex;gap:0.3rem;align-items:flex-start;flex-direction:row-reverse;';
       // Estilo inline para aumentar gap vertical entre partidos del lower (más alto)
-      const matchGap = (lst.lowerGap!=null ? lst.lowerGap : 1.2) + 'rem';
+      const matchGap = '1.2rem';
       data.lRounds.forEach((round,lr)=>{
         const isDropIn=round[0]?.type==='drop-in', uRound=isDropIn?(round[0]?.fromUpperRound??0):null;
         const label=isDropIn?`Perdedores R${uRound+1}`:`Lower R${lr+1}`;
@@ -3173,8 +3115,6 @@ function renderBracketDisplay(data){
 
   state=savedState;
   cont.appendChild(upperC); cont.appendChild(lowerC);
-  if(titleC) cont.appendChild(titleC);
-  if(gfC) cont.appendChild(gfC);
 
   let _uSc = 1;
 
@@ -3210,64 +3150,10 @@ function renderBracketDisplay(data){
     }
   }
 
-  // Bloques del diseño personalizado: clave → elemento
-  const blockEls = { title:titleC, upper:upperC, gf:gfC, lower:data.lRounds?.length ? lowerC : null };
-
-  // Diseño personalizado: cada bloque se coloca en (x,y) y con ancho w, todo como fracción
-  // del área visible (así se ve igual en cualquier pantalla). La altura sigue a la anchura.
-  // Los bloques sin posición guardada reciben una por defecto basada en la colocación automática.
-  function applyCustom(){
-    const vW = window.innerWidth;
-    const fEl = document.querySelector('#display-screen .dv-footer');
-    const availH = window.innerHeight - (fEl && fEl.style.display!=='none' ? (fEl.offsetHeight||36) : 0);
-    cont.style.height = availH+'px';
-    const blocks = layout.blocks || (layout.blocks = {});
-    const nat = {};
-    Object.entries(blockEls).forEach(([k,el])=>{ if(el){ el.style.transform='none'; nat[k]={w:el.offsetWidth||1, h:el.offsetHeight||1}; } });
-
-    // Valores por defecto (solo para bloques que aún no tienen posición)
-    if(blockEls.title && !blocks.title) blocks.title = { x:0.35, y:0.01, w:0.30 };
-    // Los cuadros empiezan justo debajo del título (si se ve)
-    let top0 = 0.02;
-    if(blockEls.title && blockEls.title.style.display!=='none'){
-      const t = blocks.title;
-      top0 = t.y + nat.title.h*(t.w*vW/nat.title.w)/availH + 0.02;
-    }
-    if(!blocks.upper || (blockEls.lower && !blocks.lower)){
-      const area = availH*(1-top0);
-      let uSc = vW/nat.upper.w, lSc = blockEls.lower ? vW/nat.lower.w : 0;
-      let uH = nat.upper.h*uSc, lH = blockEls.lower ? nat.lower.h*lSc : 0;
-      if(uH+lH > area){ const r=area/(uH+lH); uSc*=r; lSc*=r; uH*=r; lH*=r; }
-      if(!blocks.upper) blocks.upper = { x:(1-nat.upper.w*uSc/vW)/2, y:top0, w:nat.upper.w*uSc/vW };
-      if(blockEls.lower && !blocks.lower) blocks.lower = { x:(1-nat.lower.w*lSc/vW)/2, y:top0+uH/availH, w:nat.lower.w*lSc/vW };
-    }
-    if(blockEls.gf && !blocks.gf){
-      const u = blocks.upper, uHf = nat.upper.h*(u.w*vW/nat.upper.w)/availH;
-      blocks.gf = { x:0.42, y:u.y+uHf*0.6, w:0.16 };
-    }
-
-    Object.entries(blockEls).forEach(([k,el])=>{
-      if(!el) return;
-      const b = blocks[k];
-      const sc = (b.w*vW)/nat[k].w;
-      el.style.transform = `scale(${sc})`;
-      el.style.setProperty('--dz-inv', String(1/sc));
-      el.style.left = (b.x*vW)+'px';
-      el.style.top  = (b.y*availH)+'px';
-      if(k==='upper') _uSc = sc;
-    });
-    if(_designMode) refreshDesignPanel();
-  }
-
   function fitScale(){
-    if(custom){
-      requestAnimationFrame(()=>requestAnimationFrame(()=>{ applyCustom(); setTimeout(()=>requestAnimationFrame(drawPubLines), 120); }));
-      return;
-    }
     const vW = window.innerWidth;
     const vH = window.innerHeight;
-    const fEl = document.querySelector('#display-screen .dv-footer');
-    const footH = fEl && fEl.style.display!=='none' ? (fEl.offsetHeight||36) : 0;
+    const footH = $('dv-footer')?.offsetHeight||36;
     const availH = vH - footH;
     cont.style.height = availH+'px';
 
@@ -3335,15 +3221,7 @@ function renderBracketDisplay(data){
     setTimeout(()=>requestAnimationFrame(drawPubLines), 450);
   }
 
-  if(custom && !blockEls.lower) lowerC.style.display='none';
-  // Ocultar el cuadro hasta colocarlo evita ver un instante la colocación sin escalar
   setTimeout(fitScaleAndLines, 200); setTimeout(fitScaleAndLines, 700);
-
-  // Modo diseño: bloques arrastrables y redimensionables
-  if(_designMode){
-    _pubApplyLayout = applyCustom;
-    setupDesignBlocks(blockEls, cont);
-  }
 
   // renderBracketDisplay se invoca en CADA actualización de Firestore. Para no
   // acumular un listener de resize, tres de fullscreen y un setInterval por cada
@@ -3379,205 +3257,6 @@ function renderBracketDisplay(data){
   $('dv-progress-fill').style.width=Math.round(played/total2*100)+'%';
 }
 
-// ── 11.2 Diseño personalizado del cuadro público ────────
-// Firestore: config/bracketLayouts = { layouts: { "<numTeams><d|s>": {blocks, style} } }
-//   blocks: { title|upper|gf|lower: {x, y, w} }  — fracciones del área visible
-//   style:  { accent, bg, card, text (colores), showTitle, showBrand, showFooter, lowerGap (rem) }
-// Sin diseño para un tamaño → colocación automática de siempre.
-
-function bracketLayoutKey(data){ return `${data.numTeams||data.rounds[0].length*2}${data.singleElim?'s':'d'}`; }
-function bracketLayoutLabel(key){ const n=parseInt(key,10); return `cuadro de ${n} · ${key.endsWith('s')?'eliminación simple':'doble eliminación'}`; }
-
-// Colores y elementos visibles (se aplican a toda la pantalla del cuadro)
-function applyLayoutStyle(st){
-  const scr = $('display-screen'); if(!scr) return;
-  const set = (v, val) => { if(val) scr.style.setProperty(v, val); else scr.style.removeProperty(v); };
-  set('--gold', st.accent); set('--bg', st.bg); set('--bg2', st.card); set('--text', st.text);
-  const f = scr.querySelector('.dv-footer');
-  if(f) f.style.display = st.showFooter===false ? 'none' : '';
-}
-
-// Hace arrastrables los bloques (mover) y les añade un tirador ◢ (cambiar tamaño)
-function setupDesignBlocks(blockEls, cont){
-  ensureDesignPanel();
-  Object.entries(blockEls).forEach(([key, el])=>{
-    if(!el) return;
-    el.classList.add('design-block');
-    if(key===_designSelected) el.classList.add('design-selected');
-    el.dataset.block = key;
-    const tag = document.createElement('div'); tag.className='design-tag'; tag.textContent = DESIGN_BLOCK_NAMES[key];
-    const handle = document.createElement('div'); handle.className='design-handle'; handle.title='Arrastra para cambiar el tamaño';
-    el.appendChild(tag); el.appendChild(handle);
-
-    const startDrag = (e, mode) => {
-      e.preventDefault(); e.stopPropagation();
-      selectDesignBlock(key);
-      const b = _designDraft.blocks?.[key]; if(!b) return;
-      const vW = window.innerWidth, availH = cont.clientHeight || window.innerHeight;
-      const start = { px:e.clientX, py:e.clientY, x:b.x, y:b.y, w:b.w };
-      const target = e.currentTarget;
-      try{ target.setPointerCapture(e.pointerId); }catch(_){}
-      const move = ev => {
-        const dx = (ev.clientX-start.px)/vW, dy = (ev.clientY-start.py)/availH;
-        if(mode==='move'){ b.x = start.x+dx; b.y = start.y+dy; }
-        else { b.w = Math.max(0.04, start.w+dx); }
-        markDesignDirty();
-        _pubApplyLayout?.();
-      };
-      const up = () => {
-        target.removeEventListener('pointermove', move);
-        target.removeEventListener('pointerup', up);
-        target.removeEventListener('pointercancel', up);
-        _pubFitScaleAndLines?.(); // redibujar líneas del cuadro con la escala final
-      };
-      target.addEventListener('pointermove', move);
-      target.addEventListener('pointerup', up);
-      target.addEventListener('pointercancel', up);
-    };
-    el.addEventListener('pointerdown', e => startDrag(e, 'move'));
-    handle.addEventListener('pointerdown', e => startDrag(e, 'resize'));
-  });
-}
-
-function selectDesignBlock(key){
-  _designSelected = key;
-  document.querySelectorAll('.design-block').forEach(el => el.classList.toggle('design-selected', el.dataset.block===key));
-  refreshDesignPanel();
-}
-
-function markDesignDirty(){
-  _designDirty = true;
-  const s = $('dz-status'); if(s){ s.textContent = '● Cambios sin guardar'; s.style.color = '#E8A33D'; }
-}
-
-// Panel flotante del modo diseño (se crea una vez dentro de #display-screen para que
-// siga visible en pantalla completa)
-function ensureDesignPanel(){
-  if($('design-panel')) return;
-  const p = document.createElement('div'); p.id = 'design-panel';
-  p.innerHTML = `
-    <div class="dz-head"><span>🎨 Diseño del cuadro</span><button class="dz-min" id="dz-min" title="Minimizar">—</button></div>
-    <div class="dz-body" id="dz-body">
-      <div class="dz-sub" id="dz-key"></div>
-      <div class="dz-hint">Arrastra los bloques para moverlos. Tira de la esquina ◢ para cambiar su tamaño.</div>
-      <div class="dz-row"><span>Bloque:</span><select id="dz-block"></select></div>
-      <div class="dz-row dz-btns">
-        <button id="dz-center-h">↔ Centrar</button>
-        <button id="dz-center-v">↕ Centrar</button>
-        <button id="dz-reset-block" title="Volver a la posición por defecto">↺ Bloque</button>
-      </div>
-      <div class="dz-sep"></div>
-      <div class="dz-row"><label><input type="checkbox" id="dz-show-title"> Mostrar título</label></div>
-      <div class="dz-row"><label><input type="checkbox" id="dz-show-brand"> Mostrar "Cervecería Mané"</label></div>
-      <div class="dz-row"><label><input type="checkbox" id="dz-show-footer"> Mostrar barra de progreso</label></div>
-      <div class="dz-row"><span>Separación perdedores</span><input type="range" id="dz-gap" min="0" max="4" step="0.1"></div>
-      <div class="dz-sep"></div>
-      <div class="dz-colors">
-        <label>Acento <input type="color" id="dz-accent"></label>
-        <label>Fondo <input type="color" id="dz-bg"></label>
-        <label>Tarjetas <input type="color" id="dz-card"></label>
-        <label>Texto <input type="color" id="dz-text"></label>
-      </div>
-      <div class="dz-sep"></div>
-      <div class="dz-status" id="dz-status">Sin cambios</div>
-      <div class="dz-row dz-btns">
-        <button class="dz-primary" id="dz-save">💾 Guardar diseño</button>
-        <button id="dz-fs">⛶ Pantalla completa</button>
-      </div>
-      <div class="dz-row dz-btns">
-        <button id="dz-discard">Descartar cambios</button>
-        <button class="dz-danger" id="dz-auto">Volver a automático</button>
-      </div>
-    </div>`;
-  $('display-screen').appendChild(p);
-
-  const sel = $('dz-block');
-  Object.entries(DESIGN_BLOCK_NAMES).forEach(([k,n])=>{ const o=document.createElement('option'); o.value=k; o.textContent=n; sel.appendChild(o); });
-  sel.addEventListener('change', ()=>selectDesignBlock(sel.value));
-
-  $('dz-min').addEventListener('click', ()=>{
-    const b=$('dz-body'); const hide=b.style.display!=='none';
-    b.style.display = hide ? 'none' : ''; $('dz-min').textContent = hide ? '▢' : '—';
-  });
-  const relayout = (full) => { markDesignDirty(); if(full && _pubLastBracketData) renderBracketDisplay(_pubLastBracketData); else _pubApplyLayout?.(); };
-  const blockOf = () => _designDraft.blocks?.[_designSelected];
-  const natSize = () => { const el=document.querySelector(`.design-block[data-block="${_designSelected}"]`); return el ? el.getBoundingClientRect() : null; };
-  $('dz-center-h').addEventListener('click', ()=>{
-    const b=blockOf(), r=natSize(); if(!b||!r) return;
-    b.x = (1 - r.width/window.innerWidth)/2; relayout(false);
-  });
-  $('dz-center-v').addEventListener('click', ()=>{
-    const b=blockOf(), r=natSize(); if(!b||!r) return;
-    const h = $('dv-groups').clientHeight || window.innerHeight;
-    b.y = (1 - r.height/h)/2; relayout(false);
-  });
-  $('dz-reset-block').addEventListener('click', ()=>{
-    if(!_designDraft.blocks) return;
-    delete _designDraft.blocks[_designSelected]; relayout(true);
-  });
-  const st = () => (_designDraft.style || (_designDraft.style = {}));
-  $('dz-show-title').addEventListener('change', e=>{ st().showTitle = e.target.checked; relayout(true); });
-  $('dz-show-brand').addEventListener('change', e=>{ st().showBrand = e.target.checked; relayout(true); });
-  $('dz-show-footer').addEventListener('change', e=>{ st().showFooter = e.target.checked; relayout(true); });
-  $('dz-gap').addEventListener('input', e=>{ st().lowerGap = parseFloat(e.target.value); relayout(true); });
-  [['dz-accent','accent'],['dz-bg','bg'],['dz-card','card'],['dz-text','text']].forEach(([id,k])=>{
-    $(id).addEventListener('input', e=>{ st()[k] = e.target.value; markDesignDirty(); applyLayoutStyle(st()); });
-  });
-
-  $('dz-save').addEventListener('click', async ()=>{
-    const btn=$('dz-save'); btn.disabled=true;
-    try{
-      await setDoc(LAYOUTS_REF(), { layouts:{ [_designKey]: _designDraft }, updatedAt: serverTimestamp() }, { merge:true });
-      _pubLayouts = { ...(_pubLayouts||{}), [_designKey]: JSON.parse(JSON.stringify(_designDraft)) };
-      _designDirty = false;
-      const s=$('dz-status'); s.textContent='✓ Guardado — las pantallas públicas ya lo usan'; s.style.color='var(--win)';
-      toast('💾 Diseño guardado');
-    }catch(e){ console.error(e); toast('⚠️ No se pudo guardar el diseño'); }
-    finally{ btn.disabled=false; }
-  });
-  $('dz-discard').addEventListener('click', ()=>{
-    if(_designDirty && !confirm('¿Descartar los cambios sin guardar?')) return;
-    _designDraft = JSON.parse(JSON.stringify(_pubLayouts?.[_designKey] || {blocks:{}, style:{}}));
-    _designDirty = false;
-    const s=$('dz-status'); s.textContent='Sin cambios'; s.style.color='';
-    if(_pubLastBracketData) renderBracketDisplay(_pubLastBracketData);
-  });
-  $('dz-auto').addEventListener('click', async ()=>{
-    if(!confirm(`¿Borrar el diseño personalizado del ${bracketLayoutLabel(_designKey)} y volver a la colocación automática?`)) return;
-    try{
-      if(_pubLayouts?.[_designKey]) await updateDoc(LAYOUTS_REF(), { [`layouts.${_designKey}`]: deleteField() });
-      if(_pubLayouts) delete _pubLayouts[_designKey];
-      _designDraft = {blocks:{}, style:{}}; _designDirty = false;
-      const s=$('dz-status'); s.textContent='Diseño borrado: las pantallas usan la colocación automática'; s.style.color='';
-      if(_pubLastBracketData) renderBracketDisplay(_pubLastBracketData);
-    }catch(e){ console.error(e); toast('⚠️ No se pudo borrar el diseño'); }
-  });
-  $('dz-fs').addEventListener('click', ()=>{
-    const el=$('display-screen');
-    if(document.fullscreenElement) document.exitFullscreen().catch(()=>{});
-    else el.requestFullscreen?.().catch(()=>{});
-  });
-  window.addEventListener('beforeunload', e=>{ if(_designDirty){ e.preventDefault(); e.returnValue=''; } });
-}
-
-// Sincroniza los controles del panel con el diseño en edición
-function refreshDesignPanel(){
-  if(!$('design-panel') || !_designDraft) return;
-  const st = _designDraft.style || {};
-  $('dz-key').textContent = 'Editando: ' + bracketLayoutLabel(_designKey);
-  const sel=$('dz-block');
-  [...sel.options].forEach(o => { o.disabled = !document.querySelector(`.design-block[data-block="${o.value}"]`); });
-  sel.value = _designSelected;
-  $('dz-show-title').checked = st.showTitle !== false;
-  $('dz-show-brand').checked = st.showBrand !== false;
-  $('dz-show-footer').checked = st.showFooter !== false;
-  $('dz-gap').value = st.lowerGap != null ? st.lowerGap : 1.2;
-  $('dz-accent').value = st.accent || DESIGN_DEFAULT_COLORS.accent;
-  $('dz-bg').value = st.bg || DESIGN_DEFAULT_COLORS.bg;
-  $('dz-card').value = st.card || DESIGN_DEFAULT_COLORS.card;
-  $('dz-text').value = st.text || DESIGN_DEFAULT_COLORS.text;
-}
-
 // ── 11.1 Pantalla completa ─────────────────────────────
 function syncBracketOverlay(){ const c=$('bracket-container'),svg=$('bracket-svg'); if(!c||!svg) return; const w=Math.max(c.scrollWidth,1),h=Math.max(c.scrollHeight,1); svg.setAttribute('width',w); svg.setAttribute('height',h); svg.style.width=w+'px'; svg.style.height=h+'px'; requestAnimationFrame(()=>requestAnimationFrame(drawLines)); }
 // Ajusta el cuadro (admin) para que quepa entero en el área visible. Nunca amplía
@@ -3603,12 +3282,6 @@ if(!IS_DISPLAY && !IS_BRACKET && !IS_QUEUE && !IS_DEVICE){
     if(!sessionId){ toast('⚠️ No hay cuadro activo'); return; }
     window.open(`${location.pathname}?mode=bracket&session=${sessionId}`,'_blank','noopener');
     toast('🏆 Cuadro público abierto');
-  });
-  // Editor del diseño del cuadro público: abre la vista pública en modo diseño
-  if($('btn-bracket-design')) $('btn-bracket-design').addEventListener('click',()=>{
-    if(!sessionId){ toast('⚠️ No hay cuadro activo'); return; }
-    window.open(`${location.pathname}?mode=bracket&session=${sessionId}&design=1`,'_blank');
-    toast('🎨 Editor de diseño abierto');
   });
   window.addEventListener('resize',()=>scaleBracket());
 }
