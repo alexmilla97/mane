@@ -1880,7 +1880,7 @@ function rebuildGroupOptions(){
 }
 function updateGroupInfo(){
   const tpg=bracketSize/numGroups;
-  $('groups-info').innerHTML=`<strong>${numGroups} grupos</strong> de <strong>${tpg} participante${tpg>1?'s':''}</strong> · <strong>Todos clasifican</strong> al cuadro`;
+  $('groups-info').innerHTML=`<strong>${bracketSize} participantes</strong> · <strong>${numGroups} grupos</strong> de <strong>${tpg}</strong> · Todos clasifican al cuadro`;
 }
 // Una tarjeta por grupo con sus huecos (data-group = índice del grupo). Al cambiar el
 // número de participantes o de grupos se conservan los nombres ya escritos, en orden.

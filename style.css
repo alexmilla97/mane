@@ -28,22 +28,30 @@
   .btn-fs:hover { background: rgba(212,160,23,0.1); border-color: var(--gold); }
 
   /* ── SETUP ─────────────────────────────────────────── */
-  /* Nuevo torneo: a lo ancho. Panel de configuración fijo a la izquierda + participantes por grupo */
+  /* Nuevo torneo: una sola página a lo ancho. Arriba la configuración en horizontal, debajo los grupos */
   #setup-screen { max-width: 1680px; margin: 1.5rem auto; padding: 0 1.5rem; }
-  .setup-layout { display: grid; grid-template-columns: 360px minmax(0, 1fr); gap: 1.5rem; align-items: start; }
-  .setup-layout .setup-card { padding: 1.6rem; }
-  .setup-side { position: sticky; top: 90px; max-height: calc(100vh - 140px); overflow-y: auto; }
-  .setup-side .info-box { margin-bottom: 1.2rem; }
-  .setup-side input[type="text"] { box-sizing: border-box; } /* ver nota de box-sizing en CLAUDE.md */
-  /* El botón Generar queda pegado abajo del panel aunque el panel tenga scroll */
-  .setup-side #start-btn { position: sticky; bottom: 0; z-index: 2; box-shadow: 0 -10px 18px var(--bg2); }
-  .setup-main { min-width: 0; }
-  .setup-main-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.2rem; }
+  .setup-card.setup-unified { padding: 1.6rem 1.8rem; display: flex; flex-direction: column; gap: 1.2rem; }
+  .setup-top { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; flex-wrap: wrap; }
+  .setup-unified .setup-top h2 { margin: 0; }
+  .setup-summary { font-size: 0.9rem; color: var(--text-muted); }
+  .setup-summary strong { color: var(--gold); font-weight: 600; }
+  .setup-config { display: grid; grid-template-columns: minmax(220px, 1.3fr) auto auto auto; gap: 1.2rem 2rem; align-items: start; }
+  .setup-field { display: flex; flex-direction: column; min-width: 0; }
+  .setup-field .size-options { margin-bottom: 0; }
+  .setup-field-name input { box-sizing: border-box; } /* ver nota de box-sizing en CLAUDE.md */
+  .setup-hint { font-size: 0.78rem; color: var(--text-muted); margin-top: 0.4rem; max-width: 34ch; line-height: 1.4; }
+  .setup-hint strong { color: var(--gold); font-weight: 600; }
+  .setup-rule { height: 1px; background: var(--border-strong); }
+  .setup-foot { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; }
+  .setup-foot-left { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+  .setup-foot #start-btn { padding: 0.7rem 1.6rem; }
   .setup-filled { color: var(--gold); font-weight: 700; margin-left: 0.3rem; }
-  @media (max-width: 960px) {
-    .setup-layout { grid-template-columns: 1fr; }
-    .setup-side { position: static; max-height: none; }
+  @media (max-width: 1150px) { .setup-config { grid-template-columns: 1fr 1fr; } }
+  @media (max-width: 640px) {
+    .setup-config { grid-template-columns: 1fr; }
     #setup-screen { padding: 0 0.8rem; margin-top: 1rem; }
+    .setup-card.setup-unified { padding: 1.2rem; }
+    .setup-foot #start-btn { width: 100%; }
   }
   .setup-card { background: var(--bg2); border: 1px solid var(--border-strong); border-radius: var(--radius-lg); padding: 2.5rem; }
   .setup-card h2 { font-family: 'Barlow Condensed', sans-serif; font-size: 1.8rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; color: var(--gold); margin-bottom: 0.4rem; }
