@@ -254,6 +254,7 @@
 
   /* ── TOAST ────────────────────────────────────────── */
   .toast { position: fixed; bottom: 2rem; right: 2rem; background: var(--bg3); border: 1px solid var(--gold); color: var(--text); padding: 0.8rem 1.5rem; border-radius: var(--radius); font-family: 'Barlow Condensed', sans-serif; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; transform: translateY(100px); opacity: 0; transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); z-index: 1000; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+  .toast { max-width: min(560px, calc(100vw - 4rem)); line-height: 1.35; } /* avisos largos (importar) en varias líneas */
   .toast.show { transform: translateY(0); opacity: 1; }
 
   /* ── MODO VISUALIZACIÓN ─────────────────────────────── */

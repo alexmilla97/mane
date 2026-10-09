@@ -708,7 +708,8 @@ const SESSION_ID   = params.get('session');  // torneo activo
 
 // ── 4.2 Helpers DOM ────────────────────────────────────
 const $ = window.$ = id => document.getElementById(id);
-function toast(msg){ const t=$('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2400); }
+let _toastTimer = null;
+function toast(msg, ms=2400){ const t=$('toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(_toastTimer); _toastTimer=setTimeout(()=>t.classList.remove('show'),ms); }
 // Escapa texto antes de meterlo en innerHTML. Los nombres de jugadores, torneos y
 // dispositivos vienen de Firestore / URL y no son de fiar (evita XSS y nombres rotos con < o &).
 function esc(v){
@@ -1926,6 +1927,31 @@ rebuildGroupOptions();
 $('btn-fill-test').onclick=()=>{ [...$('teams-grid').querySelectorAll('input')].forEach((inp,i)=>{ if(!inp.value.trim()) inp.value=`Jugador ${i+1}`; }); updateSetupCounts(); toast('🎲 Nombres de prueba rellenados'); };
 
 // Importar jugadores desde archivo
+// Formato con encabezados (opcional): una línea "Grupo A" (o "Grupo 1", "Grupo B:", …)
+// y debajo sus participantes. También vale "Grupo A: Ana; Luis" en la misma línea.
+// Sin ningún encabezado se reparte por orden, grupo a grupo, como siempre.
+const GROUP_HEADER_RE = /^grupo\s+([a-z]|\d{1,2})(?:\s*[:.\-]\s*(.*)|\s*)$/i;
+function groupLetter(g){ return 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'[g] || String(g+1); }
+function planImport(tokens, nGroups){
+  const byGroup = {}, outOfRange = new Set();
+  let current = null, withHeaders = false, beforeHeader = 0;
+  tokens.forEach(tok=>{
+    const m = tok.match(GROUP_HEADER_RE);
+    if(m){
+      withHeaders = true;
+      current = /\d/.test(m[1]) ? parseInt(m[1],10)-1 : m[1].toUpperCase().charCodeAt(0)-65;
+      if(m[2] && m[2].trim()) add(m[2].trim());
+      return;
+    }
+    if(current===null){ beforeHeader++; return; }
+    add(tok);
+  });
+  function add(name){
+    if(current<0 || current>=nGroups){ outOfRange.add(current); return; }
+    (byGroup[current] = byGroup[current] || []).push(name);
+  }
+  return { withHeaders, byGroup, outOfRange:[...outOfRange].sort((a,b)=>a-b), beforeHeader };
+}
 $('btn-import-players').addEventListener('click', ()=>$('import-file-input').click());
 $('import-file-input').addEventListener('change', async e=>{
   const file = e.target.files[0]; if(!file) return;
@@ -1952,11 +1978,30 @@ $('import-file-input').addEventListener('change', async e=>{
 
     if(!names.length){ toast('⚠️ No se encontraron nombres en el archivo'); return; }
 
-    const inputs = [...$('teams-grid').querySelectorAll('input')];
-    const filled = Math.min(names.length, inputs.length);
-    inputs.forEach((inp, i)=>{ inp.value = i<names.length ? names[i] : ''; });
+    const inputs = [...$('teams-grid').querySelectorAll('input[data-group]')];
+    const plan = planImport(names, numGroups);
+    if(!plan.withHeaders){
+      // Sin encabezados: por orden, llenando grupo a grupo (como siempre)
+      const filled = Math.min(names.length, inputs.length);
+      inputs.forEach((inp, i)=>{ inp.value = i<names.length ? names[i] : ''; });
+      updateSetupCounts();
+      toast(`✓ ${filled} jugadores importados${names.length>inputs.length?' (hay más en el archivo que plazas disponibles)':''}`);
+      return;
+    }
+    // Con encabezados "Grupo A" / "Grupo 1": cada nombre a su grupo; huecos sobrantes vacíos (BYE)
+    const avisos = [];
+    let filled = 0;
+    for(let g=0; g<numGroups; g++){
+      const slots = inputs.filter(inp=>+inp.dataset.group===g);
+      const list = plan.byGroup[g] || [];
+      slots.forEach((inp,i)=>{ inp.value = list[i] || ''; });
+      filled += Math.min(list.length, slots.length);
+      if(list.length > slots.length) avisos.push(`sobran ${list.length-slots.length} en el Grupo ${groupLetter(g)}`);
+    }
+    if(plan.outOfRange.length) avisos.push(`el panel tiene ${numGroups} grupos y el archivo usa ${plan.outOfRange.map(groupLetter).map(l=>'Grupo '+l).join(', ')} (ignorados)`);
+    if(plan.beforeHeader) avisos.push(`${plan.beforeHeader} nombre${plan.beforeHeader>1?'s':''} antes del primer "Grupo" (ignorado${plan.beforeHeader>1?'s':''})`);
     updateSetupCounts();
-    toast(`✓ ${filled} jugadores importados${names.length>inputs.length?' (hay más en el archivo que plazas disponibles)':''}`);
+    toast(`✓ ${filled} jugadores importados por grupos`+(avisos.length?` · ⚠️ ${avisos.join(' · ')}`:''), avisos.length ? 7000 : 2400);
   }catch(err){
     console.error('Import error', err);
     toast('⚠️ Error al leer el archivo');
