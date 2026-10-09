@@ -46,11 +46,19 @@
   .setup-foot-left { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
   .setup-foot #start-btn { padding: 0.7rem 1.6rem; }
   .setup-filled { color: var(--gold); font-weight: 700; margin-left: 0.3rem; }
+  /* Pantalla completa y sin costuras mientras se ve "Nuevo torneo" (clase puesta por syncSetupMode):
+     sin foto de fondo, sin margen del body, cabecera y contenido con el mismo fondo y sin bordes */
+  body.setup-mode { margin: 0; background: var(--bg2); }
+  body.setup-mode #page-bg { display: none; }
+  body.setup-mode #admin-header { border-bottom-color: transparent; }
+  body.setup-mode #setup-screen { max-width: none; margin: 0; padding: 0; }
+  body.setup-mode .setup-card.setup-unified { border: none; border-radius: 0; background: transparent; padding: 0.4rem 2rem 2rem; }
   @media (max-width: 1150px) { .setup-config { grid-template-columns: 1fr 1fr; } }
   @media (max-width: 640px) {
     .setup-config { grid-template-columns: 1fr; }
     #setup-screen { padding: 0 0.8rem; margin-top: 1rem; }
     .setup-card.setup-unified { padding: 1.2rem; }
+    body.setup-mode .setup-card.setup-unified { padding: 0.4rem 1rem 1.5rem; }
     .setup-foot #start-btn { width: 100%; }
   }
   .setup-card { background: var(--bg2); border: 1px solid var(--border-strong); border-radius: var(--radius-lg); padding: 2.5rem; }
