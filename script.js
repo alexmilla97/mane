@@ -1877,7 +1877,7 @@ function rebuildGroupOptions(){
   const def=divisors(bracketSize)[0]; // por defecto, 2 grupos como siempre
   opts.forEach(g=>{
     const btn=document.createElement('button'); btn.className='size-btn'+(g===def?' active':'');
-    btn.textContent = g===1 ? '1 · Liga' : g;
+    btn.textContent = g===1 ? 'Liga' : g;
     if(g===1) btn.title='Formato liga: todos contra todos y después cuadro sembrado por la clasificación';
     btn.addEventListener('click',()=>{ c.querySelectorAll('.size-btn').forEach(b=>b.classList.remove('active')); btn.classList.add('active'); numGroups=g; updateGroupInfo(); rebuildTeamInputs(); });
     c.appendChild(btn);
