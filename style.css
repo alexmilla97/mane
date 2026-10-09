@@ -47,10 +47,12 @@
   #step2 { animation: fadeIn 0.2s ease; }
   .teams-grid { display: grid; grid-template-columns: 1fr; gap: 0.8rem; margin-bottom: 1.5rem; }
   .team-input-row { display: flex; gap: 0.6rem; align-items: center; }
-  .team-input-wrap { position: relative; flex: 1; }
+  .team-input-wrap { position: relative; flex: 1; min-width: 0; } /* min-width:0 → el input puede encoger y no se mete bajo el selector de grupo */
   .team-num { position: absolute; left: 0.75rem; top: 50%; transform: translateY(-50%); font-family: 'Barlow Condensed', sans-serif; font-size: 0.8rem; font-weight: 700; color: var(--text-muted); pointer-events: none; z-index: 1; }
-  .team-input-wrap input { padding-left: 2rem; }
-  .group-select { width: 120px; font-family: 'Barlow Condensed', sans-serif; font-weight: 700; text-transform: uppercase; font-size: 0.85rem; }
+  /* box-sizing explícito: la regla global de la línea 3 no se aplica (el '<style>' de la línea 1 la invalida) */
+  .team-input-wrap input, .group-select { box-sizing: border-box; }
+  .team-input-wrap input { padding-left: 2rem; min-width: 0; }
+  .group-select { width: 120px; flex: 0 0 120px; font-family: 'Barlow Condensed', sans-serif; font-weight: 700; text-transform: uppercase; font-size: 0.85rem; }
 
   /* ── GROUP SCREEN ─────────────────────────────────── */
   #group-screen { display: none; }
