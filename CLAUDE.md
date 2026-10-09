@@ -76,7 +76,7 @@ git -C "C:\Users\aleja\Desktop\PAGINA MANE" push
 - Cada `git push` a `main` despliega automáticamente en producción
 - URL de producción: https://torneosmane.org
 - **Caché (IMPORTANTE)**: Cloudflare sirve `script.js`/`style.css` con `Cache-Control: max-age=14400` (4 h). Ese valor lo impone un ajuste de **zona** en el panel de Cloudflare (*Caching → Configuration → Browser Cache TTL = 4 horas*), que **sobrescribe** las cabeceras del origen, por lo que el fichero `_headers` del repo **no surte efecto por sí solo**.
-  - **Solución activa (sin tocar el panel)**: `index.html` referencia los assets con un parámetro de versión: `script.js?v=N` y `style.css?v=N`. **Al cambiar `script.js` o `style.css` hay que incrementar `N`** (URL nueva → el navegador descarga fresco, ignorando la copia cacheada). Versión actual: `v=4`.
+  - **Solución activa (sin tocar el panel)**: `index.html` referencia los assets con un parámetro de versión: `script.js?v=N` y `style.css?v=N`. **Al cambiar `script.js` o `style.css` hay que incrementar `N`** (URL nueva → el navegador descarga fresco, ignorando la copia cacheada). Versión actual: `v=5`.
   - **Solución alternativa (un solo cambio en el panel)**: poner *Browser Cache TTL* en **"Respect Existing Headers"**; entonces el `_headers` (ya incluido en el repo, con `no-cache, must-revalidate`) pasa a funcionar y ya no haría falta subir la versión `?v=` en cada cambio.
 
 ## Bugs conocidos y soluciones aplicadas (script.js)
@@ -112,6 +112,13 @@ git -C "C:\Users\aleja\Desktop\PAGINA MANE" push
 - **"Simular resultados" de grupos** pide confirmación.
 - `resetWinner` es null-safe en eliminación simple. SheetJS cargado desde `cdn.sheetjs.com` 0.20.3.
 - **Pendiente (fuera del código)**: publicar reglas de Firestore (ver `firestore.rules.propuesta`) y desactivar el registro de usuarios con email en Firebase Auth.
+
+### Edición manual de resultados del cuadro
+- Pulsar un partido ya jugado abre el panel en **modo edición** (`_bsp.editing`): precarga el marcador guardado (`match.s1/s2`; si es un resultado antiguo sin marcador, 1-0 para el ganador). Botones: **Actualizar** y **↺ Anular resultado** (`#bsp-clear-btn`, `window.clearBracketScore`). Partidos contra BYE no se editan.
+- Mismo ganador → solo se actualiza el marcador. Ganador distinto o anular → `undoBracketMatch(st, bType, ri, mi)` anula el partido y **en cascada** todos los posteriores a los que llegaron su ganador/perdedor (upper siguiente, drop al lower vía `lowerDropTarget`, siguiente lower vía `lowerNextTarget`, gran final / campeón), vaciando esas casillas. `confirmBracketUndo` simula sobre una copia y lista los resultados que se borrarán antes de confirmar.
+- `afterBracketUndo` quita de la cola los partidos del cuadro que ya no son válidos y avisa si alguno estaba en juego en un iPad (su resultado se ignorará por `scoreTeamsMatch`).
+- Los resultados (panel e iPad) guardan ahora `s1/s2` en el partido del cuadro.
+- `resetWinner` usa el mismo motor. Verificado con un banco de pruebas aleatorio (224.000 comprobaciones, tamaños 4–64, doble/simple, con BYEs): tras cualquier secuencia de jugar/anular/cambiar, el cuadro coincide con reconstruirlo desde cero.
 
 ## Setup — opciones del cuadro
 

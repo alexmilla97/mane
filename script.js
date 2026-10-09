@@ -1627,12 +1627,15 @@ function subscribeToSession(){
               console.warn('Resultado de cuadro ignorado (no coincide con el partido)', d, match);
               toast(`⚠️ Resultado ignorado: no coincide con el partido actual${dev?' · '+dev.name:''}`);
             } else if(d.bType==='gf'){
+              match.s1=+d.s1; match.s2=+d.s2;
               selectWinnerGF(si);
               toast(`📱 🏆 ${winner} campeón${dev?' · '+dev.name:''}`);
             } else if(d.bType==='lower'){
+              match.s1=+d.s1; match.s2=+d.s2;
               selectWinnerLower(d.bRi, d.bMi, si);
               toast(`📱 ${winner} avanza en lower${dev?' · '+dev.name:''}`);
             } else {
+              match.s1=+d.s1; match.s2=+d.s2;
               selectWinner(d.bRi, d.bMi, si);
               toast(`📱 ${winner} avanza${dev?' · '+dev.name:''}`);
             }
@@ -2705,38 +2708,53 @@ function openBracketScorePanel(ri, mi, isGF, isLower, lri){
   const match = isGF ? state.gf
     : isLower ? state.lRounds?.[lri]?.[mi]
     : state.rounds?.[ri]?.[mi];
-  if(!match || !match.t1 || !match.t2 || match.winner) return;
+  if(!match || !match.t1 || !match.t2) return;
+  // Partidos contra BYE se resuelven solos: no se editan
+  if(match.t1.name==='BYE' || match.t2.name==='BYE') return;
 
-  _bsp = {ri, mi, isGF, isLower, lri, s1:0, s2:0};
+  // Partido ya jugado → modo edición: se precarga el resultado guardado (o 1-0 para el
+  // ganador si es un resultado antiguo sin marcador) y se permite corregirlo o anularlo.
+  const editing = !!match.winner;
+  let s1 = 0, s2 = 0;
+  if(editing){
+    if(match.s1!=null && match.s2!=null){ s1 = match.s1; s2 = match.s2; }
+    else if(match.winner.name===match.t1.name){ s1 = 1; } else { s2 = 1; }
+  }
+  _bsp = {ri, mi, isGF, isLower, lri, s1, s2, editing};
 
   const label = isGF ? 'Gran Final'
     : isLower ? `Lower R${lri+1}` : `Upper R${ri+1}`;
-  $('bsp-label').textContent = label;
+  $('bsp-label').textContent = editing ? `${label} · Editar resultado (ganó ${match.winner.name})` : label;
+  const saveBtn = $('bsp-save-btn'), clearBtn = $('bsp-clear-btn');
+  if(saveBtn) saveBtn.textContent = editing ? 'Actualizar ✓' : 'Guardar resultado ✓';
+  if(clearBtn) clearBtn.style.display = editing ? '' : 'none';
 
   $('bsp-row').innerHTML = `
     <div class="sc-lbl">${esc(match.t1.name)}</div>
     <div class="sc-grp">
       <button class="sc-btn" onclick="modBSP(-1,1)">-</button>
-      <div class="sc-num" id="bsp-s1">0</div>
+      <div class="sc-num" id="bsp-s1">${s1}</div>
       <button class="sc-btn" onclick="modBSP(1,1)">+</button>
     </div>
     <div class="sc-sep">:</div>
     <div class="sc-grp">
       <button class="sc-btn" onclick="modBSP(-1,2)">-</button>
-      <div class="sc-num" id="bsp-s2">0</div>
+      <div class="sc-num" id="bsp-s2">${s2}</div>
       <button class="sc-btn" onclick="modBSP(1,2)">+</button>
     </div>
     <div class="sc-lbl">${esc(match.t2.name)}</div>`;
 
-  // Botón de cola — igual que en grupos
+  // Botón de cola — igual que en grupos (no aplica a un partido ya jugado)
   const bType = isGF?'gf':isLower?'lower':'upper';
   const bRi   = isGF?0:isLower?lri:ri;
-  const qSection = document.createElement('div');
-  renderBracketSendToSection(bType, bRi, mi, qSection);
   const existingQ = $('bsp-queue-section');
   if(existingQ) existingQ.remove();
-  qSection.id = 'bsp-queue-section';
-  $('bsp-row').after(qSection);
+  if(!editing){
+    const qSection = document.createElement('div');
+    renderBracketSendToSection(bType, bRi, mi, qSection);
+    qSection.id = 'bsp-queue-section';
+    $('bsp-row').after(qSection);
+  }
 
   $('bracket-score-panel').style.display = 'block';
 }
@@ -2758,11 +2776,136 @@ window.saveBracketScore = () => {
   const {ri, mi, isGF, isLower, lri, s1, s2} = _bsp;
   if(s1 === s2){ toast('⚠️ El resultado no puede ser un empate'); return; }
   const winnerSi = s1 > s2 ? 0 : 1;
+  const bType = isGF?'gf':isLower?'lower':'upper';
+  const bRi   = isGF?0:isLower?lri:ri;
+  const match = getBracketMatch(state, bType, bRi, mi);
+  if(!match) return;
+
+  if(match.winner){
+    const newWinner = winnerSi===0 ? match.t1 : match.t2;
+    if(newWinner.name === match.winner.name){
+      // Mismo ganador: solo se corrige el marcador, no cambia nada del cuadro
+      match.s1 = s1; match.s2 = s2;
+      closeBracketScorePanel();
+      saveCurrentTournament();
+      toast('✓ Resultado actualizado');
+      return;
+    }
+    // Cambia el ganador: anular este partido y todo lo que dependía de él
+    if(!confirmBracketUndo(bType, bRi, mi, `¿Cambiar el ganador a ${newWinner.name}?`)) return;
+    undoBracketMatch(state, bType, bRi, mi);
+    afterBracketUndo();
+  }
+
   closeBracketScorePanel();
+  match.s1 = s1; match.s2 = s2;
   if(isGF) window.selectWinnerGF(winnerSi);
   else if(isLower) window.selectWinnerLower(lri, mi, winnerSi);
   else window.selectWinner(ri, mi, winnerSi);
 };
+
+// Anular el resultado (botón "Anular resultado" del panel en modo edición)
+window.clearBracketScore = () => {
+  if(!_bsp) return;
+  const {ri, mi, isGF, isLower, lri} = _bsp;
+  const bType = isGF?'gf':isLower?'lower':'upper';
+  const bRi   = isGF?0:isLower?lri:ri;
+  const match = getBracketMatch(state, bType, bRi, mi);
+  if(!match?.winner) return;
+  if(!confirmBracketUndo(bType, bRi, mi, `¿Anular el resultado de ${match.t1.name} vs ${match.t2.name}? El partido volverá a quedar pendiente.`)) return;
+  undoBracketMatch(state, bType, bRi, mi);
+  closeBracketScorePanel();
+  afterBracketUndo();
+  toast('↺ Resultado anulado');
+};
+
+// ── 10.2 Editar / anular resultados del cuadro ─────────
+function getBracketMatch(st, bType, ri, mi){
+  return bType==='gf' ? st.gf
+    : bType==='lower' ? st.lRounds?.[ri]?.[mi]
+    : st.rounds?.[ri]?.[mi];
+}
+
+// Casilla del lower donde cae el perdedor de un partido del upper (misma lógica que dropToLower)
+function lowerDropTarget(st, ur, umi){
+  if(!st.lRounds?.length) return null;
+  if(ur === 0) return {lri:0, lmi:Math.floor(umi/2), slot: umi%2===0 ? 't1' : 't2'};
+  const lri = ur*2 - 1, round = st.lRounds[lri];
+  if(!round) return null;
+  const lmi = ur%2===1 ? (round.length-1) - umi : umi;
+  return {lri, lmi, slot:'t1'};
+}
+
+// Casilla a la que avanza el ganador de un partido del lower (misma lógica que propagateLower)
+function lowerNextTarget(st, lri, mi){
+  const next = st.lRounds[lri+1];
+  if(!next) return {gf:true};
+  if(next[0]?.type === 'drop-in') return {lri:lri+1, lmi:mi, slot:'t2'};
+  return {lri:lri+1, lmi:Math.floor(mi/2), slot: mi%2===0 ? 't1' : 't2'};
+}
+
+// Anula el resultado de un partido y, en cascada, todos los partidos posteriores a los
+// que llegaron su ganador o su perdedor (y vacía esas casillas). Devuelve la lista de
+// partidos reales (sin BYE) cuyo resultado se ha borrado; el primero es el propio partido.
+function undoBracketMatch(st, bType, ri, mi, cleared=[]){
+  const m = getBracketMatch(st, bType, ri, mi);
+  if(!m?.winner) return cleared;
+  if(m.t1?.name!=='BYE' && m.t2?.name!=='BYE') cleared.push(`${m.t1?.name} vs ${m.t2?.name}`);
+  m.winner = null; m.loser = null; delete m.s1; delete m.s2;
+
+  // Vacía la casilla a la que avanzó alguien (anulando antes ese partido si ya se jugó)
+  const free = (tb, tri, tmi, slot) => {
+    undoBracketMatch(st, tb, tri, tmi, cleared);
+    const t = getBracketMatch(st, tb, tri, tmi);
+    if(t) t[slot] = null;
+  };
+
+  if(bType === 'upper'){
+    if(ri+1 < st.rounds.length) free('upper', ri+1, Math.floor(mi/2), mi%2===0 ? 't1' : 't2');
+    else if(st.gf) free('gf', 0, 0, 't1');
+    else st.champion = null; // eliminación simple: era la final
+    if(!st.singleElim){
+      const d = lowerDropTarget(st, ri, mi);
+      if(d) free('lower', d.lri, d.lmi, d.slot);
+    }
+  } else if(bType === 'lower'){
+    const n = lowerNextTarget(st, ri, mi);
+    if(n.gf){ if(st.gf) free('gf', 0, 0, 't2'); }
+    else free('lower', n.lri, n.lmi, n.slot);
+  }
+  // gf: no tiene partidos posteriores
+  return cleared;
+}
+
+// Pide confirmación mostrando qué resultados posteriores se van a borrar (simulación sobre una copia)
+function confirmBracketUndo(bType, ri, mi, question){
+  const deps = undoBracketMatch(JSON.parse(JSON.stringify(state)), bType, ri, mi).slice(1);
+  const extra = deps.length
+    ? `\n\nTambién se borrarán ${deps.length} resultado${deps.length>1?'s':''} posterior${deps.length>1?'es':''} que dependía${deps.length>1?'n':''} de este partido:\n• ${deps.join('\n• ')}`
+    : '';
+  return confirm(question + extra);
+}
+
+// Tras anular: quitar de la cola partidos del cuadro que ya no son válidos, avisar de
+// partidos en juego afectados, y guardar/redibujar
+function afterBracketUndo(){
+  const stillValid = (bType, bRi, bMi, t1, t2) => {
+    const m = getBracketMatch(state, bType, bRi, bMi);
+    return !!m && !m.winner && m.t1?.name===t1 && m.t2?.name===t2;
+  };
+  const before = globalQueue.length;
+  globalQueue = globalQueue.filter(q => q.sid!==sessionId || q.type!=='bracket' || stillValid(q.bType, q.bRi, q.bMi, q.t1, q.t2));
+  if(globalQueue.length !== before) saveGlobalQueue();
+  connectedDevices.forEach(d => {
+    const cm = d.currentMatch;
+    if(d.busy && cm?.type==='bracket' && cm.sid===sessionId && !stillValid(cm.bType, cm.bRi, cm.bMi, cm.t1, cm.t2))
+      setTimeout(() => toast(`⚠️ ${cm.t1} vs ${cm.t2} (${d.name}) ya no es válido: su resultado se ignorará`), 2600);
+  });
+  const champ = state.singleElim ? state.champion : state.gf?.winner;
+  if(!champ) $('champion-banner').classList.remove('visible');
+  saveCurrentTournament(); renderBracket(); updateProgress();
+  buildAndSaveQueue().catch(()=>{});
+}
 
 function selectWinner(ri, mi, si){
   const match = state.rounds[ri][mi];
@@ -2812,51 +2955,14 @@ function selectWinnerGF(si){
   saveCurrentTournament(); renderBracket(); updateProgress();
 }
 
+// Resetear un partido del upper (antigua API, expuesta en window). Usa el mismo motor en
+// cascada que la edición desde el panel; la versión anterior no limpiaba bien el lower.
 function resetWinner(ri, mi){
-  if(!confirm('¿Resetear este partido? Se borrarán los avances posteriores.')) return;
-  function clearFwdUpper(r, m){
-    const match = state.rounds[r][m]; if(!match.winner) return;
-    const old = match.winner; const oldL = match.loser;
-    match.winner=null; match.loser=null;
-    if(r+1 < state.rounds.length){
-      const nm = state.rounds[r+1][Math.floor(m/2)];
-      if(nm.t1?.name===old.name) nm.t1=null;
-      if(nm.t2?.name===old.name) nm.t2=null;
-      clearFwdUpper(r+1, Math.floor(m/2));
-    }
-    // Clear from lower bracket
-    if(oldL) removeLower(r, m, oldL);
-    // Clear GF if came from upper final
-    // En eliminación simple no hay gran final (state.gf es null): limpiar campeón
-    if(state.gf){
-      if(state.gf.t1?.name === old.name) state.gf.t1=null;
-      state.gf.winner=null;
-    } else {
-      state.champion=null;
-    }
-  }
-  clearFwdUpper(ri, mi);
-  $('champion-banner').classList.remove('visible');
-  saveCurrentTournament(); renderBracket(); updateProgress(); toast('✓ Resultado reseteado');
-}
-
-function removeLower(upperRound, upperMatchIdx, team){
-  if(!state.lRounds?.length || !team) return;
-  if(upperRound === 0){
-    const lmi = Math.floor(upperMatchIdx / 2);
-    const m = state.lRounds[0]?.[lmi]; if(!m) return;
-    if(m.t1?.name===team.name) m.t1=null;
-    if(m.t2?.name===team.name) m.t2=null;
-    m.winner=null; m.loser=null;
-  } else {
-    const lri = upperRound * 2 - 1;
-    const dropRound = state.lRounds[lri]; if(!dropRound) return;
-    const shouldInvert = upperRound % 2 === 1;
-    const targetIdx = shouldInvert ? (dropRound.length - 1) - upperMatchIdx : upperMatchIdx;
-    const m = dropRound[targetIdx]; if(!m) return;
-    if(m.t1?.name===team.name) m.t1=null;
-    m.winner=null; m.loser=null;
-  }
+  if(!state.rounds?.[ri]?.[mi]?.winner) return;
+  if(!confirmBracketUndo('upper', ri, mi, '¿Resetear este partido?')) return;
+  undoBracketMatch(state, 'upper', ri, mi);
+  afterBracketUndo();
+  toast('✓ Resultado reseteado');
 }
 
 function roundLabel(total, ri){ return(['Final','Semifinal','Cuartos de Final','Octavos de Final'][total-1-ri]??`Ronda ${ri+1}`); }
