@@ -178,6 +178,13 @@
   body.groups-mode .groups-scroll[data-cols="3"] .group-card:nth-child(3n),
   body.groups-mode .groups-scroll[data-cols="2"] .group-card:nth-child(2n),
   body.groups-mode .groups-scroll[data-cols="1"] .group-card { padding-right: 0; }
+  /* Liga (1 grupo): clasificación a la izquierda, partidos a la derecha en dos columnas */
+  body.groups-mode .groups-scroll[data-cols="1"] .group-card { display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(0, 1fr) minmax(0, 1fr); column-gap: 2.5rem; align-items: start; }
+  body.groups-mode .groups-scroll[data-cols="1"] .group-card > .group-card-title { grid-column: 1 / -1; }
+  body.groups-mode .groups-scroll[data-cols="1"] .group-card > .standings-wrap { grid-column: 1; grid-row: 2 / span 400; position: sticky; top: 1rem; }
+  body.groups-mode .groups-scroll[data-cols="1"] .group-card > .group-matches-lbl { grid-column: 2 / -1; }
+  body.groups-mode .groups-scroll[data-cols="1"] .group-card > .group-match-item { grid-column: auto / span 1; }
+  body.groups-mode .groups-scroll[data-cols="1"] .group-card > .score-panel { grid-column: 2 / -1; }
   body.groups-mode .group-card-title { background: transparent; border-bottom: 2px solid var(--gold-dark); padding: 0 0 0.5rem; font-size: 1.1rem; }
   body.groups-mode .gcard-counter { font-size: 0.8rem; }
   body.groups-mode .standings-wrap { padding: 0.7rem 0 0; }
@@ -194,6 +201,7 @@
   @media (max-width: 1100px) {
     body.groups-mode .groups-scroll[data-cols="3"], body.groups-mode .groups-scroll[data-cols="4"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     body.groups-mode .groups-scroll[data-cols] .group-card { border-left: none; padding: 0 0.8rem; }
+    body.groups-mode .groups-scroll[data-cols="1"] .group-card { display: block; }
     body.groups-mode .groups-scroll[data-cols] .group-card:nth-child(2n+1) { padding-left: 0; }
     body.groups-mode .groups-scroll[data-cols] .group-card:nth-child(2n) { padding-right: 0; }
   }

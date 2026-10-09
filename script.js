@@ -387,7 +387,7 @@ function buildPublicCard(sid, tData){
   const allM = gd.groups?.flatMap(g=>g.matches) || [];
   const played = allM.filter(m=>m.played).length;
   const statsHtml =
-    `<span class="pub-card-stat">👥 ${gd.groups?.length||0} grupos</span>`+
+    `<span class="pub-card-stat">👥 ${gd.groups?.length===1?'Liga':(gd.groups?.length||0)+' grupos'}</span>`+
     `<span class="pub-card-stat">🎮 ${played}/${allM.length} partidos</span>`+
     (st?.rounds ? `<span class="pub-card-stat">🏅 Cuadro: ${st.rounds.flat().filter(m=>m.winner).length}/${st.totalMatches||0}</span>` : '');
 
@@ -1869,17 +1869,28 @@ window.closeAdminMenu = function(){
 // ═══════════════════════════════════════════════════════
 function divisors(n){ const r=[]; for(let i=2;i<=n;i++) if(n%i===0) r.push(i); return r; }
 
+// Formato liga (1 grupo, todos contra todos): solo hasta este tamaño (32 → 496 partidos)
+const LEAGUE_MAX_SIZE = 32;
 function rebuildGroupOptions(){
   const c=$('group-options'); c.innerHTML='';
-  divisors(bracketSize).forEach((g,i)=>{
-    const btn=document.createElement('button'); btn.className='size-btn'+(i===0?' active':''); btn.textContent=g;
+  const opts=(bracketSize<=LEAGUE_MAX_SIZE ? [1] : []).concat(divisors(bracketSize));
+  const def=divisors(bracketSize)[0]; // por defecto, 2 grupos como siempre
+  opts.forEach(g=>{
+    const btn=document.createElement('button'); btn.className='size-btn'+(g===def?' active':'');
+    btn.textContent = g===1 ? '1 · Liga' : g;
+    if(g===1) btn.title='Formato liga: todos contra todos y después cuadro sembrado por la clasificación';
     btn.addEventListener('click',()=>{ c.querySelectorAll('.size-btn').forEach(b=>b.classList.remove('active')); btn.classList.add('active'); numGroups=g; updateGroupInfo(); rebuildTeamInputs(); });
     c.appendChild(btn);
   });
-  numGroups=divisors(bracketSize)[0]; updateGroupInfo(); rebuildTeamInputs();
+  numGroups=def; updateGroupInfo(); rebuildTeamInputs();
 }
 function updateGroupInfo(){
   const tpg=bracketSize/numGroups;
+  if(numGroups===1){
+    const nm=bracketSize*(bracketSize-1)/2;
+    $('groups-info').innerHTML=`<strong>${bracketSize} participantes</strong> · <strong>Liga</strong>: todos contra todos (${nm} partidos) · Después, cuadro sembrado por la clasificación`;
+    return;
+  }
   $('groups-info').innerHTML=`<strong>${bracketSize} participantes</strong> · <strong>${numGroups} grupos</strong> de <strong>${tpg}</strong> · Todos clasifican al cuadro`;
 }
 // Una tarjeta por grupo con sus huecos (data-group = índice del grupo). Al cambiar el
@@ -1895,7 +1906,7 @@ function rebuildTeamInputs(){
   let n=0;
   for(let j=0;j<numGroups;j++){
     const card=document.createElement('div'); card.className='setup-group';
-    card.innerHTML=`<div class="setup-group-title"><span>Grupo ${letters[j]}</span><span class="setup-group-count" data-count="${j}"></span></div>`;
+    card.innerHTML=`<div class="setup-group-title"><span>${numGroups===1?'Liga':'Grupo '+letters[j]}</span><span class="setup-group-count" data-count="${j}"></span></div>`;
     const body=document.createElement('div'); body.className='setup-group-body';
     for(let k=1;k<=tpg;k++){
       const w=document.createElement('div'); w.className='team-input-wrap';
@@ -2113,7 +2124,7 @@ async function launchGroupStageManual(title, teamsData){
   const letters='ABCDEFGHIJKLMNOPQRSTUVWXYZ', groups=[];
   for(let g=0;g<numGroups;g++){
     const groupTeams=teamsData.filter(t=>t.groupIdx===g).map((t,i)=>({name:t.name,seed:g*(bracketSize/numGroups)+i+1}));
-    groups.push({name:'Grupo '+letters[g],teams:groupTeams,matches:makeRR(groupTeams),manualOrder:null});
+    groups.push({name:numGroups===1?'Liga':'Grupo '+letters[g],teams:groupTeams,matches:makeRR(groupTeams),manualOrder:null});
   }
   sessionId=genSessionId();
   groupData={title,groups};
@@ -2133,6 +2144,8 @@ function renderGroups(){
   c.innerHTML='';
   // Columnas por fila (hasta 4) para la vista a todo el ancho (.groups-mode)
   c.dataset.cols = Math.min(groupData.groups.length, 4);
+  const badge = document.querySelector('#group-screen .phase-label-badge');
+  if(badge) badge.textContent = groupData.groups.length===1 ? 'Liga' : 'Fase de grupos';
   groupData.groups.forEach((g,gi)=>{
     try{ c.appendChild(buildGroupCard(g,gi)); }
     catch(e){ console.error(`buildGroupCard error gi=${gi}`,e); }
@@ -2222,7 +2235,7 @@ function updateGroupProgress(){
   const complete=done===all.length;
   $('btn-advance').classList.toggle('ready',complete||!!state.rounds);
   $('btn-advance').textContent=state.rounds?'Ver Cuadro →':'Avanzar al Cuadro →';
-  $('footer-info').innerHTML=state.rounds?'<strong>Cuadro generado.</strong> Puedes volver a verlo o seguir editando resultados.':complete?'<strong>¡Fase de grupos completada!</strong> Ya puedes configurar los cruces.':'Completa todos los partidos para continuar.';
+  $('footer-info').innerHTML=state.rounds?'<strong>Cuadro generado.</strong> Puedes volver a verlo o seguir editando resultados.':complete?(groupData.groups.length===1?'<strong>¡Liga completada!</strong> Ya puedes generar el cuadro.':'<strong>¡Fase de grupos completada!</strong> Ya puedes configurar los cruces.'):'Completa todos los partidos para continuar.';
 }
 $('btn-advance').onclick=()=>{
   if(state.rounds){
@@ -2230,6 +2243,10 @@ $('btn-advance').onclick=()=>{
     $('group-screen').style.display='none';
     $('tournament-screen').style.display='block';
     renderBracket(); updateProgress();
+  } else if(groupData.groups.length===1){
+    if(!confirm('¿Generar el cuadro? Se siembra con la clasificación de la liga: 1º contra último, 2º contra penúltimo… (1º y 2º solo pueden cruzarse en la final).')) return;
+    $('group-screen').style.display='none';
+    launchTournament(groupData.title, generateProfessionalNames([[0]]));
   } else {
     renderPairingScreen();
   }
@@ -2346,6 +2363,17 @@ function generateProfessionalNames(pairings){
     const byes = Array(Math.max(0, slotPerGroup - real.length)).fill('BYE');
     return [...real, ...byes];
   };
+
+  // Liga (1 grupo): siembra estándar por la clasificación. El orden de huecos sale de
+  // duplicar recursivamente [1,2] → [1,4,2,3]… (cada semilla s se empareja con N+1-s),
+  // así 1º va contra el último y 1º/2º quedan en mitades opuestas (solo en la final).
+  // Los BYE son las últimas semillas, de modo que nunca hay BYE contra BYE.
+  if(nGroups === 1){
+    const ranked = fullOf(0); // jugadores reales por clasificación + BYE al final
+    let order = [1];
+    while(order.length < ranked.length) order = order.flatMap(s => [s, order.length*2+1-s]);
+    return order.map(s => ranked[s-1] ?? 'BYE');
+  }
 
   // Para 2 grupos: tabla de seeding fija
   if(nGroups === 2){
