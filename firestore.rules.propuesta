@@ -1,0 +1,75 @@
+// ═══════════════════════════════════════════════════════════════════
+// PROPUESTA de reglas de Firestore para torneosmane.org — NO están publicadas.
+//
+// Antes de usarlas:
+//   1. Copia las reglas ACTUALES (consola Firebase → Firestore → Reglas) y guárdalas
+//      por si hay que volver atrás.
+//   2. Cambia TU_EMAIL_ADMIN@ejemplo.com por el email (o emails) con los que entras al gestor.
+//   3. Pruébalas en el "Simulador de reglas" de la consola, o en un torneo de prueba,
+//      antes de un torneo real: admin, iPad (?device=...) y web pública sin login.
+//
+// Además, en Authentication → Settings → User actions, desactiva
+// "Enable create (sign-up)" para que nadie pueda crearse una cuenta con email
+// (el código trata como admin a cualquier usuario no anónimo).
+// ═══════════════════════════════════════════════════════════════════
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isAdmin() {
+      return request.auth != null
+        && request.auth.token.email in ['TU_EMAIL_ADMIN@ejemplo.com'];
+    }
+    function signedIn() { return request.auth != null; } // incluye anónimos (iPads y público)
+
+    // Torneos y su cola pública: lectura pública, escritura solo admin
+    match /torneos/{sid} {
+      allow read: if true;
+      allow write: if isAdmin();
+      match /meta/{docId} {
+        allow read: if true;
+        allow write: if isAdmin();
+      }
+    }
+
+    // publishedTorneos, globalQueue, devicesList…: lectura pública, escritura solo admin
+    match /config/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Dispositivos (iPads). El iPad entra como anónimo y escribe su propio documento.
+    match /devices/{devId} {
+      allow read: if signedIn();
+      allow create, update: if isAdmin() || (
+        signedIn()
+        && request.resource.data.keys().hasOnly(
+             ['clientId','name','lastSeen','blocked','busy','currentMatch','ready'])
+        && (!('name' in request.resource.data)
+            || (request.resource.data.name is string && request.resource.data.name.size() <= 40))
+      );
+      allow delete: if isAdmin();
+
+      // Bandeja de entrada: solo el admin envía partidos; el iPad los lee y los borra
+      match /inbox/{msgId} {
+        allow read, delete: if signedIn();
+        allow create, update: if isAdmin();
+      }
+    }
+
+    // Resultados enviados por los iPads. Solo se aceptan si el dispositivo tiene asignado
+    // ESE partido (currentMatch.matchId) en el momento de enviarlo.
+    match /scores/{scoreId} {
+      allow read, delete: if isAdmin();
+      allow create, update: if isAdmin() || (
+        signedIn()
+        && request.resource.data.from is string
+        && request.resource.data.s1 is int && request.resource.data.s1 >= 0 && request.resource.data.s1 <= 99
+        && request.resource.data.s2 is int && request.resource.data.s2 >= 0 && request.resource.data.s2 <= 99
+        && exists(/databases/$(database)/documents/devices/$(request.resource.data.from))
+        && get(/databases/$(database)/documents/devices/$(request.resource.data.from)).data.currentMatch.matchId
+             == request.resource.data.matchId
+      );
+    }
+  }
+}

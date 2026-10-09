@@ -37,6 +37,8 @@ PAGINA MANE/
 ├── style.css     — Todo el CSS
 ├── script.js     — Toda la lógica JavaScript (con índice de secciones al inicio)
 ├── portada.JPG   — Imagen de fondo de la página
+├── sello.png     — Sello de fondo de pegatinas/tickets PDF (se carga con loadSello() solo al generar)
+├── firestore.rules.propuesta — Propuesta de reglas de Firestore (NO publicada)
 └── CLAUDE.md     — Instrucciones para Claude Code
 ```
 
@@ -74,7 +76,7 @@ git -C "C:\Users\aleja\Desktop\PAGINA MANE" push
 - Cada `git push` a `main` despliega automáticamente en producción
 - URL de producción: https://torneosmane.org
 - **Caché (IMPORTANTE)**: Cloudflare sirve `script.js`/`style.css` con `Cache-Control: max-age=14400` (4 h). Ese valor lo impone un ajuste de **zona** en el panel de Cloudflare (*Caching → Configuration → Browser Cache TTL = 4 horas*), que **sobrescribe** las cabeceras del origen, por lo que el fichero `_headers` del repo **no surte efecto por sí solo**.
-  - **Solución activa (sin tocar el panel)**: `index.html` referencia los assets con un parámetro de versión: `script.js?v=N` y `style.css?v=N`. **Al cambiar `script.js` o `style.css` hay que incrementar `N`** (URL nueva → el navegador descarga fresco, ignorando la copia cacheada). Versión actual: `v=3`.
+  - **Solución activa (sin tocar el panel)**: `index.html` referencia los assets con un parámetro de versión: `script.js?v=N` y `style.css?v=N`. **Al cambiar `script.js` o `style.css` hay que incrementar `N`** (URL nueva → el navegador descarga fresco, ignorando la copia cacheada). Versión actual: `v=4`.
   - **Solución alternativa (un solo cambio en el panel)**: poner *Browser Cache TTL* en **"Respect Existing Headers"**; entonces el `_headers` (ya incluido en el repo, con `no-cache, must-revalidate`) pasa a funcionar y ya no haría falta subir la versión `?v=` en cada cambio.
 
 ## Bugs conocidos y soluciones aplicadas (script.js)
@@ -98,6 +100,18 @@ git -C "C:\Users\aleja\Desktop\PAGINA MANE" push
 - **Listener de scores pisaba partidos recién despachados**: liberaba el dispositivo (`busy:false`) de forma incondicional, pudiendo sobrescribir un partido recién enviado por una escritura tardía. Solución: solo libera si `currentMatch.matchId` del dispositivo coincide con el `matchId` del resultado (o no tiene partido), comparando con `String()`.
 - **Cuadro de 64 con 4 grupos generaba un cuadro de 32**: en `generateProfessionalNames`, el bloque de `nGroups===4` usaba la tabla de seeding fija de 32 jugadores (8 por grupo) también para `n=16` (64 jugadores = 16 por grupo). Esa tabla solo referencia los índices `0..3` y `last-3..last`, así que **descartaba 8 jugadores por grupo (32 en total)** → el cuadro salía de 32. Solución: las tablas fijas de 4 grupos se usan solo para `n===4` y `n===8`; para cualquier otro `n` (p. ej. 16) se delega en el *fallback* genérico L/R, que reparte a los 64 y conserva la regla "1º y 2º de cada grupo solo se cruzan en la final". Verificado con un banco de pruebas en navegador para todas las combinaciones tamaño×grupos.
 - **Vista admin del cuadro de 64: tarjetas solapadas, cortadas y diminutas**. Causas: (1) no existía ninguna regla CSS `.size-64` (solo `.size-32`), así que el cuadro no se reducía; (2) `scaleBracket` se **invocaba pero no estaba definida** y solo en pantalla completa, por lo que en modo normal no había ajuste al viewport → el cuadro se salía; (3) `.bracket-dual { min-height: 600px }` con 16 partidos por media columna (posicionados por %) los apelotonaba y solapaba. Solución: se implementó `scaleBracket()` (encoge el cuadro entero para que quepa en `#bracket-outer`, tope en escala 1 — no afecta a cuadros que ya caben), se llama siempre tras render y en `resize`/fullscreen, y se añadieron reglas `.size-64` en `style.css` (sobre todo `min-height: 1240px` en `.bracket-dual` para que los 16 partidos no se solapen). Nota: `scaleBracket` también arregla un `ReferenceError` latente al entrar en pantalla completa (F11) en cualquier cuadro.
+
+### Revisión de seguridad y robustez (oct 2026)
+- **XSS**: todos los nombres (jugadores, torneos, grupos, dispositivos) que se meten con `innerHTML` pasan por `esc()` (sección 4.2). Los botones de las listas de torneos y dispositivos usan `addEventListener` en vez de `onclick="...('${id}')"`. **Regla: cualquier texto que venga de Firestore o de la URL se escapa con `esc()` antes de ir a `innerHTML`.**
+- **Validación de resultados**: el iPad envía `t1`/`t2` en el score; `scoreTeamsMatch()` comprueba que coinciden con el partido en esa posición antes de aplicarlo (listener y `loadTournament`). En cuadro, el ganador debe ser `t1` o `t2` (antes, si no coincidía, ganaba `t2`). Scores antiguos sin `t1`/`t2` se aceptan.
+- **Empate en eliminatoria desde el iPad**: `ipadSave` lo bloquea (antes ganaba la pareja A).
+- **Scores de otro torneo**: ya no se borran a los 60 s; solo se borran si el torneo ya no existe.
+- **Cola combinada `?mode=queue`**: los listeners por torneo se cancelan al despublicar (`pubQueueUnsubs`).
+- **Publicar/despublicar/eliminar**: `arrayUnion`/`arrayRemove` sobre `config/publishedTorneos` (atómico).
+- **Setup**: se rechazan nombres repetidos (sin distinguir mayúsculas).
+- **"Simular resultados" de grupos** pide confirmación.
+- `resetWinner` es null-safe en eliminación simple. SheetJS cargado desde `cdn.sheetjs.com` 0.20.3.
+- **Pendiente (fuera del código)**: publicar reglas de Firestore (ver `firestore.rules.propuesta`) y desactivar el registro de usuarios con email en Firebase Auth.
 
 ## Setup — opciones del cuadro
 
