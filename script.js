@@ -1935,8 +1935,8 @@ document.querySelectorAll('#size-options .size-btn').forEach(btn=>btn.addEventLi
 }));
 rebuildGroupOptions();
 
-// Mientras se ve "Nuevo torneo" o la "Fase de grupos" (admin), <body> lleva la clase
-// .setup-mode / .groups-mode: pantalla completa, sin foto de fondo y sin separación entre
+// Mientras se ve "Nuevo torneo", la "Fase de grupos" o el "Cuadro" (admin), <body> lleva
+// la clase .setup-mode / .groups-mode / .bracket-mode: pantalla completa, sin foto de fondo y sin separación entre
 // cabecera y contenido. Las pantallas se muestran/ocultan cambiando style.display en
 // muchos sitios, así que se observa el atributo style en lugar de tocar cada uno.
 function syncSetupMode(){
@@ -1944,9 +1944,10 @@ function syncSetupMode(){
   const admin = shown('admin-header');
   document.body.classList.toggle('setup-mode', admin && shown('setup-screen'));
   document.body.classList.toggle('groups-mode', admin && shown('group-screen'));
+  document.body.classList.toggle('bracket-mode', admin && shown('tournament-screen'));
 }
 const _setupModeObs = new MutationObserver(syncSetupMode);
-['setup-screen','group-screen','admin-header'].forEach(id=>_setupModeObs.observe($(id), {attributes:true, attributeFilter:['style']}));
+['setup-screen','group-screen','tournament-screen','admin-header'].forEach(id=>_setupModeObs.observe($(id), {attributes:true, attributeFilter:['style']}));
 syncSetupMode();
 
 $('btn-fill-test').onclick=()=>{ [...$('teams-grid').querySelectorAll('input')].forEach((inp,i)=>{ if(!inp.value.trim()) inp.value=`Jugador ${i+1}`; }); updateSetupCounts(); toast('🎲 Nombres de prueba rellenados'); };

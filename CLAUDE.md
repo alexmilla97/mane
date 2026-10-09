@@ -76,7 +76,7 @@ git -C "C:\Users\aleja\Desktop\PAGINA MANE" push
 - Cada `git push` a `main` despliega automáticamente en producción
 - URL de producción: https://torneosmane.org
 - **Caché (IMPORTANTE)**: Cloudflare sirve `script.js`/`style.css` con `Cache-Control: max-age=14400` (4 h). Ese valor lo impone un ajuste de **zona** en el panel de Cloudflare (*Caching → Configuration → Browser Cache TTL = 4 horas*), que **sobrescribe** las cabeceras del origen, por lo que el fichero `_headers` del repo **no surte efecto por sí solo**.
-  - **Solución activa (sin tocar el panel)**: `index.html` referencia los assets con un parámetro de versión: `script.js?v=N` y `style.css?v=N`. **Al cambiar `script.js` o `style.css` hay que incrementar `N`** (URL nueva → el navegador descarga fresco, ignorando la copia cacheada). Versión actual: `v=16`.
+  - **Solución activa (sin tocar el panel)**: `index.html` referencia los assets con un parámetro de versión: `script.js?v=N` y `style.css?v=N`. **Al cambiar `script.js` o `style.css` hay que incrementar `N`** (URL nueva → el navegador descarga fresco, ignorando la copia cacheada). Versión actual: `v=17`.
   - **Solución alternativa (un solo cambio en el panel)**: poner *Browser Cache TTL* en **"Respect Existing Headers"**; entonces el `_headers` (ya incluido en el repo, con `no-cache, must-revalidate`) pasa a funcionar y ya no haría falta subir la versión `?v=` en cada cambio.
 
 ## Bugs conocidos y soluciones aplicadas (script.js)
@@ -135,6 +135,10 @@ git -C "C:\Users\aleja\Desktop\PAGINA MANE" push
 - `syncSetupMode()` también pone `body.groups-mode` mientras se ve `#group-screen` (admin): sin foto, sin margen del body, cabecera + `.phase-bar` + `.group-footer` con el mismo fondo `--bg2` y sin bordes.
 - Los grupos (`#groups-container.groups-scroll`) pasan de tarjetas de ancho fijo con scroll horizontal a una **cuadrícula a todo el ancho** de hasta 4 columnas (`renderGroups` pone `data-cols` = mín(grupos, 4)), separadas por una línea vertical fina, sin marco; título de grupo con subrayado dorado. 2 columnas en ≤1100px, 1 en ≤640px. Nombres completos (sin recorte), clasificación alineada a la izquierda, letra algo mayor; el panel de marcador permite nombres en dos líneas.
 - Solo CSS bajo `body.groups-mode` + `data-cols`: la lógica de grupos no cambia y la vista pública tampoco.
+
+### Cuadro (admin) como una sola página
+- `syncSetupMode()` también pone `body.bracket-mode` mientras se ve `#tournament-screen` (admin): sin foto, sin margen del body, cabecera + `.tournament-header` + pie con el mismo fondo `--bg2` y sin bordes; barra de progreso como línea fina con márgenes laterales. Solo CSS: el cuadro, `scaleBracket()` y la pantalla completa (F11, `body.fs-mode`) no cambian.
+- Nota de pruebas: en Edge headless con `--virtual-time-budget` las transiciones CSS no avanzan y `#bracket-scaler` (con `transition`) parece no escalar → desactivar transiciones en la prueba antes de medir.
 
 ### Formato liga (1 grupo)
 - En "Número de grupos" aparece **`Liga`** para tamaños ≤ `LEAGUE_MAX_SIZE` (32). Por defecto sigue seleccionado 2 grupos. El grupo se llama "Liga" (setup, fase, pegatinas, tarjeta pública).

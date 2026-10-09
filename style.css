@@ -233,6 +233,22 @@
 
   /* ── BRACKET SCREEN ───────────────────────────────── */
   #tournament-screen { display: none; }
+  /* Cuadro (admin) como una sola página (clase puesta por syncSetupMode): sin foto, cabecera,
+     barra del cuadro y pie con el mismo fondo y sin bordes. La pantalla completa (F11,
+     body.fs-mode) sigue igual. */
+  body.bracket-mode { margin: 0; background: var(--bg2); }
+  body.bracket-mode #page-bg { display: none; }
+  body.bracket-mode #admin-header { border-bottom-color: transparent; }
+  body.bracket-mode .tournament-header { border-bottom: none; padding: 0.4rem 2rem 1rem; }
+  body.bracket-mode #tournament-screen .progress-bar { width: auto; margin: 0 2rem; border-radius: 2px; }
+  body.bracket-mode .bracket-outer { padding: 1.5rem 2rem 2rem; }
+  body.bracket-mode .champion-banner { margin: 1rem 2rem 0; border-radius: var(--radius); }
+  body.bracket-mode #tournament-screen .group-footer { border-top: 1px solid var(--border); margin: 0 2rem; padding: 1rem 0 1.4rem; }
+  @media (max-width: 640px) {
+    body.bracket-mode .tournament-header { padding: 0.4rem 1rem 1rem; }
+    body.bracket-mode #tournament-screen .progress-bar, body.bracket-mode #tournament-screen .group-footer { margin: 0 1rem; }
+    body.bracket-mode .bracket-outer { padding: 1rem; }
+  }
   .tournament-header { background: var(--bg2); border-bottom: 1px solid var(--border); padding: 1rem 2rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
   .round-lbl-sm { font-family: 'Barlow Condensed', sans-serif; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--gold); margin-bottom: 0.1rem; }
   .tournament-title { font-family: 'Barlow Condensed', sans-serif; font-size: 1.4rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; }
