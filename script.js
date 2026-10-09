@@ -3225,39 +3225,31 @@ function renderBracketDisplay(data){
     const nat = {};
     Object.entries(blockEls).forEach(([k,el])=>{ if(el){ el.style.transform='none'; nat[k]={w:el.offsetWidth||1, h:el.offsetHeight||1}; } });
 
-    // Cada bloque guarda su ESCALA relativa al ancho de pantalla (z: escala = z·anchoPantalla),
-    // no su anchura: así, si se cambian separaciones/tarjetas, el bloque crece o encoge de
-    // verdad. Diseños antiguos con anchura (w) se convierten.
-    const scaleOf = (k, b) => {
-      if(b.z==null){ b.z = (b.w!=null ? b.w : 0.3)/nat[k].w; delete b.w; }
-      return b.z*vW;
-    };
-
     // Valores por defecto (solo para bloques que aún no tienen posición)
     if(blockEls.title && !blocks.title) blocks.title = { x:0.35, y:0.01, w:0.30 };
     // Los cuadros empiezan justo debajo del título (si se ve)
     let top0 = 0.02;
     if(blockEls.title && blockEls.title.style.display!=='none'){
       const t = blocks.title;
-      top0 = t.y + nat.title.h*scaleOf('title', t)/availH + 0.02;
+      top0 = t.y + nat.title.h*(t.w*vW/nat.title.w)/availH + 0.02;
     }
     if(!blocks.upper || (blockEls.lower && !blocks.lower)){
       const area = availH*(1-top0);
       let uSc = vW/nat.upper.w, lSc = blockEls.lower ? vW/nat.lower.w : 0;
       let uH = nat.upper.h*uSc, lH = blockEls.lower ? nat.lower.h*lSc : 0;
       if(uH+lH > area){ const r=area/(uH+lH); uSc*=r; lSc*=r; uH*=r; lH*=r; }
-      if(!blocks.upper) blocks.upper = { x:(1-nat.upper.w*uSc/vW)/2, y:top0, z:uSc/vW };
-      if(blockEls.lower && !blocks.lower) blocks.lower = { x:(1-nat.lower.w*lSc/vW)/2, y:top0+uH/availH, z:lSc/vW };
+      if(!blocks.upper) blocks.upper = { x:(1-nat.upper.w*uSc/vW)/2, y:top0, w:nat.upper.w*uSc/vW };
+      if(blockEls.lower && !blocks.lower) blocks.lower = { x:(1-nat.lower.w*lSc/vW)/2, y:top0+uH/availH, w:nat.lower.w*lSc/vW };
     }
     if(blockEls.gf && !blocks.gf){
-      const u = blocks.upper, uHf = nat.upper.h*scaleOf('upper', u)/availH;
+      const u = blocks.upper, uHf = nat.upper.h*(u.w*vW/nat.upper.w)/availH;
       blocks.gf = { x:0.42, y:u.y+uHf*0.6, w:0.16 };
     }
 
     Object.entries(blockEls).forEach(([k,el])=>{
       if(!el) return;
       const b = blocks[k];
-      const sc = scaleOf(k, b);
+      const sc = (b.w*vW)/nat[k].w;
       el.style.transform = `scale(${sc})`;
       el.style.setProperty('--dz-inv', String(1/sc));
       el.style.left = (b.x*vW)+'px';
@@ -3269,9 +3261,7 @@ function renderBracketDisplay(data){
 
   function fitScale(){
     if(custom){
-      // offsetWidth fuerza el reflujo: no hace falta esperar a un frame (y así funciona
-      // también si el navegador retrasa requestAnimationFrame)
-      setTimeout(()=>{ applyCustom(); setTimeout(drawPubLines, 120); }, 30);
+      requestAnimationFrame(()=>requestAnimationFrame(()=>{ applyCustom(); setTimeout(()=>requestAnimationFrame(drawPubLines), 120); }));
       return;
     }
     const vW = window.innerWidth;
@@ -3405,48 +3395,6 @@ function applyLayoutStyle(st){
   set('--gold', st.accent); set('--bg', st.bg); set('--bg2', st.card); set('--text', st.text);
   const f = scr.querySelector('.dv-footer');
   if(f) f.style.display = st.showFooter===false ? 'none' : '';
-  applyInnerStyle(st.inner || {});
-}
-
-// ── Medidas "por dentro" del cuadro público (separaciones, tarjetas, rótulos de ronda) ──
-// Cada ajuste solo se aplica si se ha tocado; si no, manda el CSS normal (style.css).
-// Se inyectan como <style id="pub-inner-style"> con !important para ganar a los estilos
-// por tamaño (.size-32/.size-64) y a los estilos en línea del render.
-function innerDefs(){
-  return [
-    { k:'roundGap',    label:'Separación entre rondas',      min:0,   max:200,  step:1,   sel:'#pub-upper-c .bracket-half-left', prop:'columnGap' },
-    { k:'upperHeight', label:'Altura cuadro ganadores',      min:200, max:2400, step:10,  sel:'#pub-upper-c .match-col', prop:'height' },
-    { k:'cardWidth',   label:'Ancho de tarjetas',            min:80,  max:420,  step:2,   sel:'#pub-upper-c .round-col', prop:'width' },
-    { k:'slotPad',     label:'Alto de tarjetas',             min:0,   max:24,   step:0.5, sel:'#pub-upper-c .team-slot', prop:'paddingTop' },
-    { k:'nameSize',    label:'Letra de nombres',             min:6,   max:36,   step:0.5, sel:'#pub-upper-c .slot-name', prop:'fontSize' },
-    { k:'seedSize',    label:'Letra del seed (#1) · 0 = ocultar', min:0, max:24, step:0.5, sel:'#pub-upper-c .slot-seed', prop:'fontSize' },
-    { k:'headerSize',  label:'Letra de rótulos de ronda',    min:6,   max:40,   step:0.5, sel:'#pub-upper-c .round-header', prop:'fontSize' },
-    { k:'headerGap',   label:'Distancia rótulo ↔ partidos',  min:0,   max:120,  step:1,   sel:'#pub-upper-c .round-header', prop:'marginBottom' },
-    { k:'lowerColGap', label:'Separación rondas perdedores', min:0,   max:120,  step:1,   sel:'#pub-lower-c > div > div', prop:'columnGap' },
-  ];
-}
-function buildInnerCss(v){
-  const U='#pub-upper-c', L='#pub-lower-c', G='#pub-gf-c', r=[];
-  const all = s => [U,L,G].map(c=>`${c} ${s}`).join(',');
-  if(v.roundGap!=null)    r.push(`${U} .bracket-half-left,${U} .bracket-half-right,${U} > div{gap:${v.roundGap}px !important}`);
-  if(v.upperHeight!=null) r.push(`${U} .round-col,${U} .match-col{min-height:${v.upperHeight}px !important}`);
-  if(v.cardWidth!=null)   r.push(`${U} .round-col,${L} .lower-round-col{width:${v.cardWidth}px !important;min-width:${v.cardWidth}px !important}`);
-  if(v.slotPad!=null)     r.push(`${all('.team-slot')}{padding-top:${v.slotPad}px !important;padding-bottom:${v.slotPad}px !important}`);
-  if(v.nameSize!=null)    r.push(`${all('.slot-name')}{font-size:${v.nameSize}px !important}`);
-  if(v.seedSize!=null)    r.push(v.seedSize>0 ? `${all('.slot-seed')}{font-size:${v.seedSize}px !important}` : `${all('.slot-seed')}{display:none !important}`);
-  const H = `${U} .round-header,${L} .round-header`;
-  if(v.headerSize!=null)  r.push(`${H}{font-size:${v.headerSize}px !important}`);
-  if(v.headerColor)       r.push(`${H}{color:${v.headerColor} !important}`);
-  if(v.headerPos==='none') r.push(`${H}{display:none !important}`);
-  else if(v.headerPos==='bottom') r.push(`${H}{order:2;margin-bottom:0 !important;margin-top:${v.headerGap!=null?v.headerGap:16}px !important}`);
-  else if(v.headerGap!=null) r.push(`${H}{margin-bottom:${v.headerGap}px !important}`);
-  if(v.lowerColGap!=null) r.push(`${L} > div,${L} > div > div{gap:${v.lowerColGap}px !important}`);
-  return r.join('\n');
-}
-function applyInnerStyle(v){
-  let el = document.getElementById('pub-inner-style');
-  if(!el){ el = document.createElement('style'); el.id = 'pub-inner-style'; document.head.appendChild(el); }
-  el.textContent = buildInnerCss(v);
 }
 
 // Hace arrastrables los bloques (mover) y les añade un tirador ◢ (cambiar tamaño)
@@ -3466,20 +3414,13 @@ function setupDesignBlocks(blockEls, cont){
       selectDesignBlock(key);
       const b = _designDraft.blocks?.[key]; if(!b) return;
       const vW = window.innerWidth, availH = cont.clientHeight || window.innerHeight;
-      // Anchura natural del bloque (sin escalar) y anchura en pantalla al empezar
-      const natW = el.offsetWidth || 1;
-      const startScreenW = el.getBoundingClientRect().width;
-      const start = { px:e.clientX, py:e.clientY, x:b.x, y:b.y };
+      const start = { px:e.clientX, py:e.clientY, x:b.x, y:b.y, w:b.w };
       const target = e.currentTarget;
       try{ target.setPointerCapture(e.pointerId); }catch(_){}
       const move = ev => {
         const dx = (ev.clientX-start.px)/vW, dy = (ev.clientY-start.py)/availH;
         if(mode==='move'){ b.x = start.x+dx; b.y = start.y+dy; }
-        else {
-          // Nueva anchura en pantalla → escala relativa al ancho de pantalla (z)
-          const newW = Math.max(0.04*vW, startScreenW + (ev.clientX-start.px));
-          b.z = newW/(natW*vW); delete b.w;
-        }
+        else { b.w = Math.max(0.04, start.w+dx); }
         markDesignDirty();
         _pubApplyLayout?.();
       };
@@ -3538,11 +3479,6 @@ function ensureDesignPanel(){
         <label>Texto <input type="color" id="dz-text"></label>
       </div>
       <div class="dz-sep"></div>
-      <div class="dz-sub">Cuadro por dentro</div>
-      <div class="dz-row"><span>Rótulos de ronda</span><select id="dz-hpos"><option value="top">Arriba</option><option value="bottom">Abajo</option><option value="none">Ocultos</option></select><input type="color" id="dz-hcolor" title="Color de los rótulos"></div>
-      <div id="dz-inner"></div>
-      <div class="dz-row dz-btns"><button id="dz-reset-inner">↺ Restablecer "por dentro"</button></div>
-      <div class="dz-sep"></div>
       <div class="dz-status" id="dz-status">Sin cambios</div>
       <div class="dz-row dz-btns">
         <button class="dz-primary" id="dz-save">💾 Guardar diseño</button>
@@ -3584,23 +3520,6 @@ function ensureDesignPanel(){
   $('dz-show-brand').addEventListener('change', e=>{ st().showBrand = e.target.checked; relayout(true); });
   $('dz-show-footer').addEventListener('change', e=>{ st().showFooter = e.target.checked; relayout(true); });
   $('dz-gap').addEventListener('input', e=>{ st().lowerGap = parseFloat(e.target.value); relayout(true); });
-  // "Cuadro por dentro": deslizadores generados a partir de innerDefs()
-  const inner = () => (st().inner || (st().inner = {}));
-  let _innerRaf = 0;
-  const relayoutSoon = () => { markDesignDirty(); clearTimeout(_innerRaf); _innerRaf = setTimeout(()=>relayout(true), 40); };
-  innerDefs().forEach(d=>{
-    const row = document.createElement('div'); row.className='dz-slider';
-    row.innerHTML = `<div class="dz-slider-lbl"><span>${d.label}</span><b id="dz-v-${d.k}"></b></div><input type="range" id="dz-i-${d.k}" min="${d.min}" max="${d.max}" step="${d.step}">`;
-    $('dz-inner').appendChild(row);
-    row.querySelector('input').addEventListener('input', e=>{
-      inner()[d.k] = parseFloat(e.target.value);
-      $('dz-v-'+d.k).textContent = e.target.value+'px ✎';
-      relayoutSoon();
-    });
-  });
-  $('dz-hpos').addEventListener('change', e=>{ inner().headerPos = e.target.value; relayoutSoon(); });
-  $('dz-hcolor').addEventListener('input', e=>{ inner().headerColor = e.target.value; markDesignDirty(); applyInnerStyle(inner()); });
-  $('dz-reset-inner').addEventListener('click', ()=>{ st().inner = {}; relayoutSoon(); });
   [['dz-accent','accent'],['dz-bg','bg'],['dz-card','card'],['dz-text','text']].forEach(([id,k])=>{
     $(id).addEventListener('input', e=>{ st()[k] = e.target.value; markDesignDirty(); applyLayoutStyle(st()); });
   });
@@ -3641,11 +3560,6 @@ function ensureDesignPanel(){
   window.addEventListener('beforeunload', e=>{ if(_designDirty){ e.preventDefault(); e.returnValue=''; } });
 }
 
-function rgbToHex(rgb){
-  const m = String(rgb).match(/\d+(\.\d+)?/g); if(!m) return '#000000';
-  return '#'+m.slice(0,3).map(n=>(+n|0).toString(16).padStart(2,'0')).join('');
-}
-
 // Sincroniza los controles del panel con el diseño en edición
 function refreshDesignPanel(){
   if(!$('design-panel') || !_designDraft) return;
@@ -3662,19 +3576,6 @@ function refreshDesignPanel(){
   $('dz-bg').value = st.bg || DESIGN_DEFAULT_COLORS.bg;
   $('dz-card').value = st.card || DESIGN_DEFAULT_COLORS.card;
   $('dz-text').value = st.text || DESIGN_DEFAULT_COLORS.text;
-  const inn = st.inner || {};
-  innerDefs().forEach(d=>{
-    const inp = $('dz-i-'+d.k); if(!inp) return;
-    let v = inn[d.k];
-    if(v==null){ // sin tocar: mostrar la medida real actual
-      const el = document.querySelector(d.sel);
-      if(el){ const cs = getComputedStyle(el); v = d.prop==='height' ? el.offsetHeight : d.prop==='width' ? el.offsetWidth : parseFloat(cs[d.prop])||0; }
-    }
-    if(v!=null){ inp.value = v; $('dz-v-'+d.k).textContent = (Math.round(v*10)/10)+'px'+(inn[d.k]==null?'':' ✎'); }
-  });
-  $('dz-hpos').value = inn.headerPos || 'top';
-  const hEl = document.querySelector('#pub-upper-c .round-header');
-  $('dz-hcolor').value = inn.headerColor || (hEl ? rgbToHex(getComputedStyle(hEl).color) : '#8a8a9a');
 }
 
 // ── 11.1 Pantalla completa ─────────────────────────────
