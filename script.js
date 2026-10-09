@@ -1413,7 +1413,7 @@ async function addToGlobalQueue(gi,mi){
   const matchId = getNextMatchId();
   const item = {matchId, gi, mi, sid:sessionId,
     t1:m.t1.name, t2:m.t2.name,
-    group:groupData.groups[gi].name, torneoName:groupData.title,
+    group:matchGroupLabel(groupData.groups[gi], m), torneoName:groupData.title,
     assignedAt:Date.now()};
   if(activePanel?.gi===gi&&activePanel?.mi===mi){closeScorePanel(gi);activePanel=null;}
   globalQueue.push(item);
@@ -1466,7 +1466,7 @@ function renderSendToSection(gi,mi,container){
     const g=groupData.groups[gi];
     imprimirTicketPartido({
       torneo:(groupData.title||'TORNEO').toUpperCase(),
-      grupo:g.name||'Grupo '+(gi+1),
+      grupo:matchGroupLabel(g, m)||'Grupo '+(gi+1),
       pa:m.t1.name.toUpperCase(),
       pb:m.t2.name.toUpperCase()
     });
@@ -1489,7 +1489,7 @@ async function buildAndSaveQueue(){
       if(m.played||m.t1.name==='BYE'||m.t2.name==='BYE') return;
       const dev=connectedDevices.find(d=>d.busy&&d.currentMatch?.gi===gi&&d.currentMatch?.mi===mi&&d.currentMatch?.sid===sessionId);
       const qPos=globalQueue.findIndex(q=>q.gi===gi&&q.mi===mi&&q.sid===sessionId);
-      items.push({gi,mi,t1:m.t1.name,t2:m.t2.name,group:g.name,torneoName:groupData.title,
+      items.push({gi,mi,t1:m.t1.name,t2:m.t2.name,group:matchGroupLabel(g, m),torneoName:groupData.title,
         status:dev?'live':qPos>=0?'queued':'pending',
         devName:dev?dev.name:null, queuePos:qPos>=0?qPos+1:null,
         assignedAt:dev?.currentMatch?.assignedAt||(qPos>=0?globalQueue[qPos].assignedAt:null)});
@@ -2093,6 +2093,44 @@ $('reset-btn').addEventListener('click', resetAll);
 // ═══════════════════════════════════════════════════════
 // 9. FASE DE GRUPOS
 // ═══════════════════════════════════════════════════════
+// Liga: calendario por jornadas con el método de rotación (circle method). Solo con los
+// jugadores reales (los BYE no juegan); si son impares se añade un hueco y en cada jornada
+// uno descansa. En cada jornada cada jugador juega como mucho una vez. El primer jugador
+// alterna de lado cada jornada para no ser siempre "pareja A".
+function leagueRounds(teams){
+  const list = teams.filter(t=>t.name!=='BYE');
+  if(list.length%2) list.push(null);
+  const n = list.length, rounds = [];
+  let arr = list.slice();
+  for(let r=0; r<n-1; r++){
+    const pairs = [];
+    for(let i=0; i<n/2; i++){
+      let a = arr[i], b = arr[n-1-i];
+      if(!a || !b) continue;
+      if(i===0 && r%2===1) [a,b] = [b,a];
+      pairs.push([a,b]);
+    }
+    rounds.push(pairs);
+    arr = [arr[0], arr[n-1], ...arr.slice(1, n-1)];
+  }
+  return rounds;
+}
+function makeLeagueMatches(teams){
+  const m=[];
+  leagueRounds(teams).forEach((pairs,r)=>pairs.forEach(([a,b])=>m.push({t1:a,t2:b,s1:null,s2:null,played:false,jornada:r+1})));
+  return m;
+}
+// Ligas creadas antes de las jornadas: asignar la jornada a cada partido existente sin
+// reordenarlos (los índices gi/mi los usan la cola y los resultados).
+function ensureJornadas(group){
+  if(group.matches.every(m=>m.jornada)) return;
+  const key=(a,b)=>[a,b].sort().join('\u0000'), jor={};
+  leagueRounds(group.teams).forEach((pairs,r)=>pairs.forEach(([a,b])=>{ jor[key(a.name,b.name)]=r+1; }));
+  group.matches.forEach(m=>{ if(!m.jornada) m.jornada = jor[key(m.t1.name,m.t2.name)] || 1; });
+}
+// Texto de grupo para cola, iPad, ticket y pegatinas: "Liga · J3" en ligas
+function matchGroupLabel(g, m){ return m?.jornada ? `${g.name} · J${m.jornada}` : g.name; }
+
 function makeRR(teams){
   const m=[];
   for(let i=0;i<teams.length;i++) for(let j=i+1;j<teams.length;j++)
@@ -2124,7 +2162,7 @@ async function launchGroupStageManual(title, teamsData){
   const letters='ABCDEFGHIJKLMNOPQRSTUVWXYZ', groups=[];
   for(let g=0;g<numGroups;g++){
     const groupTeams=teamsData.filter(t=>t.groupIdx===g).map((t,i)=>({name:t.name,seed:g*(bracketSize/numGroups)+i+1}));
-    groups.push({name:numGroups===1?'Liga':'Grupo '+letters[g],teams:groupTeams,matches:makeRR(groupTeams),manualOrder:null});
+    groups.push({name:numGroups===1?'Liga':'Grupo '+letters[g],teams:groupTeams,matches:numGroups===1?makeLeagueMatches(groupTeams):makeRR(groupTeams),manualOrder:null});
   }
   sessionId=genSessionId();
   groupData={title,groups};
@@ -2179,8 +2217,26 @@ function buildGroupCard(group,gi){
   });
   table.appendChild(tbody); wrap.appendChild(table); card.appendChild(wrap);
   const lbl=document.createElement('div'); lbl.className='group-matches-lbl'; lbl.textContent='Partidos'; card.appendChild(lbl);
-  group.matches.forEach((m,mi)=>{
+  // Liga: partidos ordenados por jornada, con cabecera "Jornada N" y quién descansa
+  const isLeague = groupData.groups.length===1;
+  if(isLeague) ensureJornadas(group);
+  const order = group.matches.map((m,mi)=>mi);
+  if(isLeague) order.sort((a,b)=>(group.matches[a].jornada-group.matches[b].jornada)||(a-b));
+  const realTeams = group.teams.filter(t=>t.name!=='BYE').map(t=>t.name);
+  let lastJ = null;
+  order.forEach(mi=>{
+    const m = group.matches[mi];
     if(m.t1.name==='BYE'||m.t2.name==='BYE') return; // no mostrar partidos contra BYE
+    if(isLeague && m.jornada!==lastJ){
+      lastJ = m.jornada;
+      const inJ = group.matches.filter(x=>x.jornada===lastJ);
+      const playing = new Set(inJ.flatMap(x=>[x.t1.name,x.t2.name]));
+      const rest = realTeams.filter(n=>!playing.has(n));
+      const done = inJ.filter(x=>x.played).length;
+      const h = document.createElement('div'); h.className='jornada-lbl';
+      h.innerHTML = `<span>Jornada ${lastJ}</span><span class="jornada-meta">${rest.length?`Descansa: ${esc(rest.join(', '))} · `:''}${done}/${inJ.length}</span>`;
+      card.appendChild(h);
+    }
     const live=isMatchLive(gi,mi), qPos=!live?getMatchQueuePos(gi,mi):null;
     let cls='group-match-item'; if(m.played) cls+=' played'; if(live) cls+=' live'; else if(qPos) cls+=' queued-match';
     const item=document.createElement('div'); item.className=cls;
@@ -3511,7 +3567,7 @@ window.generarPegatinas = async function(){
   gd.groups.forEach(g=>{
     g.matches.forEach(m=>{
       if(m.t1?.name!=='BYE' && m.t2?.name!=='BYE'){
-        matches.push({torneo:torneoNombre, grupo:g.name, pa:m.t1.name.toUpperCase(), pb:m.t2.name.toUpperCase()});
+        matches.push({torneo:torneoNombre, grupo:matchGroupLabel(g, m), pa:m.t1.name.toUpperCase(), pb:m.t2.name.toUpperCase()});
       }
     });
   });

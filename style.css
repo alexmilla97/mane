@@ -117,6 +117,9 @@
   .move-btn { background: transparent; border: none; color: var(--text-muted); cursor: pointer; font-size: 0.7rem; padding: 0 2px; transition: color 0.15s; }
   .move-btn:hover { color: var(--gold); }
   .group-matches-lbl { font-family: 'Barlow Condensed', sans-serif; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-muted); padding: 0.7rem 0.7rem 0.3rem; }
+  /* Liga: cabecera de cada jornada ("Jornada 3 · Descansa: X · 2/4") */
+  .jornada-lbl { display: flex; justify-content: space-between; align-items: baseline; gap: 0.8rem; font-family: 'Barlow Condensed', sans-serif; font-size: 0.85rem; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; color: var(--gold); padding: 1rem 0.3rem 0.35rem; border-bottom: 1px solid var(--gold-dark); }
+  .jornada-meta { font-size: 0.72rem; font-weight: 600; letter-spacing: 0.04em; color: var(--text-muted); text-transform: none; }
   .group-match-item { display: flex; align-items: center; padding: 0.32rem 0.7rem; gap: 0.35rem; border-top: 1px solid var(--border); transition: background 0.12s; }
   .group-match-item:not(.played) { cursor: pointer; }
   .group-match-item:not(.played):hover { background: rgba(212,160,23,0.06); }
@@ -185,6 +188,7 @@
   body.groups-mode .groups-scroll[data-cols="1"] .group-card > .group-matches-lbl { grid-column: 2 / -1; }
   body.groups-mode .groups-scroll[data-cols="1"] .group-card > .group-match-item { grid-column: auto / span 1; }
   body.groups-mode .groups-scroll[data-cols="1"] .group-card > .score-panel { grid-column: 2 / -1; }
+  body.groups-mode .groups-scroll[data-cols="1"] .group-card > .jornada-lbl { grid-column: 2 / -1; }
   body.groups-mode .group-card-title { background: transparent; border-bottom: 2px solid var(--gold-dark); padding: 0 0 0.5rem; font-size: 1.1rem; }
   body.groups-mode .gcard-counter { font-size: 0.8rem; }
   body.groups-mode .standings-wrap { padding: 0.7rem 0 0; }

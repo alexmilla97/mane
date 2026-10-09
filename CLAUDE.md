@@ -76,7 +76,7 @@ git -C "C:\Users\aleja\Desktop\PAGINA MANE" push
 - Cada `git push` a `main` despliega automáticamente en producción
 - URL de producción: https://torneosmane.org
 - **Caché (IMPORTANTE)**: Cloudflare sirve `script.js`/`style.css` con `Cache-Control: max-age=14400` (4 h). Ese valor lo impone un ajuste de **zona** en el panel de Cloudflare (*Caching → Configuration → Browser Cache TTL = 4 horas*), que **sobrescribe** las cabeceras del origen, por lo que el fichero `_headers` del repo **no surte efecto por sí solo**.
-  - **Solución activa (sin tocar el panel)**: `index.html` referencia los assets con un parámetro de versión: `script.js?v=N` y `style.css?v=N`. **Al cambiar `script.js` o `style.css` hay que incrementar `N`** (URL nueva → el navegador descarga fresco, ignorando la copia cacheada). Versión actual: `v=15`.
+  - **Solución activa (sin tocar el panel)**: `index.html` referencia los assets con un parámetro de versión: `script.js?v=N` y `style.css?v=N`. **Al cambiar `script.js` o `style.css` hay que incrementar `N`** (URL nueva → el navegador descarga fresco, ignorando la copia cacheada). Versión actual: `v=16`.
   - **Solución alternativa (un solo cambio en el panel)**: poner *Browser Cache TTL* en **"Respect Existing Headers"**; entonces el `_headers` (ya incluido en el repo, con `no-cache, must-revalidate`) pasa a funcionar y ya no haría falta subir la versión `?v=` en cada cambio.
 
 ## Bugs conocidos y soluciones aplicadas (script.js)
@@ -140,6 +140,7 @@ git -C "C:\Users\aleja\Desktop\PAGINA MANE" push
 - En "Número de grupos" aparece **`Liga`** para tamaños ≤ `LEAGUE_MAX_SIZE` (32). Por defecto sigue seleccionado 2 grupos. El grupo se llama "Liga" (setup, fase, pegatinas, tarjeta pública).
 - Todos contra todos (`makeRR`). Al pulsar "Avanzar al cuadro" con 1 grupo **se salta la pantalla de cruces**: confirmación y `launchTournament(title, generateProfessionalNames([[0]]))`.
 - Siembra (`generateProfessionalNames`, rama `nGroups===1`): orden estándar duplicando `[1]→[1,2]→[1,4,2,3]→…` (semilla s contra N+1−s); 1º contra último y 1º/2º en mitades opuestas. Los BYE son las últimas semillas → nunca BYE contra BYE. Verificado: 8 → `1-8 4-5 | 2-7 3-6`; 16 con 11 jugadores → BYE para 1º–5º.
+- **Jornadas**: la liga se crea con `makeLeagueMatches()` (método de rotación en `leagueRounds()`, solo jugadores reales; si son impares, uno descansa por jornada) y cada partido lleva `jornada`. Los partidos se guardan en orden de jornada (pegatinas y cola salen así). Ligas antiguas sin `jornada`: `ensureJornadas()` la asigna al pintar, sin reordenar (los índices gi/mi no cambian). La vista agrupa por jornada con cabecera `.jornada-lbl` ("Jornada N · Descansa: X · jugados/total"). `matchGroupLabel()` da "Liga · J3" para cola, iPad, ticket y pegatinas. Verificado 2–32 jugadores (pares/impares, con BYE): cada pareja una vez, nadie dos veces por jornada, como mucho uno descansa.
 - Vista admin (`groups-mode`, `data-cols="1"`): clasificación a la izquierda (sticky) y partidos en dos columnas a la derecha.
 
 ## Setup — opciones del cuadro
